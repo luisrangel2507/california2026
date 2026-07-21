@@ -316,6 +316,9 @@
     .act.done { background: rgba(0,229,152,.04); }
     .act.done .act-n { text-decoration: line-through; opacity: .45; }
     .act.done .act-note { opacity: .3; }
+    .act.st-current { border-left: 3px solid #00C8FF; background: rgba(0,200,255,.07); padding-left: 10px; }
+    .act.st-next { border-left: 3px solid #F5A623; background: rgba(245,166,35,.06); padding-left: 10px; }
+    .act.st-past:not(.done) { border-left: 3px solid #00E598; background: rgba(0,229,152,.05); padding-left: 10px; }
     .act-t { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted); min-width: 36px; padding-top: 3px; flex-shrink: 0; }
     .act-dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
     .act-body { flex: 1; min-width: 0; }
@@ -2488,8 +2491,24 @@ function toggleActDone(dayIdx, actIdx){
   }
 }
 
+function computeItinStatus(){
+  var now = new Date();
+  var tripStart = new Date('2026-09-02');
+  var tripEnd = new Date('2026-09-12');
+  if(now<tripStart) return {todayIdx:-1, curActIdx:-1};
+  if(now>=tripEnd) return {todayIdx:DAYS.length, curActIdx:-1};
+  var todayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);
+  var curMins = now.getHours()*60+now.getMinutes();
+  var curActIdx=-1;
+  (DAYS[todayIdx].acts||[]).forEach(function(a,ai){
+    if(a.t && /^\d{1,2}:\d{2}$/.test(a.t) && parseMins(a.t)<=curMins) curActIdx=ai;
+  });
+  return {todayIdx:todayIdx, curActIdx:curActIdx};
+}
+
 function renderItin(){
   var unlocked=getUnlockIndex();
+  var itinStatus=computeItinStatus();
   document.getElementById('itin-body').innerHTML = DAYS.map(function(d,i){
     var clr=DC[i];
     var isLocked=i>unlocked;
@@ -2497,15 +2516,24 @@ function renderItin(){
     var acts=d.acts.map(function(a,ai){
       var key=i+'-'+ai;
       var done=!!actDone[key];
+      var status='future';
+      if(i<itinStatus.todayIdx) status='past';
+      else if(i>itinStatus.todayIdx) status='future';
+      else {
+        if(ai<itinStatus.curActIdx) status='past';
+        else if(ai===itinStatus.curActIdx) status='current';
+        else if(ai===itinStatus.curActIdx+1) status='next';
+      }
+      var dotClr = status==='current' ? '#00C8FF' : status==='next' ? '#F5A623' : status==='past' ? '#00E598' : clr;
       var mapsUrl = a.g || ('https://www.google.com/maps/search/?api=1&query='+
         encodeURIComponent(a.n.replace(/^[^\p{L}\p{N}]+/u,'').trim()+', '+d.city.split('→')[0].trim()));
       var mapsBtn = '<a class="act-map" href="'+esc(mapsUrl)+'" target="_blank" onclick="event.stopPropagation()">📍</a>';
       var delBtn = admin
         ? '<button class="act-del" onclick="deleteAct('+i+','+ai+')">×</button>'
         : '';
-      return '<div class="act'+(done?' done':'')+'" id="act-'+key+'">'+
+      return '<div class="act'+(done?' done':'')+' st-'+status+'" id="act-'+key+'">'+
         '<div class="act-t">'+esc(a.t)+'</div>'+
-        '<div class="act-dot" style="background:'+clr+';margin-top:6px"></div>'+
+        '<div class="act-dot" style="background:'+dotClr+';margin-top:6px"></div>'+
         '<div class="act-body"><div class="act-n">'+esc(a.n)+'</div>'+
         (a.note?'<div class="act-note">'+esc(a.note)+'</div>':'')+
         '</div>'+
