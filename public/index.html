@@ -2411,9 +2411,9 @@ function renderItin(){
     var acts=d.acts.map(function(a,ai){
       var key=i+'-'+ai;
       var done=!!actDone[key];
-      var mapsBtn = a.g
-        ? '<a class="act-map" href="'+esc(a.g)+'" target="_blank" onclick="event.stopPropagation()">📍</a>'
-        : '';
+      var mapsUrl = a.g || ('https://www.google.com/maps/search/?api=1&query='+
+        encodeURIComponent(a.n.replace(/^[^\p{L}\p{N}]+/u,'').trim()+', '+d.city.split('→')[0].trim()));
+      var mapsBtn = '<a class="act-map" href="'+esc(mapsUrl)+'" target="_blank" onclick="event.stopPropagation()">📍</a>';
       var delBtn = admin
         ? '<button class="act-del" onclick="deleteAct('+i+','+ai+')">×</button>'
         : '';
