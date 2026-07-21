@@ -475,13 +475,47 @@
     .bal-arrow { color: var(--muted); font-size: 14px; }
     .bal-amt { font-family:'Space Mono',monospace; font-size: 13px; font-weight: 700; color: var(--gold); margin-left: auto; }
 
-    /* ── PHOTOS ── */
-    .ph-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; margin-bottom: 12px; }
-    .ph-thumb { aspect-ratio: 1; border-radius: 7px; object-fit: cover; width: 100%; cursor: pointer; }
-    .ph-add { aspect-ratio: 1; border-radius: 7px; background: var(--glass); border: 1px dashed var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: var(--muted); font-size: 20px; transition: all .15s; }
-    .ph-add:hover, .ph-add:active { border-color: var(--cyan); color: var(--cyan); }
-    .ph-add-l { font-size: 9px; margin-top: 3px; }
-    .place-lbl { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+    /* ── RECUERDOS ── */
+    .mem-day { margin-bottom: 28px; }
+    .mem-day-hd {
+      display: flex; align-items: center; gap: 10px;
+      padding: 0 2px 10px; margin-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .mem-day-num {
+      font-family:'Space Mono',monospace; font-size:10px; font-weight:700;
+      color:#000; padding:4px 8px; border-radius:6px; flex-shrink:0;
+    }
+    .mem-day-info { flex:1; min-width:0; }
+    .mem-day-city { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mem-day-date { font-size:10px; color:var(--muted); margin-top:1px; }
+    .mem-place { margin-bottom:18px; }
+    .mem-place-lbl {
+      font-size:10px; color:var(--muted); margin-bottom:6px;
+      display:flex; align-items:center; gap:5px;
+    }
+    .ph-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; }
+    .ph-thumb {
+      aspect-ratio: 1; border-radius: 10px; object-fit: cover; width: 100%;
+      cursor: pointer; background: var(--glass);
+      box-shadow: 0 2px 10px rgba(0,0,0,.4);
+      transition: transform .15s;
+    }
+    .ph-thumb:active { transform: scale(.97); }
+    .ph-add {
+      aspect-ratio: 1; border-radius: 10px;
+      background: rgba(255,255,255,.03); border: 1.5px dashed rgba(255,255,255,.12);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--muted); font-size: 22px; transition: all .15s;
+    }
+    .ph-add:active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,255,.05); }
+    .ph-add input[type=file] { display:none; }
+    .ph-add-l { font-size:9px; margin-top:4px; letter-spacing:.5px; }
+    .mem-empty {
+      padding: 40px 20px; text-align:center; color:var(--muted);
+      font-size:12px; line-height:1.7;
+    }
+    .mem-empty-icon { font-size:36px; margin-bottom:8px; opacity:.4; }
 
     /* ── OVERLAY ── */
     .ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.95); z-index: 9999; align-items: center; justify-content: center; }
@@ -1154,7 +1188,7 @@
   <div class="nav-tab" onclick="go('map',this)">Mapa</div>
   <div class="nav-tab" onclick="go('itin',this)">Días</div>
   <div class="nav-tab" onclick="go('budget',this)">Gastos</div>
-  <div class="nav-tab" onclick="go('photos',this)">Fotos</div>
+  <div class="nav-tab" onclick="go('photos',this)">Recuerdos</div>
   <div class="nav-tab" onclick="go('decide',this)">Suerte</div>
 </div>
 
@@ -1290,7 +1324,6 @@
   <button class="ov-del" onclick="delPhoto()">Eliminar</button>
 </div>
 
-<input type="file" id="file-in" accept="image/*" multiple style="display:none" onchange="onFiles(event)">
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
@@ -2427,36 +2460,46 @@ function renderBals(){
 // ── PHOTOS ─────────────────────────────────────────────────────────────────
 async function renderPhotos(){
   var bodyEl = document.getElementById('photos-body');
-  if(!db){ bodyEl.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--muted);font-size:12px">Iniciando base de datos...</div>'; return; }
-  bodyEl.innerHTML='<div style="padding:50px 20px;text-align:center;color:var(--muted);font-family:\'Space Mono\',monospace;font-size:10px;letter-spacing:1px">CARGANDO</div>';
-  try { await loadPhotos(); } catch(e) { bodyEl.innerHTML='<div style="padding:50px;text-align:center;color:var(--coral);font-size:12px">Error al cargar fotos</div>'; return; }
+  if(!db){ bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Iniciando...</div>'; return; }
+  bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Cargando recuerdos...</div>';
+  try { await loadPhotos(); } catch(e) { bodyEl.innerHTML='<div class="mem-empty" style="color:var(--coral)">Error al cargar</div>'; return; }
   var byDay={};
-  PLACES.forEach(function(p){if(!byDay[p.d])byDay[p.d]=[];byDay[p.d].push(p);});
+  PLACES.forEach(function(p){ if(!byDay[p.d]) byDay[p.d]=[]; byDay[p.d].push(p); });
+  var totalPhotos=0;
+  Object.keys(photos).forEach(function(k){ totalPhotos+=(photos[k]||[]).length; });
   var html='';
   Object.keys(byDay).sort(function(a,b){return a-b;}).forEach(function(day){
-    var di=DAYS[day-1], clr=DC[day-1];
-    html+='<div style="margin-bottom:20px">'+
-      '<div style="font-size:10px;font-weight:700;color:'+clr+';text-transform:uppercase;letter-spacing:1.8px;margin-bottom:9px;display:flex;align-items:center;gap:6px;font-family:\'Space Mono\',monospace">'+
-      '<span style="width:3px;height:11px;background:'+clr+';border-radius:2px;display:inline-block"></span>'+
-      'DÍA '+day+' · '+(di?di.date:'')+' — '+(di?di.city.split('→')[0].trim():'')+
+    var di=DAYS[day-1], clr=DC[day-1]||'#00C8FF';
+    html+='<div class="mem-day">'+
+      '<div class="mem-day-hd">'+
+        '<div class="mem-day-num" style="background:'+clr+'">DÍA '+day+'</div>'+
+        '<div class="mem-day-info">'+
+          '<div class="mem-day-city">'+(di?esc(di.city.split('→')[0].trim()):'')+'</div>'+
+          '<div class="mem-day-date">'+(di?di.wd+' '+di.date:'')+'</div>'+
+        '</div>'+
       '</div>';
     byDay[day].forEach(function(p){
       var ps=photos[p.n]||[];
-      html+='<div style="margin-bottom:13px"><div class="place-lbl">'+p.e+' '+esc(p.n)+'</div>'+
+      var uid='ph-'+p.n.replace(/[^a-z0-9]/gi,'-');
+      html+='<div class="mem-place">'+
+        '<div class="mem-place-lbl">'+p.e+' '+esc(p.n)+'</div>'+
         '<div class="ph-grid">'+
         ps.map(function(url,idx){
           return '<img class="ph-thumb" src="'+url+'" onclick="openOv('+JSON.stringify(p.n)+','+idx+')" loading="lazy">';
         }).join('')+
-        '<div class="ph-add" onclick="pickPhoto('+JSON.stringify(p.n)+')">'+
-        '<span>+</span><span class="ph-add-l">Foto</span></div>'+
+        '<label class="ph-add">'+
+          '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+JSON.stringify(p.n)+')">'+
+          '<span>📷</span><span class="ph-add-l">Agregar</span>'+
+        '</label>'+
         '</div></div>';
     });
     html+='</div>';
   });
-  document.getElementById('photos-body').innerHTML=html;
+  if(!totalPhotos){
+    html='<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Aún no hay fotos.<br>Toca 📷 en cualquier lugar para agregar.</div>'+html;
+  }
+  bodyEl.innerHTML=html;
 }
-
-function pickPhoto(name){pickCtx=name;document.getElementById('file-in').click();}
 
 async function onFiles(ev){
   var files=Array.from(ev.target.files);
@@ -2470,6 +2513,11 @@ async function onFiles(ev){
   photos[pickCtx]=ps;
   ev.target.value='';
   renderPhotos();
+}
+
+async function onFilesInline(ev, placeName){
+  pickCtx = placeName;
+  await onFiles(ev);
 }
 
 function openOv(name,idx){
