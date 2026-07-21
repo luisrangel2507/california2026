@@ -815,6 +815,18 @@
       font-family:'Space Grotesk',sans-serif; cursor:pointer; letter-spacing:.3px;
     }
     .bs-save-btn:active { background:rgba(0,200,255,.22); }
+    .bs-logout-btn {
+      flex:1; padding:11px; border-radius:10px;
+      background:rgba(255,80,80,.1); border:1px solid rgba(255,80,80,.3);
+      color:var(--red); font-size:13px; font-weight:600;
+      font-family:'Space Grotesk',sans-serif; cursor:pointer; letter-spacing:.3px;
+    }
+    .bs-logout-btn:active { background:rgba(255,80,80,.2); }
+    .me-form {
+      flex:1; overflow-y:auto; padding:14px 18px 8px;
+      display:flex; flex-direction:column; gap:6px;
+    }
+    .me-inp { flex:none; width:100%; margin-bottom:10px; }
 
     /* ── LOCKED DAY (itin) ── */
     .day-dot { display:none; }
@@ -1260,7 +1272,7 @@
 <div class="app-header">
   <div id="hero-title" class="app-greeting"></div>
   <div class="app-hd-profile">
-    <div class="hero-av-btn" id="hero-av-btn" onclick="showProfileScreen()" title="Cambiar perfil">?</div>
+    <div class="hero-av-btn" id="hero-av-btn" onclick="onAvatarClick()" title="Mi perfil">?</div>
     <div class="hero-name-sm" id="hero-name-sm"></div>
   </div>
 </div>
@@ -1601,7 +1613,7 @@ function updateHeroProfile(){
     btn.textContent=p.charAt(0).toUpperCase();
     btn.style.background=PC[i]; btn.style.color='#000'; btn.style.borderColor=PC[i];
     ttl.innerHTML='Hola,&nbsp;<span class="cy">'+esc(p)+'</span>';
-    nsm.textContent='cambiar perfil';
+    nsm.textContent='mi perfil';
   } else {
     btn.textContent='?';
     btn.style.background='transparent'; btn.style.color='var(--muted)';
@@ -1616,6 +1628,52 @@ function showWelcome(i){
   var bnr=document.getElementById('welcome-bnr');
   bnr.classList.add('show');
   setTimeout(function(){ bnr.classList.remove('show'); }, 3200);
+}
+
+// ── MI PERFIL ──────────────────────────────────────────────────────────────
+var PROFILE_DATA = JSON.parse(localStorage.getItem('ca26_profile')||'{}');
+
+function onAvatarClick(){
+  if(meIndex===null){ showProfileScreen(); return; }
+  openMyProfile();
+}
+
+function openMyProfile(){
+  var i=parseInt(meIndex);
+  var d=PROFILE_DATA[i]||{};
+  document.getElementById('me-title').textContent=persons[i];
+  document.getElementById('me-title').style.color=PC[i];
+  document.getElementById('me-birth').value=d.birth||'';
+  document.getElementById('me-address').value=d.address||'';
+  document.getElementById('me-ec-name').value=d.ecName||'';
+  document.getElementById('me-ec-phone').value=d.ecPhone||'';
+  document.getElementById('me-overlay').classList.add('show');
+  document.getElementById('me-sheet').classList.add('show');
+}
+
+function closeMyProfile(){
+  document.getElementById('me-overlay').classList.remove('show');
+  document.getElementById('me-sheet').classList.remove('show');
+}
+
+function saveMyProfile(){
+  var i=parseInt(meIndex);
+  PROFILE_DATA[i]={
+    birth: document.getElementById('me-birth').value,
+    address: document.getElementById('me-address').value,
+    ecName: document.getElementById('me-ec-name').value,
+    ecPhone: document.getElementById('me-ec-phone').value
+  };
+  localStorage.setItem('ca26_profile', JSON.stringify(PROFILE_DATA));
+  closeMyProfile();
+}
+
+function logoutMe(){
+  meIndex=null;
+  localStorage.removeItem('ca26_me');
+  closeMyProfile();
+  updateHeroProfile();
+  showProfileScreen();
 }
 
 // ── CHECKPOINTS (km y tiempo acumulado desde TIJ) ─────────────────────────
@@ -3282,6 +3340,33 @@ if('serviceWorker' in navigator){
   <div class="bs-footer">
     <button class="bs-add-btn" onclick="iedAddAct()">+ Agregar</button>
     <button class="bs-save-btn" onclick="saveItinEdit()">Guardar</button>
+  </div>
+</div>
+
+<!-- MI PERFIL BOTTOM SHEET -->
+<div class="bs-overlay" id="me-overlay" onclick="closeMyProfile()"></div>
+<div class="bottom-sheet" id="me-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title" id="me-title">Mi Perfil</div>
+      <div class="bs-sub">Alta Vibra · California 2026</div>
+    </div>
+    <button class="bs-close" onclick="closeMyProfile()">&#10005;</button>
+  </div>
+  <div class="me-form">
+    <div class="ef-lbl">Fecha de nacimiento</div>
+    <input class="ef-i me-inp" type="date" id="me-birth">
+    <div class="ef-lbl">Dirección</div>
+    <input class="ef-i me-inp" type="text" id="me-address" placeholder="Calle, ciudad, CP...">
+    <div class="ef-lbl">Contacto de emergencia — nombre</div>
+    <input class="ef-i me-inp" type="text" id="me-ec-name" placeholder="Nombre completo">
+    <div class="ef-lbl">Contacto de emergencia — teléfono</div>
+    <input class="ef-i me-inp" type="tel" id="me-ec-phone" placeholder="10 dígitos" inputmode="tel">
+  </div>
+  <div class="bs-footer">
+    <button class="bs-logout-btn" onclick="logoutMe()">Cerrar sesión</button>
+    <button class="bs-save-btn" onclick="saveMyProfile()">Guardar</button>
   </div>
 </div>
 
