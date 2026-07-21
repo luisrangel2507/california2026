@@ -65,7 +65,7 @@
     .app-header {
       position: relative; z-index: 2; flex-shrink: 0;
       background: var(--bg);
-      padding: 14px 18px 12px;
+      padding: max(14px, env(safe-area-inset-top, 14px)) 18px 12px;
       border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
     }
