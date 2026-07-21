@@ -2838,6 +2838,19 @@ function checkItinNotifs(){
   });
 }
 
+function checkCountdownNotif(){
+  if(typeof Notification==='undefined'||Notification.permission!=='granted') return;
+  var now = new Date();
+  var tripStart = new Date('2026-09-02');
+  if(now>=tripStart) return;
+  if(now.getHours()!==10||now.getMinutes()!==0) return;
+  var todayKey = now.toISOString().slice(0,10);
+  if(localStorage.getItem('ca26_cd_notif')===todayKey) return;
+  localStorage.setItem('ca26_cd_notif', todayKey);
+  var dLeft = Math.ceil((tripStart-now)/(1000*60*60*24));
+  sendItinNotif('Alta Vibra · California 2026', 'Faltan '+dLeft+' día'+(dLeft===1?'':'s')+' para tu viaje');
+}
+
 // ── ITINERARY EDITOR ──────────────────────────────────────────────────────
 function openItinEdit(dayIdx){
   iedDayIdx = dayIdx;
@@ -3297,7 +3310,8 @@ async function init(){
   }
   // Global 1-minute tick — activity notifications (runs even when not on dash tab)
   checkItinNotifs();
-  setInterval(checkItinNotifs, 60000);
+  checkCountdownNotif();
+  setInterval(function(){ checkItinNotifs(); checkCountdownNotif(); }, 60000);
   // Centro de operaciones (desktop)
   renderOps();
   setInterval(renderOps, 60000);
