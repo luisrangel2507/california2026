@@ -527,6 +527,10 @@
       font-size:13px; font-weight:700; color:var(--text);
       display:flex; align-items:center; gap:6px;
     }
+    .alb-card-time {
+      font-family:'Space Mono',monospace; font-size:10px; font-weight:700;
+      color:var(--cyan); flex-shrink:0;
+    }
     .alb-card-count {
       font-size:10px; font-family:'Space Mono',monospace;
       color:var(--muted);
@@ -1832,9 +1836,13 @@ function dbPut(k,v){
 }
 async function loadPhotos(){
   if(!db) return;
-  for(var i=0;i<PLACES.length;i++){
-    try { photos[PLACES[i].n] = await dbGet(PLACES[i].n); }
-    catch(e) { photos[PLACES[i].n] = []; }
+  for(var i=0;i<DAYS.length;i++){
+    var acts=DAYS[i].acts||[];
+    for(var j=0;j<acts.length;j++){
+      var key=(i+1)+'|'+acts[j].n;
+      try { photos[key] = await dbGet(key); }
+      catch(e) { photos[key] = []; }
+    }
   }
 }
 
@@ -2568,19 +2576,17 @@ async function renderPhotos(){
   bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Cargando...</div>';
   try { await loadPhotos(); } catch(e) { bodyEl.innerHTML='<div class="mem-empty" style="color:var(--coral)">Error al cargar</div>'; return; }
 
-  var byDay={};
-  PLACES.forEach(function(p){ if(!byDay[p.d]) byDay[p.d]=[]; byDay[p.d].push(p); });
   var totalPhotos=0;
   Object.keys(photos).forEach(function(k){ totalPhotos+=(photos[k]||[]).length; });
 
   var html='';
   if(!totalPhotos){
-    html='<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.<br>Toca <b>+</b> en cualquier lugar para agregar tus recuerdos.</div>';
+    html='<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.<br>Toca <b>+</b> en cualquier actividad del itinerario para agregar tus recuerdos.</div>';
   }
 
-  Object.keys(byDay).sort(function(a,b){return +a-+b;}).forEach(function(day){
-    var di=DAYS[day-1], clr=DC[day-1]||'#00C8FF';
-    var cityShort=di?di.city.split('→')[0].trim():'';
+  DAYS.forEach(function(di,i){
+    var day=i+1, clr=DC[i]||'#00C8FF';
+    var cityShort=di.city.split('→')[0].trim();
     html+='<div class="alb-chapter">'+
       '<div class="alb-chapter-hd">'+
         '<div class="alb-chapter-line"></div>'+
@@ -2589,13 +2595,14 @@ async function renderPhotos(){
         '<div class="alb-chapter-line"></div>'+
       '</div>';
 
-    byDay[day].forEach(function(p){
-      var ps=photos[p.n]||[];
+    (di.acts||[]).forEach(function(act){
+      var key=day+'|'+act.n;
+      var ps=photos[key]||[];
       var n=ps.length;
-      var pn=esc(JSON.stringify(p.n));
+      var pk=esc(JSON.stringify(key));
 
       var addBtn='<label class="alb-add'+(n===0?' span2':'')+'">'+
-        '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+pn+')">'+
+        '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+pk+')">'+
         '<span class="alb-add-icon">+</span>'+
         '<span class="alb-add-lbl">Agregar</span>'+
         '</label>';
@@ -2604,7 +2611,7 @@ async function renderPhotos(){
       var MAX=5;
       ps.slice(0,MAX).forEach(function(url,idx){
         var span=(n===1)?' span2':'';
-        imgs+='<img class="alb-img'+span+'" src="'+url+'" onclick="openOv('+pn+','+idx+')" loading="lazy">';
+        imgs+='<img class="alb-img'+span+'" src="'+url+'" onclick="openOv('+pk+','+idx+')" loading="lazy">';
       });
       if(n>MAX){
         imgs+='<div class="alb-more">+'+( n-MAX)+'</div>';
@@ -2614,7 +2621,7 @@ async function renderPhotos(){
 
       html+='<div class="alb-card">'+
         '<div class="alb-card-hd">'+
-          '<div class="alb-card-name">'+p.e+' '+esc(p.n)+'</div>'+
+          '<div class="alb-card-name">'+(act.t?'<span class="alb-card-time">'+esc(act.t)+'</span>&nbsp;':'')+esc(act.n)+'</div>'+
           (n?'<div class="alb-card-count">'+n+' foto'+(n>1?'s':'')+'</div>':'')+
         '</div>'+
         '<div class="alb-grid">'+imgs+'</div>'+
