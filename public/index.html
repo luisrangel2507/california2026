@@ -1233,7 +1233,7 @@
 
 <!-- PROFILE / LOGIN SCREEN -->
 <div class="pick-screen" id="pick-screen">
-  <video class="pick-bg-video" autoplay loop muted playsinline disablepictureinpicture>
+  <video class="pick-bg-video" id="pick-bg-video" autoplay loop muted playsinline webkit-playsinline disablepictureinpicture preload="auto">
     <source src="login-bg.mp4" type="video/mp4">
   </video>
   <div class="pick-bg-img"></div>
@@ -3414,6 +3414,29 @@ async function init(){
 }
 
 init();
+
+// ── LOGIN BG VIDEO — forzar autoplay siempre, sin botón de play ────────────
+(function(){
+  var v = document.getElementById('pick-bg-video');
+  if(!v) return;
+  function tryPlay(){
+    var p = v.play();
+    if(p && p.catch) p.catch(function(){});
+  }
+  tryPlay();
+  v.addEventListener('loadeddata', tryPlay);
+  v.addEventListener('canplay', tryPlay);
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) tryPlay();
+  });
+  // Si el navegador bloqueó el autoplay, el primer toque en cualquier parte
+  // lo reactiva de forma silenciosa (sin mostrar ningún botón de play).
+  ['touchstart','click'].forEach(function(evt){
+    document.addEventListener(evt, function retryOnce(){
+      if(v.paused) tryPlay();
+    }, {once:true, passive:true});
+  });
+})();
 
 // ── SERVICE WORKER ─────────────────────────────────────────────────────────
 if('serviceWorker' in navigator){
