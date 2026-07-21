@@ -1,4 +1,4 @@
-const CACHE = 'av26-v21';
+const CACHE = 'av26-v22';
 
 const PRECACHE = [
   '/',
@@ -25,6 +25,33 @@ self.addEventListener('activate', e => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener('push', e => {
+  var data = {};
+  try { data = e.data ? e.data.json() : {}; } catch (err) {}
+  var title = data.title || 'Alta Vibra · California 2026';
+  var body = data.body || '';
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body: body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      vibrate: [200, 100, 200, 100, 200],
+      tag: 'altavibra-push',
+      renotify: true,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window' }).then(list => {
+      for (const c of list) { if ('focus' in c) return c.focus(); }
+      if (clients.openWindow) return clients.openWindow('/');
+    })
+  );
 });
 
 self.addEventListener('fetch', e => {
