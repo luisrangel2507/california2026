@@ -875,9 +875,42 @@
     .pick-overlay {
       position: absolute; inset: 0;
       background: linear-gradient(180deg,
-        rgba(2,11,22,.15) 0%,
-        rgba(2,11,22,.55) 45%,
-        rgba(2,11,22,.92) 100%);
+        rgba(2,11,22,.05) 0%,
+        rgba(2,11,22,.35) 40%,
+        rgba(2,11,22,.95) 100%);
+    }
+    .pick-title-block {
+      position: absolute; z-index: 2;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -62%);
+      text-align: center;
+      width: 100%;
+      padding: 0 20px;
+      pointer-events: none;
+    }
+    .pick-logo {
+      font-family:'Space Mono',monospace; font-size:11px; letter-spacing:5px;
+      text-transform:uppercase; color:rgba(255,255,255,.65);
+      margin-bottom:10px;
+      text-shadow: 0 1px 8px rgba(0,0,0,.5);
+    }
+    .pick-trip {
+      font-size: 62px; font-weight: 800; line-height: 1;
+      letter-spacing: -1.5px;
+      background: linear-gradient(135deg, #FF6A50 0%, #FF3CAC 38%, #F5A623 65%, #FFE066 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 2px 18px rgba(255,100,60,.45));
+      margin-bottom: 0;
+    }
+    .pick-trip .cy { -webkit-text-fill-color: transparent; }
+    .pick-trip-sub {
+      margin-top: 10px;
+      font-size: 12px; letter-spacing: 3px;
+      font-family: 'Space Mono', monospace;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.55);
+      text-shadow: 0 1px 6px rgba(0,0,0,.6);
     }
     .pick-content {
       position: relative; z-index: 1;
@@ -885,9 +918,6 @@
       display: flex; flex-direction: column; align-items: center;
       text-align: center;
     }
-    .pick-logo { font-family:'Space Mono',monospace; font-size:10px; letter-spacing:4px; text-transform:uppercase; color:rgba(255,255,255,.5); margin-bottom:5px; }
-    .pick-trip { font-size:30px; font-weight:700; letter-spacing:-.6px; margin-bottom:7px; text-shadow:0 2px 20px rgba(0,0,0,.6); }
-    .pick-trip .cy { color:var(--cyan); }
     .pick-badge { display:inline-flex; align-items:center; gap:5px; font-size:9px; font-family:'Space Mono',monospace; color:var(--cyan); background:rgba(0,200,255,.1); border:1px solid rgba(0,200,255,.25); border-radius:20px; padding:3px 9px; margin-bottom:36px; letter-spacing:.5px; }
     .pick-badge .dot { width:5px; height:5px; border-radius:50%; background:var(--cyan); animation:pulse 1.8s ease-in-out infinite; }
     .pick-q { font-size:11px; font-weight:700; color:rgba(255,255,255,.5); text-transform:uppercase; letter-spacing:2.5px; font-family:'Space Mono',monospace; margin-bottom:18px; }
@@ -1121,9 +1151,12 @@
   </video>
   <div class="pick-bg-img"></div>
   <div class="pick-overlay"></div>
-  <div class="pick-content">
+  <div class="pick-title-block">
     <div class="pick-logo">Alta Vibra</div>
-    <div class="pick-trip">California <span class="cy">2026</span></div>
+    <div class="pick-trip">California 2026</div>
+    <div class="pick-trip-sub">☀️ PCH Road Trip · Sep 2026</div>
+  </div>
+  <div class="pick-content">
     <div class="pick-badge"><span class="dot"></span> 2–11 SEP · PCH ROAD TRIP</div>
 
     <!-- WHO ARE YOU -->
