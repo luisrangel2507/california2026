@@ -2595,7 +2595,7 @@ async function renderPhotos(){
       var n=ps.length;
       var pn=esc(JSON.stringify(p.n));
 
-      var addBtn='<label class="alb-add'+(n===0?' span2':'')+'" onclick="event.stopPropagation()">'+
+      var addBtn='<label class="alb-add'+(n===0?' span2':'')+'">'+
         '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+pn+')">'+
         '<span class="alb-add-icon">+</span>'+
         '<span class="alb-add-lbl">Agregar</span>'+
