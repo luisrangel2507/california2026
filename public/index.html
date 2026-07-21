@@ -2593,7 +2593,7 @@ async function renderPhotos(){
     byDay[day].forEach(function(p){
       var ps=photos[p.n]||[];
       var n=ps.length;
-      var pn=JSON.stringify(p.n);
+      var pn=esc(JSON.stringify(p.n));
 
       var addBtn='<label class="alb-add'+(n===0?' span2':'')+'" onclick="event.stopPropagation()">'+
         '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+pn+')">'+
