@@ -477,46 +477,81 @@
     .bal-amt { font-family:'Space Mono',monospace; font-size: 13px; font-weight: 700; color: var(--gold); margin-left: auto; }
 
     /* ── RECUERDOS ── */
-    .mem-day { margin-bottom: 28px; }
-    .mem-day-hd {
+    /* ── ÁLBUM RECUERDOS ── */
+    .alb-chapter {
+      margin-bottom: 10px;
+    }
+    .alb-chapter-hd {
       display: flex; align-items: center; gap: 10px;
-      padding: 0 2px 10px; margin-bottom: 10px;
-      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px; padding: 0 2px;
     }
-    .mem-day-num {
-      font-family:'Space Mono',monospace; font-size:10px; font-weight:700;
-      color:#000; padding:4px 8px; border-radius:6px; flex-shrink:0;
+    .alb-chapter-line { flex:1; height:1px; background: var(--border); }
+    .alb-chapter-pill {
+      font-family:'Space Mono',monospace; font-size:9px; font-weight:700;
+      letter-spacing:1.5px; text-transform:uppercase;
+      padding: 4px 10px; border-radius:20px; flex-shrink:0;
+      color:#000;
     }
-    .mem-day-info { flex:1; min-width:0; }
-    .mem-day-city { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .mem-day-date { font-size:10px; color:var(--muted); margin-top:1px; }
-    .mem-place { margin-bottom:18px; }
-    .mem-place-lbl {
-      font-size:10px; color:var(--muted); margin-bottom:6px;
-      display:flex; align-items:center; gap:5px;
+    .alb-chapter-city {
+      font-size:11px; color:var(--muted);
+      font-family:'Space Mono',monospace; letter-spacing:.5px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      max-width:160px;
     }
-    .ph-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; }
-    .ph-thumb {
-      aspect-ratio: 1; border-radius: 10px; object-fit: cover; width: 100%;
-      cursor: pointer; background: var(--glass);
-      box-shadow: 0 2px 10px rgba(0,0,0,.4);
-      transition: transform .15s;
+    /* place card */
+    .alb-card {
+      background: rgba(255,255,255,.035);
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 18px; overflow:hidden; margin-bottom: 16px;
     }
-    .ph-thumb:active { transform: scale(.97); }
-    .ph-add {
-      aspect-ratio: 1; border-radius: 10px;
-      background: rgba(255,255,255,.03); border: 1.5px dashed rgba(255,255,255,.12);
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      cursor: pointer; color: var(--muted); font-size: 22px; transition: all .15s;
+    .alb-card-hd {
+      display: flex; align-items:center; justify-content:space-between;
+      padding: 11px 14px 10px;
     }
-    .ph-add:active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,200,255,.05); }
-    .ph-add input[type=file] { display:none; }
-    .ph-add-l { font-size:9px; margin-top:4px; letter-spacing:.5px; }
+    .alb-card-name {
+      font-size:13px; font-weight:700; color:var(--text);
+      display:flex; align-items:center; gap:6px;
+    }
+    .alb-card-count {
+      font-size:10px; font-family:'Space Mono',monospace;
+      color:var(--muted);
+    }
+    /* collage grid */
+    .alb-grid {
+      display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:0 2px 2px;
+    }
+    .alb-img {
+      width:100%; aspect-ratio:1; object-fit:cover;
+      cursor:pointer; display:block; transition:opacity .15s;
+    }
+    .alb-img:active { opacity:.8; }
+    .alb-img.span2 { grid-column:span 2; aspect-ratio:16/8; }
+    .alb-img:first-child:last-of-type { grid-column:span 2; aspect-ratio:4/3; }
+    /* add button */
+    .alb-add {
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      aspect-ratio:1; cursor:pointer; gap:4px;
+      background: rgba(255,106,80,.08);
+      border:none; transition:background .15s;
+    }
+    .alb-add:active { background:rgba(255,106,80,.18); }
+    .alb-add input[type=file] { display:none; }
+    .alb-add-icon { font-size:26px; color:var(--coral); line-height:1; }
+    .alb-add-lbl { font-size:8px; font-family:'Space Mono',monospace; letter-spacing:1px; color:var(--coral); text-transform:uppercase; }
+    .alb-add.span2 { grid-column:span 2; aspect-ratio:5/1; flex-direction:row; gap:8px; }
+    .alb-add.span2 .alb-add-icon { font-size:20px; }
+    .alb-add.span2 .alb-add-lbl { font-size:10px; }
+    /* more badge */
+    .alb-more {
+      aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,.06); font-size:16px; font-weight:700;
+      color:var(--muted); cursor:pointer;
+    }
     .mem-empty {
-      padding: 40px 20px; text-align:center; color:var(--muted);
-      font-size:12px; line-height:1.7;
+      padding: 48px 20px; text-align:center; color:var(--muted);
+      font-size:12px; line-height:1.8;
     }
-    .mem-empty-icon { font-size:36px; margin-bottom:8px; opacity:.4; }
+    .mem-empty-icon { font-size:40px; margin-bottom:10px; opacity:.4; }
 
     /* ── OVERLAY ── */
     .ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.95); z-index: 9999; align-items: center; justify-content: center; }
@@ -2497,43 +2532,64 @@ function renderBals(){
 async function renderPhotos(){
   var bodyEl = document.getElementById('photos-body');
   if(!db){ bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Iniciando...</div>'; return; }
-  bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Cargando recuerdos...</div>';
+  bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Cargando...</div>';
   try { await loadPhotos(); } catch(e) { bodyEl.innerHTML='<div class="mem-empty" style="color:var(--coral)">Error al cargar</div>'; return; }
+
   var byDay={};
   PLACES.forEach(function(p){ if(!byDay[p.d]) byDay[p.d]=[]; byDay[p.d].push(p); });
   var totalPhotos=0;
   Object.keys(photos).forEach(function(k){ totalPhotos+=(photos[k]||[]).length; });
+
   var html='';
-  Object.keys(byDay).sort(function(a,b){return a-b;}).forEach(function(day){
+  if(!totalPhotos){
+    html='<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.<br>Toca <b>+</b> en cualquier lugar para agregar tus recuerdos.</div>';
+  }
+
+  Object.keys(byDay).sort(function(a,b){return +a-+b;}).forEach(function(day){
     var di=DAYS[day-1], clr=DC[day-1]||'#00C8FF';
-    html+='<div class="mem-day">'+
-      '<div class="mem-day-hd">'+
-        '<div class="mem-day-num" style="background:'+clr+'">DÍA '+day+'</div>'+
-        '<div class="mem-day-info">'+
-          '<div class="mem-day-city">'+(di?esc(di.city.split('→')[0].trim()):'')+'</div>'+
-          '<div class="mem-day-date">'+(di?di.wd+' '+di.date:'')+'</div>'+
-        '</div>'+
+    var cityShort=di?di.city.split('→')[0].trim():'';
+    html+='<div class="alb-chapter">'+
+      '<div class="alb-chapter-hd">'+
+        '<div class="alb-chapter-line"></div>'+
+        '<div class="alb-chapter-pill" style="background:'+clr+'">DÍA '+day+'</div>'+
+        '<div class="alb-chapter-city">'+esc(cityShort)+'</div>'+
+        '<div class="alb-chapter-line"></div>'+
       '</div>';
+
     byDay[day].forEach(function(p){
       var ps=photos[p.n]||[];
-      var uid='ph-'+p.n.replace(/[^a-z0-9]/gi,'-');
-      html+='<div class="mem-place">'+
-        '<div class="mem-place-lbl">'+p.e+' '+esc(p.n)+'</div>'+
-        '<div class="ph-grid">'+
-        ps.map(function(url,idx){
-          return '<img class="ph-thumb" src="'+url+'" onclick="openOv('+JSON.stringify(p.n)+','+idx+')" loading="lazy">';
-        }).join('')+
-        '<label class="ph-add">'+
-          '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+JSON.stringify(p.n)+')">'+
-          '<span>📷</span><span class="ph-add-l">Agregar</span>'+
-        '</label>'+
-        '</div></div>';
+      var n=ps.length;
+      var pn=JSON.stringify(p.n);
+
+      var addBtn='<label class="alb-add'+(n===0?' span2':'')+'" onclick="event.stopPropagation()">'+
+        '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+pn+')">'+
+        '<span class="alb-add-icon">+</span>'+
+        '<span class="alb-add-lbl">Agregar</span>'+
+        '</label>';
+
+      var imgs='';
+      var MAX=5;
+      ps.slice(0,MAX).forEach(function(url,idx){
+        var span=(n===1)?' span2':'';
+        imgs+='<img class="alb-img'+span+'" src="'+url+'" onclick="openOv('+pn+','+idx+')" loading="lazy">';
+      });
+      if(n>MAX){
+        imgs+='<div class="alb-more">+'+( n-MAX)+'</div>';
+      } else {
+        imgs+=addBtn;
+      }
+
+      html+='<div class="alb-card">'+
+        '<div class="alb-card-hd">'+
+          '<div class="alb-card-name">'+p.e+' '+esc(p.n)+'</div>'+
+          (n?'<div class="alb-card-count">'+n+' foto'+(n>1?'s':'')+'</div>':'')+
+        '</div>'+
+        '<div class="alb-grid">'+imgs+'</div>'+
+      '</div>';
     });
     html+='</div>';
   });
-  if(!totalPhotos){
-    html='<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Aún no hay fotos.<br>Toca 📷 en cualquier lugar para agregar.</div>'+html;
-  }
+
   bodyEl.innerHTML=html;
 }
 
