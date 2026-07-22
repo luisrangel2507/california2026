@@ -1115,7 +1115,7 @@
     /* ── PERSON SUMMARY — bigger on mobile ── */
     .person-summary {
       display:grid !important;
-      grid-template-columns:repeat(3,1fr) !important;
+      grid-template-columns:repeat(var(--person-cols,3),1fr) !important;
       gap:8px !important;
       padding:12px 13px !important;
       overflow-x:unset !important;
@@ -1523,7 +1523,7 @@ const DC = [
   '#FF9A40','#FF7A40','#FF6A50','#FF5060'
 ];
 
-const PC = ['#00C8FF','#FF6A50','#00E598']; // Erick, Rafa, Eduardo
+const PC = ['#00C8FF','#FF6A50','#00E598','#F5A623']; // Erick, Rafa, Eduardo, Graham
 const CATS = [
   {id:'food',  label:'Comida',          color:'#FF9A40'},
   {id:'trans', label:'Transporte',      color:'#00C8FF'},
@@ -1931,7 +1931,12 @@ const PLACES = [
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
-let persons = JSON.parse(localStorage.getItem('ca26_p') || '["Erick","Rafa","Eduardo"]');
+let persons = JSON.parse(localStorage.getItem('ca26_p') || '["Erick","Rafa","Eduardo","Graham"]');
+if(persons.indexOf('Graham')===-1){
+  persons.push('Graham');
+  localStorage.setItem('ca26_p', JSON.stringify(persons));
+}
+document.documentElement.style.setProperty('--person-cols', persons.length);
 let expenses = JSON.parse(localStorage.getItem('ca26_e') || '[]');
 let notified = new Set(JSON.parse(localStorage.getItem('ca26_notif') || '[]'));
 let photos = {};
