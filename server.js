@@ -122,6 +122,36 @@ app.delete('/api/memory/:id', (req, res) => {
   else res.status(404).json({ error: 'not found' });
 });
 
+// ── Gastos compartidos entre todos los del viaje ───────────────────────────
+const EXP_FILE = path.join(DATA_DIR, 'expenses.json');
+let expStore = [];
+try { expStore = JSON.parse(fs.readFileSync(EXP_FILE, 'utf8')); } catch (e) {}
+function persistExp() {
+  try { fs.writeFileSync(EXP_FILE, JSON.stringify(expStore)); } catch (e) {}
+}
+
+app.get('/api/expenses', (req, res) => res.json(expStore));
+
+app.post('/api/expenses', (req, res) => {
+  const { desc, amt, who, split, cat } = req.body;
+  if (!desc || typeof amt !== 'number' || amt <= 0 || who === undefined) {
+    return res.status(400).json({ error: 'missing fields' });
+  }
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const expense = { id, desc, amt, who, split: Array.isArray(split) ? split : [], cat: cat || 'other', ts: Date.now() };
+  expStore.push(expense);
+  persistExp();
+  res.json({ ok: true, expense });
+});
+
+app.delete('/api/expenses/:id', (req, res) => {
+  const idx = expStore.findIndex((e) => e.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  expStore.splice(idx, 1);
+  persistExp();
+  res.json({ ok: true });
+});
+
 // ── Push diario 10am — cuenta regresiva al viaje ───────────────────────────
 cron.schedule('0 10 * * *', async () => {
   const tripStart = new Date('2026-09-02T00:00:00-06:00');
