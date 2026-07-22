@@ -91,6 +91,37 @@ app.post('/api/send-test', async (req, res) => {
   res.json({ ok: true, sent: count });
 });
 
+// ── Fotos compartidas por actividad ────────────────────────────────────────
+const MEM_FILE = path.join(DATA_DIR, 'memory.json');
+let memStore = {};
+try { memStore = JSON.parse(fs.readFileSync(MEM_FILE, 'utf8')); } catch(e) {}
+function persistMem() {
+  try { fs.writeFileSync(MEM_FILE, JSON.stringify(memStore)); } catch(e) {}
+}
+
+app.get('/api/memory', (req, res) => res.json(memStore));
+
+app.post('/api/memory', (req, res) => {
+  const { actKey, photo, who } = req.body;
+  if (!actKey || !photo) return res.status(400).json({ error: 'missing fields' });
+  if (!memStore[actKey]) memStore[actKey] = [];
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  memStore[actKey].push({ id, photo, who: who || '?', ts: Date.now() });
+  persistMem();
+  res.json({ ok: true, id });
+});
+
+app.delete('/api/memory/:id', (req, res) => {
+  const { id } = req.params;
+  let found = false;
+  Object.keys(memStore).forEach(key => {
+    const idx = memStore[key].findIndex(p => p.id === id);
+    if (idx !== -1) { memStore[key].splice(idx, 1); found = true; }
+  });
+  if (found) { persistMem(); res.json({ ok: true }); }
+  else res.status(404).json({ error: 'not found' });
+});
+
 // ── Push diario 10am — cuenta regresiva al viaje ───────────────────────────
 cron.schedule('0 10 * * *', async () => {
   const tripStart = new Date('2026-09-02T00:00:00-06:00');

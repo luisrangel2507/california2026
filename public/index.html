@@ -579,6 +579,29 @@
     .alb-add.span2 .alb-add-icon { font-size:20px; }
     .alb-add.span2 .alb-add-lbl { font-size:10px; }
     /* more badge */
+    .alb-img-wrap { position:relative; display:block; }
+    .alb-img-wrap.span2 { grid-column:span 2; }
+    .alb-img-wrap .alb-img { width:100%; }
+    .alb-del {
+      position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:50%;
+      background:rgba(0,0,0,.65); border:none; color:#fff; font-size:14px; line-height:1;
+      display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;
+    }
+    .alb-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:8px 14px; border-bottom:1px solid rgba(255,255,255,.04); gap:10px;
+    }
+    .alb-row:last-child { border-bottom:none; }
+    .alb-row-info { flex:1; min-width:0; display:flex; align-items:baseline; gap:6px; }
+    .alb-row-t { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); flex-shrink:0; }
+    .alb-row-n { font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .alb-row-add {
+      width:28px; height:28px; border-radius:8px; flex-shrink:0;
+      background:rgba(255,106,80,.1); border:1px dashed rgba(255,106,80,.35);
+      display:flex; align-items:center; justify-content:center;
+      font-size:18px; color:var(--coral); cursor:pointer;
+    }
+    .alb-row-add input[type=file] { display:none; }
     .alb-more {
       aspect-ratio:1; display:flex; align-items:center; justify-content:center;
       background:rgba(255,255,255,.06); font-size:16px; font-weight:700;
@@ -2781,87 +2804,129 @@ function renderBals(){
     '<div class="bal-hdr">Liquidar — total gastado: $'+total.toLocaleString('es-MX',{minimumFractionDigits:2})+' MXN</div>'+dh;
 }
 
-// ── PHOTOS ─────────────────────────────────────────────────────────────────
-async function renderPhotos(){
-  var bodyEl = document.getElementById('photos-body');
-  if(!db){ bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Iniciando...</div>'; return; }
-  bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Cargando...</div>';
-  try { await loadPhotos(); } catch(e) { bodyEl.innerHTML='<div class="mem-empty" style="color:var(--coral)">Error al cargar</div>'; return; }
+// ── PHOTOS (compartidas via servidor) ──────────────────────────────────────
+var memStore={};
 
+function compressImage(file){
+  return new Promise(function(resolve){
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var img=new Image();
+      img.onload=function(){
+        var MAX=1200,w=img.width,h=img.height;
+        if(w>MAX||h>MAX){ if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;} }
+        var c=document.createElement('canvas'); c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg',0.72));
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function fetchMemory(){
+  try{ var r=await fetch('/api/memory'); memStore=await r.json(); }catch(e){ memStore={}; }
+}
+
+async function renderPhotos(){
+  var bodyEl=document.getElementById('photos-body');
+  bodyEl.innerHTML='<div class="mem-empty"><div class="mem-empty-icon">📷</div>Cargando...</div>';
+  await fetchMemory();
+  var admin=isAdmin();
   var totalPhotos=0;
-  Object.keys(photos).forEach(function(k){ totalPhotos+=(photos[k]||[]).length; });
+  Object.keys(memStore).forEach(function(k){ totalPhotos+=(memStore[k]||[]).length; });
 
   var html='';
   if(!totalPhotos){
-    html='<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.<br>Toca <b>+</b> en cualquier actividad del itinerario para agregar tus recuerdos.</div>';
+    html='<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.<br>Toca <b>+</b> en cualquier actividad.</div>';
   }
 
-  DAYS.forEach(function(di,i){
-    var day=i+1, clr=DC[i]||'#00C8FF';
-    var cityShort=di.city.split('→')[0].trim();
+  DAYS.forEach(function(day,di){
+    var clr=DC[di]||'#00C8FF';
+    var cityShort=day.city.split('→')[0].trim();
     html+='<div class="alb-chapter">'+
       '<div class="alb-chapter-hd">'+
         '<div class="alb-chapter-line"></div>'+
-        '<div class="alb-chapter-pill" style="background:'+clr+'">DÍA '+day+'</div>'+
+        '<div class="alb-chapter-pill" style="background:'+clr+'">DÍA '+(di+1)+'</div>'+
         '<div class="alb-chapter-city">'+esc(cityShort)+'</div>'+
         '<div class="alb-chapter-line"></div>'+
       '</div>';
 
-    (di.acts||[]).forEach(function(act){
-      var key=day+'|'+act.n;
-      var ps=photos[key]||[];
+    (day.acts||[]).forEach(function(act,ai){
+      var key='d'+di+'-a'+ai;
+      var ps=memStore[key]||[];
       var n=ps.length;
-      var pk=esc(JSON.stringify(key));
+      var kj=JSON.stringify(key);
 
-      var addBtn='<label class="alb-add'+(n===0?' span2':'')+'">'+
-        '<input type="file" accept="image/*" multiple onchange="onFilesInline(event,'+pk+')">'+
-        '<span class="alb-add-icon">+</span>'+
-        '<span class="alb-add-lbl">Agregar</span>'+
+      if(n===0){
+        html+='<div class="alb-row">'+
+          '<div class="alb-row-info">'+
+            (act.t?'<span class="alb-row-t">'+esc(act.t)+'</span>':'')+
+            '<span class="alb-row-n">'+esc(act.n)+'</span>'+
+          '</div>'+
+          '<label class="alb-row-add">'+
+            '<input type="file" accept="image/*" multiple onchange="memAddPhoto(event,'+kj+')">'+
+            '<span>+</span>'+
+          '</label>'+
+        '</div>';
+      } else {
+        var imgs='';
+        ps.forEach(function(p,idx){
+          var span=(n===1)?' span2':'';
+          var del=admin?'<button class="alb-del" onclick="memDelPhoto(\''+p.id+'\',event)">×</button>':'';
+          imgs+='<div class="alb-img-wrap'+span+'">'+
+            '<img class="alb-img" src="'+p.photo+'" onclick="memOpenOv('+kj+','+idx+')" loading="lazy">'+
+            del+
+          '</div>';
+        });
+        imgs+='<label class="alb-add">'+
+          '<input type="file" accept="image/*" multiple onchange="memAddPhoto(event,'+kj+')">'+
+          '<span class="alb-add-icon">+</span><span class="alb-add-lbl">Agregar</span>'+
         '</label>';
 
-      var imgs='';
-      var MAX=5;
-      ps.slice(0,MAX).forEach(function(url,idx){
-        var span=(n===1)?' span2':'';
-        imgs+='<img class="alb-img'+span+'" src="'+url+'" onclick="openOv('+pk+','+idx+')" loading="lazy">';
-      });
-      if(n>MAX){
-        imgs+='<div class="alb-more">+'+( n-MAX)+'</div>';
-      } else {
-        imgs+=addBtn;
+        html+='<div class="alb-card">'+
+          '<div class="alb-card-hd">'+
+            '<div class="alb-card-name">'+(act.t?'<span class="alb-card-time">'+esc(act.t)+'</span>&nbsp;':'')+esc(act.n)+'</div>'+
+            '<div class="alb-card-count">'+n+' foto'+(n>1?'s':'')+'</div>'+
+          '</div>'+
+          '<div class="alb-grid">'+imgs+'</div>'+
+        '</div>';
       }
-
-      html+='<div class="alb-card">'+
-        '<div class="alb-card-hd">'+
-          '<div class="alb-card-name">'+(act.t?'<span class="alb-card-time">'+esc(act.t)+'</span>&nbsp;':'')+esc(act.n)+'</div>'+
-          (n?'<div class="alb-card-count">'+n+' foto'+(n>1?'s':'')+'</div>':'')+
-        '</div>'+
-        '<div class="alb-grid">'+imgs+'</div>'+
-      '</div>';
     });
     html+='</div>';
   });
-
   bodyEl.innerHTML=html;
 }
 
-async function onFiles(ev){
+async function memAddPhoto(ev,actKey){
   var files=Array.from(ev.target.files);
-  if(!files.length||!pickCtx) return;
-  var ps=await dbGet(pickCtx);
+  if(!files.length) return;
+  var who=meIndex!==null?persons[parseInt(meIndex)]:'?';
   for(var i=0;i<files.length;i++){
-    var url=await new Promise(function(res){var r=new FileReader();r.onload=function(e){res(e.target.result);};r.readAsDataURL(files[i]);});
-    ps.push(url);
+    var photo=await compressImage(files[i]);
+    await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actKey:actKey,photo:photo,who:who})});
   }
-  await dbPut(pickCtx,ps);
-  photos[pickCtx]=ps;
   ev.target.value='';
   renderPhotos();
 }
 
-async function onFilesInline(ev, placeName){
-  pickCtx = placeName;
-  await onFiles(ev);
+async function memDelPhoto(id,ev){
+  if(ev) ev.stopPropagation();
+  if(!isAdmin()) return;
+  await fetch('/api/memory/'+encodeURIComponent(id),{method:'DELETE'});
+  closeOv(null,1);
+  renderPhotos();
+}
+
+var memOvKey=null,memOvIdx=null;
+function memOpenOv(key,idx){
+  memOvKey=key; memOvIdx=idx;
+  var p=(memStore[key]||[])[idx];
+  if(!p) return;
+  document.getElementById('ov-img').src=p.photo;
+  document.getElementById('ov').dataset.memId=p.id;
+  document.getElementById('ov').classList.add('show');
 }
 
 function openOv(name,idx){
@@ -2875,10 +2940,14 @@ function closeOv(ev,force){
   if(force||ev&&ev.target===document.getElementById('ov')){
     document.getElementById('ov').classList.remove('show');
     document.getElementById('ov-img').src='';
+    if(document.getElementById('ov').dataset) delete document.getElementById('ov').dataset.memId;
   }
 }
 
 async function delPhoto(){
+  var ovEl=document.getElementById('ov');
+  var memId=ovEl.dataset&&ovEl.dataset.memId;
+  if(memId){ await memDelPhoto(memId,null); return; }
   if(ovCtx===null||ovIdx===null) return;
   var ps=await dbGet(ovCtx);
   ps.splice(ovIdx,1);
