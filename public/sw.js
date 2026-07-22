@@ -1,4 +1,4 @@
-const CACHE = 'av26-v31';
+const CACHE = 'av26-v32';
 
 const PRECACHE = [
   '/',
@@ -60,6 +60,10 @@ self.addEventListener('fetch', e => {
 
   // Video: dejar pasar al navegador (necesita range requests que el cache no soporta)
   if (url.endsWith('.mp4') || url.includes('.mp4?')) return;
+
+  // API: siempre red, nunca caché — es estado compartido en vivo entre todos
+  // (gastos, fotos, push). Cachearlo dejaría a cada quien viendo una foto fija.
+  if (new URL(url).pathname.startsWith('/api/')) return;
 
   // CDN (Leaflet, fonts, map tiles): red primero, caché de respaldo
   if (

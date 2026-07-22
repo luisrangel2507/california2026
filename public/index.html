@@ -1941,7 +1941,7 @@ if(persons.indexOf('Graham')!==-1){
   localStorage.setItem('ca26_p', JSON.stringify(persons));
 }
 document.documentElement.style.setProperty('--person-cols', persons.length);
-let expenses = JSON.parse(localStorage.getItem('ca26_e') || '[]');
+let expenses = []; // compartido entre todos via /api/expenses
 let notified = new Set(JSON.parse(localStorage.getItem('ca26_notif') || '[]'));
 let photos = {};
 let pickCtx = null;
@@ -2008,15 +2008,51 @@ function initMap(){
 
 var placeMarkers = [];
 
-// Índice del PLACES más cercano al checkpoint actual (dónde vamos ahorita)
-function currentPlaceIndex(){
-  var cp = CHECKPOINTS[cpIndex] || CHECKPOINTS[0];
-  var best=0, bestDist=Infinity;
-  PLACES.forEach(function(p,i){
-    var d=haversineM(p.c[0],p.c[1],cp.c[0],cp.c[1]);
-    if(d<bestDist){ bestDist=d; best=i; }
+// ── Ligar cada lugar del mapa con su actividad del Itinerario ──────────────
+var PLACE_MATCH_STOPWORDS = ['hotel','check','playa','beach','comida','cena','desayuno',
+  'llegada','salida','tarde','noche','libre','regreso','tiempo','parque','partido',
+  'crucero','cruce','renta','traslado','atardecer'];
+
+function placeMatchNorm(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+}
+function placeMatchWords(s){
+  return placeMatchNorm(s).split(' ').filter(function(w){
+    return w.length>=4 && PLACE_MATCH_STOPWORDS.indexOf(w)===-1;
   });
-  return best;
+}
+// Devuelve el índice de actividad (dentro del día de p) que mejor corresponde
+// a ese lugar, o -1 si no encuentra nada razonable.
+function matchActForPlace(p){
+  var acts = DAYS[p.d-1].acts||[];
+  var pNorm = placeMatchNorm(p.n);
+  var pWords = placeMatchWords(p.n);
+  var ai;
+  // 1) el nombre del lugar aparece completo (o viceversa) en el nombre de la actividad
+  for(ai=0; ai<acts.length; ai++){
+    var anNorm = placeMatchNorm(acts[ai].n);
+    if(pNorm.length>3 && (anNorm.indexOf(pNorm)!==-1 || pNorm.indexOf(anNorm)!==-1)) return ai;
+  }
+  // 2) o aparece completo en la nota de la actividad
+  for(ai=0; ai<acts.length; ai++){
+    var noteNorm = placeMatchNorm(acts[ai].note);
+    if(pNorm.length>3 && noteNorm.indexOf(pNorm)!==-1) return ai;
+  }
+  // 3) si no, la actividad con más palabras significativas en común
+  var bestAi=-1, bestScore=0;
+  acts.forEach(function(a,i){
+    var hay=placeMatchNorm(a.n+' '+(a.note||''));
+    var score=0;
+    pWords.forEach(function(w){ if(hay.indexOf(w)!==-1) score++; });
+    if(score>bestScore){ bestScore=score; bestAi=i; }
+  });
+  return bestAi;
+}
+function isPlaceDone(p){
+  var ai = matchActForPlace(p);
+  if(ai<0) return false;
+  return !!actDone[(p.d-1)+'-'+ai];
 }
 
 function renderPlaceMarkers(){
@@ -2024,18 +2060,14 @@ function renderPlaceMarkers(){
   placeMarkers.forEach(function(m){ mapObj.removeLayer(m); });
   placeMarkers = [];
 
-  var curIdx = currentPlaceIndex();
-  var dayCounter = 0, lastDay = null;
-
   PLACES.forEach(function(p,i){
-    dayCounter = (p.d===lastDay) ? dayCounter+1 : 1;
-    lastDay = p.d;
-    var clr = i===curIdx ? '#00E598' : (i===curIdx+1 ? '#F5A623' : 'var(--muted)');
+    var done = isPlaceDone(p);
+    var clr = done ? '#00E598' : 'var(--muted)';
     var icon = L.divIcon({
       className:'',
       html:'<div style="position:relative;width:32px;height:32px">' +
         '<div style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+clr+';border:1.5px solid rgba(255,255,255,.4);box-shadow:0 0 12px '+clr+'66,0 2px 8px rgba(0,0,0,.5)"></div>' +
-        '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#000">'+dayCounter+'</div>' +
+        '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#000">'+(i+1)+'</div>' +
         '</div>',
       iconSize:[32,32],
       iconAnchor:[16,32],
@@ -2044,7 +2076,7 @@ function renderPlaceMarkers(){
     var day=DAYS[p.d-1];
     var marker=L.marker(p.c,{icon:icon}).addTo(mapObj).bindPopup(
       '<div class="pop-name">'+p.e+' '+p.n+'</div>'+
-      '<div class="pop-day">DÍA '+p.d+' · #'+dayCounter+' · '+(day?day.date:'')+'</div>'+
+      '<div class="pop-day">DÍA '+p.d+' · #'+(i+1)+' · '+(day?day.date:'')+(done?' · ✓ hecho':'')+'</div>'+
       '<div class="pop-actions">'+
         '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+p.c[0]+','+p.c[1]+'" target="_blank">Cómo llegar</a>'+
         '<a class="pop-maps" href="https://maps.google.com/?q='+p.c[0]+','+p.c[1]+'" target="_blank" style="background:rgba(0,229,197,.1);color:#00E5C5;border-color:rgba(0,229,197,.3)">Ver en Maps</a>'+
@@ -2521,6 +2553,7 @@ function toggleActDone(dayIdx, actIdx){
     var btn = el.querySelector('.act-check');
     if(btn){ btn.textContent = actDone[key] ? '✓' : ''; }
   }
+  renderPlaceMarkers();
 }
 
 function computeItinStatus(){
@@ -2686,7 +2719,12 @@ function toggleEF(){
   }
 }
 
-function saveExp(){
+async function loadExpenses(){
+  try{ var r=await fetch('/api/expenses',{cache:'no-store'}); expenses=await r.json(); }
+  catch(e){ expenses=expenses||[]; }
+}
+
+async function saveExp(){
   var desc=document.getElementById('ef-desc').value.trim();
   var amt=parseFloat(document.getElementById('ef-amt').value);
   var who=document.getElementById('ef-who').value;
@@ -2694,8 +2732,12 @@ function saveExp(){
   if(!desc||isNaN(amt)||amt<=0||who===''){alert('Completa todos los campos');return;}
   if(!split.length){alert('Selecciona al menos una persona para dividir');return;}
   var cat=document.getElementById('ef-cat').value||'other';
-  expenses.push({id:Date.now(),desc:desc,amt:amt,who:parseInt(who),split:split,cat:cat});
-  localStorage.setItem('ca26_e',JSON.stringify(expenses));
+  var payload={desc:desc,amt:amt,who:parseInt(who),split:split,cat:cat};
+  try{
+    var r=await fetch('/api/expenses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var data=await r.json();
+    expenses.push(data.expense);
+  }catch(e){ alert('No se pudo guardar el gasto — revisa tu conexión.'); return; }
   document.getElementById('ef-desc').value='';
   document.getElementById('ef-amt').value='';
   document.getElementById('ef-who').value='';
@@ -2705,9 +2747,9 @@ function saveExp(){
   renderDash(); renderOps();
 }
 
-function delExp(id){
-  expenses=expenses.filter(function(e){return e.id!==id;});
-  localStorage.setItem('ca26_e',JSON.stringify(expenses));
+async function delExp(id){
+  try{ await fetch('/api/expenses/'+encodeURIComponent(id),{method:'DELETE'}); }catch(e){}
+  expenses=expenses.filter(function(e){return String(e.id)!==String(id);});
   renderExps();
   renderDash(); renderOps();
 }
@@ -2780,7 +2822,7 @@ function renderExps(){
       '<div class="ex-right">'+
         '<div class="ex-am">$'+e.amt.toLocaleString('es-MX',{minimumFractionDigits:2})+'</div>'+
         '<div class="ex-pp">$'+share.toFixed(2)+' c/u</div>'+
-        '<button class="ex-del" onclick="delExp('+e.id+')" title="Eliminar">×</button>'+
+        '<button class="ex-del" onclick="delExp('+esc(JSON.stringify(e.id))+')" title="Eliminar">×</button>'+
       '</div>'+
       '</div>';
   }).join('');
@@ -2851,7 +2893,7 @@ function compressImage(file){
 }
 
 async function fetchMemory(){
-  try{ var r=await fetch('/api/memory'); memStore=await r.json(); }catch(e){ memStore={}; }
+  try{ var r=await fetch('/api/memory',{cache:'no-store'}); memStore=await r.json(); }catch(e){ memStore={}; }
 }
 
 async function renderPhotos(){
@@ -3506,6 +3548,7 @@ async function init(){
     var i=parseInt(k); if(DAYS[i]) DAYS[i].acts=ITIN_OVERRIDE[i];
   });
   await openDB();
+  await loadExpenses();
   updateHeroProfile();
   renderDash(); renderOps();
   initMap();
@@ -3513,6 +3556,13 @@ async function init(){
   renderItin();
   renderBudget();
   updateNotifStatus();
+  // Refresca los gastos cada 15s para que se vean casi en tiempo real
+  // entre todos los que tengan la app abierta.
+  setInterval(async function(){
+    await loadExpenses();
+    renderExps();
+    renderDash(); renderOps();
+  }, 15000);
   if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
     startGeo();
   }
