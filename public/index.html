@@ -1413,7 +1413,10 @@
         <div class="et-tit" style="font-size:16px;font-weight:700">Gastos del viaje</div>
         <div class="et-sub" id="gastos-total-lbl">Toca "+ Agregar" para registrar</div>
       </div>
-      <button class="btn-add" onclick="toggleEF()" style="padding:8px 16px;font-size:13px">+ Agregar</button>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn-add" id="add-person-btn" onclick="addPerson()" style="padding:8px 16px;font-size:13px;display:none">+ Persona</button>
+        <button class="btn-add" onclick="toggleEF()" style="padding:8px 16px;font-size:13px">+ Agregar</button>
+      </div>
     </div>
 
     <!-- Person summary cards — always visible at top -->
@@ -1523,7 +1526,7 @@ const DC = [
   '#FF9A40','#FF7A40','#FF6A50','#FF5060'
 ];
 
-const PC = ['#00C8FF','#FF6A50','#00E598','#F5A623']; // Erick, Rafa, Eduardo, Graham
+const PC = ['#00C8FF','#FF6A50','#00E598','#F5A623','#B983FF','#FF4FA3','#4FD8FF','#FFD84F']; // Erick, Rafa, Eduardo + spare colors for people the admin adds
 const CATS = [
   {id:'food',  label:'Comida',          color:'#FF9A40'},
   {id:'trans', label:'Transporte',      color:'#00C8FF'},
@@ -1653,7 +1656,7 @@ function doLogin(i){
   document.getElementById('pick-screen').classList.remove('show');
   updateHeroProfile();
   showWelcome(i);
-  renderDash(); renderOps();
+  renderDash(); renderOps(); renderBudget();
 }
 
 // kept for backward compat (called from dashboard)
@@ -1747,6 +1750,7 @@ function logoutMe(){
   closeMyProfile();
   updateHeroProfile();
   showProfileScreen();
+  renderBudget();
 }
 
 // ── CHECKPOINTS (km y tiempo acumulado desde TIJ) ─────────────────────────
@@ -1931,9 +1935,9 @@ const PLACES = [
 ];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
-let persons = JSON.parse(localStorage.getItem('ca26_p') || '["Erick","Rafa","Eduardo","Graham"]');
-if(persons.indexOf('Graham')===-1){
-  persons.push('Graham');
+let persons = JSON.parse(localStorage.getItem('ca26_p') || '["Erick","Rafa","Eduardo"]');
+if(persons.indexOf('Graham')!==-1){
+  persons = persons.filter(function(p){ return p!=='Graham'; });
   localStorage.setItem('ca26_p', JSON.stringify(persons));
 }
 document.documentElement.style.setProperty('--person-cols', persons.length);
@@ -2612,6 +2616,22 @@ function renderBudget(){
   renderPersonsBar();
   renderExps();
   updateNotifStatus();
+  var addBtn=document.getElementById('add-person-btn');
+  if(addBtn) addBtn.style.display=isAdmin()?'':'none';
+}
+
+function addPerson(){
+  if(!isAdmin()) return;
+  var name=prompt('Nombre de la nueva persona:');
+  if(name===null) return;
+  name=name.trim();
+  if(!name) return;
+  if(persons.indexOf(name)!==-1){ alert('Ya existe esa persona.'); return; }
+  persons.push(name);
+  localStorage.setItem('ca26_p', JSON.stringify(persons));
+  document.documentElement.style.setProperty('--person-cols', persons.length);
+  renderBudget();
+  alert(name+' se agregó al viaje.');
 }
 
 function renderPersonsBar(){
