@@ -2049,10 +2049,11 @@ function matchActForPlace(p){
   });
   return bestAi;
 }
-function isPlaceDone(p){
-  var ai = matchActForPlace(p);
-  if(ai<0) return false;
-  return !!actDone[(p.d-1)+'-'+ai];
+// Número de actividad contando TODAS las del itinerario seguidas (no por día)
+function globalActNumber(dayIdx, actIdx){
+  var n=0;
+  for(var d=0; d<dayIdx; d++) n += (DAYS[d].acts||[]).length;
+  return n + actIdx + 1;
 }
 
 function renderPlaceMarkers(){
@@ -2060,14 +2061,16 @@ function renderPlaceMarkers(){
   placeMarkers.forEach(function(m){ mapObj.removeLayer(m); });
   placeMarkers = [];
 
-  PLACES.forEach(function(p,i){
-    var done = isPlaceDone(p);
+  PLACES.forEach(function(p){
+    var ai = matchActForPlace(p);
+    var done = ai>=0 && !!actDone[(p.d-1)+'-'+ai];
+    var num = ai>=0 ? globalActNumber(p.d-1, ai) : '?';
     var clr = done ? '#00E598' : 'var(--muted)';
     var icon = L.divIcon({
       className:'',
       html:'<div style="position:relative;width:32px;height:32px">' +
         '<div style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+clr+';border:1.5px solid rgba(255,255,255,.4);box-shadow:0 0 12px '+clr+'66,0 2px 8px rgba(0,0,0,.5)"></div>' +
-        '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#000">'+(i+1)+'</div>' +
+        '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#000">'+num+'</div>' +
         '</div>',
       iconSize:[32,32],
       iconAnchor:[16,32],
@@ -2076,7 +2079,7 @@ function renderPlaceMarkers(){
     var day=DAYS[p.d-1];
     var marker=L.marker(p.c,{icon:icon}).addTo(mapObj).bindPopup(
       '<div class="pop-name">'+p.e+' '+p.n+'</div>'+
-      '<div class="pop-day">DÍA '+p.d+' · #'+(i+1)+' · '+(day?day.date:'')+(done?' · ✓ hecho':'')+'</div>'+
+      '<div class="pop-day">DÍA '+p.d+' · Actividad #'+num+' · '+(day?day.date:'')+(done?' · ✓ hecho':'')+'</div>'+
       '<div class="pop-actions">'+
         '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+p.c[0]+','+p.c[1]+'" target="_blank">Cómo llegar</a>'+
         '<a class="pop-maps" href="https://maps.google.com/?q='+p.c[0]+','+p.c[1]+'" target="_blank" style="background:rgba(0,229,197,.1);color:#00E5C5;border-color:rgba(0,229,197,.3)">Ver en Maps</a>'+
