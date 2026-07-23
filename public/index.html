@@ -781,6 +781,25 @@
     .map-dl-btn.dl-downloading { animation: pulse 1.1s ease-in-out infinite; }
     .map-dl-btn.dl-done { color: var(--green); box-shadow: 0 2px 16px rgba(0,229,152,.25); }
 
+    /* ── BOTÓN "DEJAMOS EL CARRO AQUÍ" ── */
+    .car-btn {
+      position: absolute;
+      bottom: 178px; right: 14px;
+      z-index: 500;
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--panel);
+      border: 1px solid var(--border2);
+      color: var(--coral);
+      font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 16px rgba(255,106,80,.2);
+      transition: transform .12s var(--ease);
+    }
+    .car-btn:active { transform: scale(.94); }
+    .car-btn.car-set { color: var(--coral); box-shadow: 0 0 0 2px rgba(255,106,80,.35), 0 2px 16px rgba(255,106,80,.3); }
+
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-thumb { background: rgba(0,200,255,.15); border-radius: 2px; }
@@ -1530,6 +1549,7 @@
   <div class="geo-btn" onclick="centerMe()" title="Mi ubicación" style="font-size:13px;font-family:'Space Mono',monospace;letter-spacing:0">GPS</div>
   <div class="add-place-btn" onclick="toggleAddPlace()" title="Agregar lugar">+</div>
   <div class="map-dl-btn" id="map-dl-btn" onclick="downloadOfflineMap()" title="Descargar mapa para uso offline">📥</div>
+  <div class="car-btn" id="car-btn" onclick="saveCarLoc()" title="Marcar dónde dejamos el carro">🚗</div>
 
   <!-- Add place panel -->
   <div class="ap-panel" id="ap-panel">
@@ -2395,6 +2415,76 @@ function renderCustomMarkers(){
     );
     customMarkers.push(marker);
   });
+}
+
+// ── ¿DÓNDE DEJAMOS EL CARRO? (compartido entre todos) ──────────────────────
+var carLoc = null;
+var carMarker = null;
+
+async function loadCarLoc(){
+  try{
+    var r = await fetch('/api/car',{cache:'no-store'});
+    carLoc = await r.json();
+  }catch(e){ /* sin conexión — se queda con lo último cargado */ }
+  renderCarMarker();
+}
+
+async function saveCarLoc(){
+  if(!navigator.geolocation){ toast('GPS no disponible en este navegador.','error'); return; }
+  var btn = document.getElementById('car-btn');
+  navigator.geolocation.getCurrentPosition(async function(pos){
+    var who = meIndex!==null ? persons[parseInt(meIndex)] : '?';
+    carLoc = { lat: pos.coords.latitude, lon: pos.coords.longitude, who: who, ts: Date.now() };
+    renderCarMarker();
+    try{
+      await fetch('/api/car',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat:carLoc.lat,lon:carLoc.lon,who:who})});
+      toast('Ubicación del carro guardada.','success');
+    }catch(e){ toast('No se pudo guardar — revisa tu conexión.','error'); }
+  }, function(){
+    toast('No se pudo obtener tu ubicación.','error');
+  });
+}
+
+async function clearCarLoc(){
+  carLoc = null;
+  renderCarMarker();
+  try{
+    await fetch('/api/car',{method:'DELETE'});
+    toast('Marca del carro eliminada.','success');
+  }catch(e){ toast('No se pudo eliminar — revisa tu conexión.','error'); }
+}
+
+function carAgoLabel(ts){
+  var mins = Math.round((Date.now()-ts)/60000);
+  if(mins<1) return 'hace un momento';
+  if(mins<60) return 'hace '+mins+' min';
+  var hrs = Math.round(mins/60);
+  if(hrs<24) return 'hace '+hrs+' h';
+  return 'hace '+Math.round(hrs/24)+' d';
+}
+
+function renderCarMarker(){
+  var btn = document.getElementById('car-btn');
+  if(carMarker){ mapObj.removeLayer(carMarker); carMarker=null; }
+  if(btn) btn.classList.toggle('car-set', !!carLoc);
+  if(!carLoc) return;
+  var icon = L.divIcon({
+    className:'',
+    html:'<div style="position:relative;width:32px;height:32px">'+
+      '<div style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#FF6A50;border:2px solid rgba(255,255,255,.6);box-shadow:0 2px 10px rgba(0,0,0,.5)"></div>'+
+      '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;">🚗</div>'+
+      '</div>',
+    iconSize:[32,32], iconAnchor:[16,30], popupAnchor:[0,-26],
+  });
+  carMarker = L.marker([carLoc.lat,carLoc.lon], {icon:icon}).addTo(mapObj);
+  carMarker.bindPopup(
+    '<div class="pop-name">🚗 Aquí dejamos el carro</div>'+
+    '<div class="pop-custom">'+esc(carLoc.who||'?')+' · '+carAgoLabel(carLoc.ts)+'</div>'+
+    '<div class="pop-actions">'+
+      '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+carLoc.lat+','+carLoc.lon+'" target="_blank">Cómo llegar</a>'+
+      '<button class="pop-del" onclick="clearCarLoc()">Quitar marca</button>'+
+    '</div>'
+  );
 }
 
 // ── GEOLOCATION + NOTIFICATIONS ────────────────────────────────────────────
@@ -4116,6 +4206,7 @@ async function init(){
   loadAllWeather();
   loadFx();
   seedReservations().then(loadReservations).then(renderItin);
+  loadCarLoc();
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
@@ -4124,6 +4215,7 @@ async function init(){
     renderDash(); renderOps();
     await loadReservations();
     renderItin();
+    await loadCarLoc();
   }, 15000);
   if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
     startGeo();
