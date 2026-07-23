@@ -1,4 +1,4 @@
-const CACHE = 'av26-v52';
+const CACHE = 'av26-v53';
 
 const PRECACHE = [
   '/',
@@ -9,6 +9,7 @@ const PRECACHE = [
   '/icons/icon-512.png',
   '/icons/apple-touch-icon.png',
   '/logo-altavibra.png',
+  '/qrcode.js',
 ];
 
 self.addEventListener('install', e => {
