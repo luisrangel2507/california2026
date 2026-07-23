@@ -321,6 +321,13 @@
     .day-city { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .day-wd { font-size: 10px; color: var(--muted); margin-top: 1px; letter-spacing: .3px; }
     .day-em { font-size: 16px; flex-shrink: 0; }
+    .day-wx {
+      display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+      font-size: 11px; color: var(--muted); font-family:'Space Mono',monospace;
+      padding: 3px 7px; background: rgba(255,255,255,.05); border-radius: 20px;
+    }
+    .day-wx .wx-ic { font-size: 13px; }
+    .day-wx.wx-hist { opacity: .7; }
     .day-ch { color: var(--muted); font-size: 14px; flex-shrink: 0; transition: transform .3s var(--ease); }
     .day-card.open .day-ch { transform: rotate(90deg); }
     .day-body {
@@ -685,6 +692,26 @@
       cursor: pointer;
       box-shadow: 0 2px 16px rgba(0,200,255,.2);
     }
+
+    /* ── MAP OFFLINE DOWNLOAD BUTTON ── */
+    .map-dl-btn {
+      position: absolute;
+      bottom: 124px; right: 14px;
+      z-index: 500;
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--panel);
+      border: 1px solid var(--border2);
+      color: var(--gold);
+      font-size: 17px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 16px rgba(245,166,35,.2);
+      transition: transform .12s var(--ease);
+    }
+    .map-dl-btn:active { transform: scale(.94); }
+    .map-dl-btn.dl-downloading { animation: pulse 1.1s ease-in-out infinite; }
+    .map-dl-btn.dl-done { color: var(--green); box-shadow: 0 2px 16px rgba(0,229,152,.25); }
 
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar { width: 3px; }
@@ -1434,6 +1461,7 @@
   </div>
   <div class="geo-btn" onclick="centerMe()" title="Mi ubicación" style="font-size:13px;font-family:'Space Mono',monospace;letter-spacing:0">GPS</div>
   <div class="add-place-btn" onclick="toggleAddPlace()" title="Agregar lugar">+</div>
+  <div class="map-dl-btn" id="map-dl-btn" onclick="downloadOfflineMap()" title="Descargar mapa para uso offline">📥</div>
 
   <!-- Add place panel -->
   <div class="ap-panel" id="ap-panel">
@@ -2083,6 +2111,77 @@ function initMap(){
   }).addTo(mapObj);
 
   renderPlaceMarkers();
+  updateMapDlStatus();
+}
+
+// ── MAPA OFFLINE (pre-descarga de tiles del recorrido) ──────────────────────
+function lonToTileX(lon, z){ return Math.floor((lon+180)/360*Math.pow(2,z)); }
+function latToTileY(lat, z){
+  var latRad = lat*Math.PI/180;
+  return Math.floor((1 - Math.log(Math.tan(latRad)+1/Math.cos(latRad))/Math.PI)/2 * Math.pow(2,z));
+}
+
+function updateMapDlStatus(){
+  var btn = document.getElementById('map-dl-btn');
+  if(!btn) return;
+  var ts = parseInt(localStorage.getItem('ca26_map_dl_ts')||'0');
+  if(ts && (Date.now()-ts) < 14*24*60*60*1000){
+    btn.classList.add('dl-done');
+    var days = Math.floor((Date.now()-ts)/(24*60*60*1000));
+    btn.title = days===0 ? 'Mapa offline listo (descargado hoy)' : 'Mapa offline listo (hace '+days+' días) · toca para actualizar';
+  } else {
+    btn.classList.remove('dl-done');
+    btn.title = 'Descargar mapa para uso offline';
+  }
+}
+
+async function downloadOfflineMap(){
+  var btn = document.getElementById('map-dl-btn');
+  if(!btn || btn.classList.contains('dl-downloading')) return;
+  btn.classList.add('dl-downloading');
+  toast('Descargando mapa para uso sin conexión…');
+
+  var zooms=[7,11];
+  var tileSet={};
+  DAYS.forEach(function(d){
+    (d.acts||[]).forEach(function(a){
+      if(!a.c) return;
+      zooms.forEach(function(z){
+        var x=lonToTileX(a.c[1],z), y=latToTileY(a.c[0],z);
+        tileSet[z+'/'+x+'/'+y]=true;
+      });
+    });
+  });
+  var subs=['a','b','c','d'];
+  var retina=(window.devicePixelRatio>=2)?'@2x':'';
+  var urls=[];
+  Object.keys(tileSet).forEach(function(t){
+    var p=t.split('/');
+    subs.forEach(function(s){
+      urls.push('https://'+s+'.basemaps.cartocdn.com/light_all/'+p[0]+'/'+p[1]+'/'+p[2]+retina+'.png');
+    });
+  });
+
+  var idx=0, ok=0;
+  async function worker(){
+    while(idx<urls.length){
+      var u=urls[idx++];
+      // no-cors: los tiles cross-origin no traen headers CORS; la respuesta
+      // llega "opaque" (no se puede leer su status) pero el service worker
+      // sí la cachea para uso offline.
+      try{ await fetch(u,{mode:'no-cors'}); ok++; }catch(e){ /* sin conexión o tile fuera de rango */ }
+    }
+  }
+  await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
+
+  btn.classList.remove('dl-downloading');
+  if(ok>0){
+    localStorage.setItem('ca26_map_dl_ts', String(Date.now()));
+    updateMapDlStatus();
+    toast('Mapa listo para offline ('+Object.keys(tileSet).length+' zonas)', 'success');
+  } else {
+    toast('No se pudo descargar el mapa — revisa tu conexión.', 'error');
+  }
 }
 
 var placeMarkers = [];
@@ -2607,6 +2706,79 @@ function toggleActDone(dayIdx, actIdx){
   renderDash();
 }
 
+// ── WEATHER (Open-Meteo, sin API key) ───────────────────────────────────────
+var WX = JSON.parse(localStorage.getItem('ca26_wx') || '{}');
+var WX_ICONS = {
+  0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',
+  51:'🌦️',53:'🌦️',55:'🌦️',56:'🌦️',57:'🌦️',
+  61:'🌧️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',
+  71:'🌨️',73:'🌨️',75:'🌨️',77:'🌨️',80:'🌦️',81:'🌧️',82:'⛈️',
+  85:'🌨️',86:'🌨️',95:'⛈️',96:'⛈️',99:'⛈️'
+};
+function wxIcon(code){ return WX_ICONS[code] || '🌡️'; }
+
+function dayCoordFor(dayIdx){
+  for(var i=dayIdx;i<DAYS.length;i++){
+    var found=(DAYS[i].acts||[]).find(function(a){return a.c;});
+    if(found) return found.c;
+  }
+  for(var j=dayIdx-1;j>=0;j--){
+    var found2=(DAYS[j].acts||[]).find(function(a){return a.c;});
+    if(found2) return found2.c;
+  }
+  return null;
+}
+
+function dayDateStr(dayIdx, year){
+  var parts=DAYS[dayIdx].date.split(' '); // ['2','Sep']
+  var mon=parts[1].slice(0,3).toLowerCase();
+  var months={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12};
+  var mm=String(months[mon]||9).padStart(2,'0');
+  var dd=String(parseInt(parts[0])).padStart(2,'0');
+  return year+'-'+mm+'-'+dd;
+}
+
+async function fetchWeatherForDay(dayIdx){
+  var coord=dayCoordFor(dayIdx);
+  if(!coord) return;
+  var targetStr=dayDateStr(dayIdx,2026);
+  var target=new Date(targetStr+'T12:00:00');
+  var now=new Date();
+  var daysDiff=Math.round((target-now)/(1000*60*60*24));
+  var isForecast = daysDiff>=-1 && daysDiff<=15;
+  var url;
+  if(isForecast){
+    url='https://api.open-meteo.com/v1/forecast?latitude='+coord[0]+'&longitude='+coord[1]+
+      '&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&start_date='+targetStr+'&end_date='+targetStr;
+  } else {
+    var refStr=dayDateStr(dayIdx,2025); // año anterior, referencia de clima típico
+    url='https://archive-api.open-meteo.com/v1/archive?latitude='+coord[0]+'&longitude='+coord[1]+
+      '&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&start_date='+refStr+'&end_date='+refStr;
+  }
+  try{
+    var r=await fetch(url);
+    if(!r.ok) return;
+    var j=await r.json();
+    if(!j.daily || !j.daily.temperature_2m_max || !j.daily.temperature_2m_max.length) return;
+    WX[dayIdx]={
+      code: j.daily.weathercode[0],
+      tmax: Math.round(j.daily.temperature_2m_max[0]),
+      tmin: Math.round(j.daily.temperature_2m_min[0]),
+      isForecast: isForecast,
+      ts: Date.now()
+    };
+    localStorage.setItem('ca26_wx', JSON.stringify(WX));
+  }catch(e){ /* sin conexión — se queda con el último valor cacheado, si hay */ }
+}
+
+async function loadAllWeather(){
+  var stale = DAYS.map(function(_,i){ return i; })
+    .filter(function(i){ return !WX[i] || (Date.now()-WX[i].ts)>6*60*60*1000; });
+  if(!stale.length) return;
+  await Promise.all(stale.map(fetchWeatherForDay));
+  renderItin();
+}
+
 function computeItinStatus(){
   var now = new Date();
   var tripStart = new Date('2026-09-02');
@@ -2667,6 +2839,11 @@ function renderItin(){
       '<div class="day-m" style="color:'+clr+(isLocked?';opacity:.5':'')+'">'+d.date.split(' ')[1]+'</div>'+
       '</div>'+
       '<div class="day-inf"><div class="day-city">'+esc(d.city)+'</div><div class="day-wd">'+d.wd+'</div></div>'+
+      (WX[i]
+        ? '<div class="day-wx'+(WX[i].isForecast?'':' wx-hist')+'" title="'+(WX[i].isForecast?'Pron&oacute;stico':'Clima t&iacute;pico (a&ntilde;o anterior)')+'">'+
+            '<span class="wx-ic">'+wxIcon(WX[i].code)+'</span>'+WX[i].tmax+'&deg;/'+WX[i].tmin+'&deg;'+
+          '</div>'
+        : '')+
       (isLocked
         ? '<span class="lock-badge">Bloqueado</span>'
         : '<div class="day-ch">›</div>')+
@@ -3633,6 +3810,7 @@ async function init(){
   renderItin();
   renderBudget();
   updateNotifStatus();
+  loadAllWeather();
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){

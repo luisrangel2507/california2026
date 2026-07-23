@@ -1,4 +1,4 @@
-const CACHE = 'av26-v44';
+const CACHE = 'av26-v45';
 
 const PRECACHE = [
   '/',
@@ -89,7 +89,11 @@ self.addEventListener('fetch', e => {
     caches.match(e.request).then(cached => {
       if (cached) return cached;
       return fetch(e.request).then(res => {
-        if (res && res.ok) {
+        // res.ok es false en respuestas "opaque" (recursos cross-origin sin
+        // CORS, como los tiles del mapa) aunque la petición sí haya
+        // funcionado — hay que cachearlas también o el mapa nunca queda
+        // disponible offline.
+        if (res && (res.ok || res.type === 'opaque')) {
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
         }
