@@ -208,17 +208,17 @@
     /* ── MAP ── */
     #map { flex: 1; }
     .leaflet-popup-content-wrapper {
-      background: #061525 !important;
-      border: 1px solid rgba(0,200,255,.25) !important;
+      background: #ffffff !important;
+      border: 1px solid rgba(20,40,70,.1) !important;
       border-radius: 10px !important;
-      color: #D8EEFF !important;
-      box-shadow: 0 8px 32px rgba(0,0,0,.8), 0 0 20px rgba(0,200,255,.1) !important;
+      color: #16233A !important;
+      box-shadow: 0 8px 28px rgba(20,40,70,.22) !important;
     }
-    .leaflet-popup-tip { background: #061525 !important; }
+    .leaflet-popup-tip { background: #ffffff !important; }
     .leaflet-popup-content { margin: 10px 14px !important; font-family: 'Space Grotesk', sans-serif; }
-    .pop-name { font-size: 13px; font-weight: 700; }
-    .pop-day { font-size: 10px; color: #4A7A9A; margin-top: 3px; font-family:'Space Mono',monospace; letter-spacing:.5px; }
-    .pop-dist { font-size: 10px; color: #00E598; margin-top: 4px; }
+    .pop-name { font-size: 13px; font-weight: 700; color: #16233A; }
+    .pop-day { font-size: 10px; color: #6B7A94; margin-top: 3px; font-family:'Space Mono',monospace; letter-spacing:.5px; }
+    .pop-dist { font-size: 10px; color: #00A968; margin-top: 4px; }
     .pop-actions { display: flex; gap: 6px; margin-top: 8px; }
     .pop-maps {
       display: inline-block; padding: 5px 11px;
@@ -234,7 +234,7 @@
       font-size: 11px; font-weight: 600; cursor: pointer;
       font-family:'Space Grotesk',sans-serif;
     }
-    .pop-custom { font-size: 9px; color: var(--muted); margin-top: 3px; font-family:'Space Mono',monospace; letter-spacing:.5px; }
+    .pop-custom { font-size: 9px; color: #6B7A94; margin-top: 3px; font-family:'Space Mono',monospace; letter-spacing:.5px; }
 
     /* ── ADD PLACE BUTTON ── */
     .add-place-btn {
@@ -1990,14 +1990,9 @@ async function loadPhotos(){
 // ── MAP ────────────────────────────────────────────────────────────────────
 function initMap(){
   mapObj = L.map('map').setView([36.0,-120.2],6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'© OpenStreetMap', maxZoom:19
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd'
   }).addTo(mapObj);
-
-  // Dark coastal tile style
-  var s=document.createElement('style');
-  s.textContent='#map .leaflet-tile{filter:invert(1) hue-rotate(195deg) brightness(.68) contrast(1.18) saturate(.85);}';
-  document.head.appendChild(s);
 
   renderPlaceMarkers();
 }
@@ -2026,12 +2021,12 @@ function renderPlaceMarkers(){
       routePts.push(a.c);
       var done = !!actDone[di+'-'+ai];
       var num = globalActNumber(di, ai);
-      var clr = done ? '#00E598' : 'var(--muted)';
+      var clr = done ? '#00C77E' : '#7C8DA6';
       var icon = L.divIcon({
         className:'',
         html:'<div style="position:relative;width:32px;height:32px">' +
-          '<div style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+clr+';border:1.5px solid rgba(255,255,255,.4);box-shadow:0 0 12px '+clr+'66,0 2px 8px rgba(0,0,0,.5)"></div>' +
-          '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#000">'+num+'</div>' +
+          '<div style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+clr+';border:2px solid #fff;box-shadow:0 3px 8px rgba(20,30,50,.35)"></div>' +
+          '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)">'+num+'</div>' +
           '</div>',
         iconSize:[32,32],
         iconAnchor:[16,32],
@@ -2050,7 +2045,7 @@ function renderPlaceMarkers(){
     });
   });
 
-  routeLine = L.polyline(routePts,{color:'#00C8FF',weight:1.5,opacity:.4,dashArray:'5,8'}).addTo(mapObj);
+  routeLine = L.polyline(routePts,{color:'#2E6BE6',weight:2,opacity:.55,dashArray:'6,8'}).addTo(mapObj);
 }
 
 function centerMe(){
