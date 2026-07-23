@@ -196,19 +196,24 @@ function persistRes() {
 app.get('/api/reservations', (req, res) => res.json(resStore));
 
 app.post('/api/reservations', (req, res) => {
-  const { id, title, date, time, location, notes, done, source } = req.body;
+  const { id, title, date, time, location, cost, notes, done, source, who } = req.body;
   if (!title || !date) return res.status(400).json({ error: 'missing fields' });
+  const idx = resStore.findIndex((r) => r.id === id);
+  const isNewCustom = idx === -1 && (source || 'custom') === 'custom';
+  if (isNewCustom && who !== ADMIN_NAME) {
+    return res.status(403).json({ error: 'solo el admin puede agregar reservaciones' });
+  }
   const item = {
     id: id || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     title, date,
     time: time || '',
     location: location || '',
+    cost: cost || '',
     notes: notes || '',
     done: !!done,
     source: source || 'custom',
     ts: Date.now()
   };
-  const idx = resStore.findIndex((r) => r.id === item.id);
   if (idx === -1) resStore.push(item);
   else resStore[idx] = Object.assign({}, resStore[idx], item, { ts: resStore[idx].ts });
   persistRes();
@@ -216,6 +221,8 @@ app.post('/api/reservations', (req, res) => {
 });
 
 app.delete('/api/reservations/:id', (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
   const idx = resStore.findIndex((r) => r.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   resStore.splice(idx, 1);
