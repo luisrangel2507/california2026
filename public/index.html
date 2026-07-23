@@ -521,6 +521,30 @@
     .p-av { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0; }
     .p-inp { background: none; border: none; color: var(--text); font-size: 12px; font-family:'Space Grotesk',sans-serif; width: 58px; }
     .p-inp:focus { outline: none; }
+    /* ── CONVERSOR USD ⇄ MXN ── */
+    .fx-card {
+      margin: 12px 13px 0; padding: 13px 15px;
+      background: var(--glass); border: 1px solid var(--border); border-radius: 14px;
+    }
+    .fx-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .fx-lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; }
+    .fx-rate { font-family:'Space Mono',monospace; font-size:12.5px; font-weight:700; color:var(--gold); }
+    .fx-conv { display:flex; align-items:center; gap:8px; }
+    .fx-in-wrap {
+      flex: 1; min-width: 0; display:flex; align-items:center; gap:6px;
+      background: rgba(255,255,255,.05); border:1px solid var(--border); border-radius:10px; padding:8px 10px;
+    }
+    .fx-cur { font-size:10.5px; font-weight:700; color:var(--muted); font-family:'Space Mono',monospace; flex-shrink:0; }
+    .fx-in-wrap input {
+      flex:1; min-width:0; width:100%; background:none; border:none; color:var(--text);
+      font-size:15px; font-family:'Space Grotesk',sans-serif; outline:none; text-align:right;
+      -moz-appearance: textfield;
+    }
+    .fx-in-wrap input::-webkit-outer-spin-button,
+    .fx-in-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .fx-eq { color:var(--muted); font-size:13px; flex-shrink:0; }
+    .fx-updated { margin-top:8px; font-size:9.5px; color:var(--muted); font-family:'Space Mono',monospace; }
+
     /* person summary cards */
     .person-summary { display: flex; gap: 6px; padding: 10px 13px; border-bottom: 1px solid var(--border); overflow-x: auto; }
     .ps-card { flex: 1; min-width: 80px; padding: 9px 10px; border-radius: 10px; border: 1px solid; text-align: center; }
@@ -1505,6 +1529,26 @@
         <button class="btn-add" id="add-person-btn" onclick="addPerson()" style="padding:8px 16px;font-size:13px;display:none">+ Persona</button>
         <button class="btn-add" onclick="toggleEF()" style="padding:8px 16px;font-size:13px">+ Agregar</button>
       </div>
+    </div>
+
+    <!-- Conversor de moneda USD ⇄ MXN -->
+    <div class="fx-card">
+      <div class="fx-hd">
+        <span class="fx-lbl">💱 Dólar hoy</span>
+        <span class="fx-rate" id="fx-rate">—</span>
+      </div>
+      <div class="fx-conv">
+        <div class="fx-in-wrap">
+          <span class="fx-cur">USD</span>
+          <input type="number" id="fx-usd" placeholder="0" inputmode="decimal" oninput="fxRecalc('usd')">
+        </div>
+        <span class="fx-eq">=</span>
+        <div class="fx-in-wrap">
+          <span class="fx-cur">MXN</span>
+          <input type="number" id="fx-mxn" placeholder="0" inputmode="decimal" oninput="fxRecalc('mxn')">
+        </div>
+      </div>
+      <div class="fx-updated" id="fx-updated"></div>
     </div>
 
     <!-- Person summary cards — always visible at top -->
@@ -2865,6 +2909,53 @@ function toggleDay(i){
   document.getElementById('dc'+i).classList.toggle('open');
 }
 
+// ── CONVERSOR USD ⇄ MXN (Frankfurter, sin API key) ──────────────────────────
+var FX = JSON.parse(localStorage.getItem('ca26_fx') || '{}'); // {rate, ts}
+
+async function loadFx(){
+  if(!FX.rate || (Date.now()-FX.ts) > 6*60*60*1000){
+    try{
+      var r = await fetch('https://api.frankfurter.app/latest?from=USD&to=MXN');
+      if(r.ok){
+        var j = await r.json();
+        if(j.rates && j.rates.MXN){
+          FX = { rate: j.rates.MXN, ts: Date.now() };
+          localStorage.setItem('ca26_fx', JSON.stringify(FX));
+        }
+      }
+    }catch(e){ /* sin conexión — se queda con el último valor cacheado, si hay */ }
+  }
+  renderFx();
+}
+
+function renderFx(){
+  var rateEl = document.getElementById('fx-rate');
+  var updEl = document.getElementById('fx-updated');
+  if(!rateEl) return;
+  if(FX.rate){
+    rateEl.textContent = '1 USD ≈ $'+FX.rate.toFixed(2)+' MXN';
+    var mins = Math.round((Date.now()-FX.ts)/60000);
+    updEl.textContent = mins<60 ? 'Actualizado hace '+mins+' min' : 'Actualizado hace '+Math.round(mins/60)+' h';
+  } else {
+    rateEl.textContent = 'Sin datos';
+    updEl.textContent = 'Conéctate para obtener el tipo de cambio';
+  }
+  fxRecalc('usd');
+}
+
+function fxRecalc(from){
+  if(!FX.rate) return;
+  var usdEl=document.getElementById('fx-usd'), mxnEl=document.getElementById('fx-mxn');
+  if(!usdEl || !mxnEl) return;
+  if(from==='usd'){
+    var usd=parseFloat(usdEl.value);
+    mxnEl.value = isNaN(usd) ? '' : (usd*FX.rate).toFixed(2);
+  } else {
+    var mxn=parseFloat(mxnEl.value);
+    usdEl.value = isNaN(mxn) ? '' : (mxn/FX.rate).toFixed(2);
+  }
+}
+
 // ── BUDGET ─────────────────────────────────────────────────────────────────
 function renderBudget(){
   document.getElementById('b-rows').innerHTML = BUDGET.map(function(b){
@@ -3811,6 +3902,7 @@ async function init(){
   renderBudget();
   updateNotifStatus();
   loadAllWeather();
+  loadFx();
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
