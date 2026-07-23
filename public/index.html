@@ -324,10 +324,17 @@
     .res-check:active { transform: scale(.9); }
     .res-row.done .res-check { background:rgba(0,229,152,.15); border-color:var(--green); }
     .res-body { flex:1; min-width:0; }
-    .res-name { font-size:13px; font-weight:600; }
+    .res-name-row { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+    .res-name { font-size:13px; font-weight:600; min-width:0; }
     .res-row.done .res-name { text-decoration:line-through; color:var(--muted); }
-    .res-meta { font-size:10.5px; color:var(--muted); margin-top:2px; font-family:'Space Mono',monospace; }
-    .res-notes { font-size:11px; color:var(--muted); margin-top:2px; }
+    .res-cost { font-family:'Space Mono',monospace; font-size:12px; font-weight:700; color:var(--gold); flex-shrink:0; white-space:nowrap; }
+    .res-time-loc { display:flex; align-items:center; gap:8px; margin-top:3px; flex-wrap:wrap; }
+    .res-time {
+      font-family:'Space Mono',monospace; font-size:12px; font-weight:700; color:var(--cyan);
+      background:rgba(0,200,255,.1); border-radius:6px; padding:1px 6px;
+    }
+    .res-loc { font-size:10.5px; color:var(--muted); font-family:'Space Mono',monospace; }
+    .res-notes { font-size:11px; color:var(--muted); margin-top:3px; }
     .res-del { background:none; border:none; color:var(--muted); font-size:15px; cursor:pointer; padding:2px 4px; flex-shrink:0; }
     .res-add-btn {
       width:100%; margin-top:8px; padding:9px; border-radius:10px;
@@ -2871,13 +2878,19 @@ function findReservableActs(){
   DAYS.forEach(function(d,di){
     (d.acts||[]).forEach(function(a,ai){
       if(a.note && /reservar/i.test(a.note)){
+        var costMatch = a.note.match(/\$[\d][\d,]*(?:\s*-\s*\$?[\d][\d,]*)?/);
+        var cost = costMatch ? costMatch[0].replace(/\s+/g,'') : '';
+        var notes = a.note.replace(/\s*·?\s*¡reservar!?/i,'');
+        if(costMatch) notes = notes.replace(costMatch[0],'');
+        notes = notes.replace(/\s*·\s*$/,'').replace(/^\s*·\s*/,'').trim();
         out.push({
           id: 'itin-'+di+'-'+ai,
           title: a.n.replace(/^[^\p{L}\p{N}]+/u,'').trim(),
           date: dayDateStr(di,2026),
           time: /^\d{1,2}:\d{2}$/.test(a.t) ? a.t : '',
           location: d.city.split('→')[0].split('—')[0].trim(),
-          notes: a.note.replace(/\s*·?\s*¡reservar!?/i,'').trim(),
+          cost: cost,
+          notes: notes,
           done: false,
           source: 'itin'
         });
@@ -2908,22 +2921,26 @@ async function loadReservations(){
 }
 
 function renderResCard(){
+  var admin = isAdmin();
   var sorted = RES_LIST.slice().sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
   var pending = sorted.filter(function(r){ return !r.done; }).length;
   var rows = sorted.map(function(r){
     var d = new Date(r.date+'T12:00:00');
     var dLbl = d.toLocaleDateString('es-MX',{day:'numeric',month:'short'});
-    var metaParts=[dLbl];
-    if(r.time) metaParts.push(r.time);
-    if(r.location) metaParts.push(r.location);
-    var delBtn = r.source==='custom'
+    var delBtn = admin
       ? '<button class="res-del" onclick="deleteReservation('+esc(JSON.stringify(r.id))+')">×</button>'
       : '';
     return '<div class="res-row'+(r.done?' done':'')+'">'+
       '<button class="res-check" onclick="toggleReservation('+esc(JSON.stringify(r.id))+')">'+(r.done?'✓':'')+'</button>'+
       '<div class="res-body">'+
-        '<div class="res-name">'+esc(r.title)+'</div>'+
-        '<div class="res-meta">'+esc(metaParts.join(' · '))+'</div>'+
+        '<div class="res-name-row">'+
+          '<span class="res-name">'+esc(r.title)+'</span>'+
+          (r.cost?'<span class="res-cost">'+esc(r.cost)+'</span>':'')+
+        '</div>'+
+        '<div class="res-time-loc">'+
+          (r.time?'<span class="res-time">🕐&nbsp;'+esc(r.time)+'</span>':'')+
+          '<span class="res-loc">'+esc(dLbl)+(r.location?' · '+esc(r.location):'')+'</span>'+
+        '</div>'+
         (r.notes?'<div class="res-notes">'+esc(r.notes)+'</div>':'')+
       '</div>'+
       delBtn+
@@ -2935,7 +2952,7 @@ function renderResCard(){
       (sorted.length?'<span class="res-count">'+pending+' pendiente'+(pending===1?'':'s')+'</span>':'')+
     '</div>'+
     (sorted.length?rows:'<div class="res-empty">Sin reservaciones registradas</div>')+
-    '<button class="res-add-btn" onclick="openResAdd()">+ Agregar reservación</button>'+
+    (admin?'<button class="res-add-btn" onclick="openResAdd()">+ Agregar reservación</button>':'')+
   '</div>';
 }
 
@@ -2950,10 +2967,12 @@ async function toggleReservation(id){
 }
 
 function openResAdd(){
+  if(!isAdmin()) return;
   document.getElementById('res-title').value='';
   document.getElementById('res-date').value='';
   document.getElementById('res-time').value='';
   document.getElementById('res-location').value='';
+  document.getElementById('res-cost').value='';
   document.getElementById('res-notes').value='';
   document.getElementById('res-overlay').classList.add('show');
   document.getElementById('res-sheet').classList.add('show');
@@ -2968,28 +2987,36 @@ async function saveResCustom(){
   var title=document.getElementById('res-title').value.trim();
   var date=document.getElementById('res-date').value;
   if(!title || !date){ toast('Falta el título o la fecha.','error'); return; }
+  var who = meIndex!==null ? persons[parseInt(meIndex)] : '';
   var item={
     id: 'custom-'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
     title: title, date: date,
     time: document.getElementById('res-time').value,
     location: document.getElementById('res-location').value.trim(),
+    cost: document.getElementById('res-cost').value.trim(),
     notes: document.getElementById('res-notes').value.trim(),
-    done: false, source: 'custom'
+    done: false, source: 'custom', who: who
   };
   RES_LIST.push(item);
   closeResAdd();
   renderItin();
   try{
-    await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
-    toast('Reservación agregada.','success');
+    var r = await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
+    if(r.ok) toast('Reservación agregada.','success');
+    else { RES_LIST = RES_LIST.filter(function(x){return x.id!==item.id;}); renderItin(); toast('No autorizado.','error'); }
   }catch(e){ toast('No se pudo guardar — revisa tu conexión.','error'); }
 }
 
 async function deleteReservation(id){
+  var who = meIndex!==null ? persons[parseInt(meIndex)] : '';
+  var prev = RES_LIST;
   RES_LIST = RES_LIST.filter(function(r){ return r.id!==id; });
   renderItin();
   try{
-    await fetch('/api/reservations/'+encodeURIComponent(id),{method:'DELETE'});
+    var r = await fetch('/api/reservations/'+encodeURIComponent(id),{
+      method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({who:who})
+    });
+    if(!r.ok){ RES_LIST = prev; renderItin(); toast('No autorizado.','error'); }
   }catch(e){ toast('No se pudo eliminar — revisa tu conexión.','error'); }
 }
 
@@ -4265,8 +4292,10 @@ if('serviceWorker' in navigator){
     <input class="ef-i me-inp" type="time" id="res-time">
     <div class="ef-lbl">Ubicación</div>
     <input class="ef-i me-inp" type="text" id="res-location" placeholder="Ej. Big Sur, CA">
+    <div class="ef-lbl">Costo (opcional)</div>
+    <input class="ef-i me-inp" type="text" id="res-cost" placeholder="Ej. $70">
     <div class="ef-lbl">Notas (opcional)</div>
-    <input class="ef-i me-inp" type="text" id="res-notes" placeholder="Precio, link, teléfono...">
+    <input class="ef-i me-inp" type="text" id="res-notes" placeholder="Link, teléfono...">
   </div>
   <div class="bs-footer">
     <button class="bs-add-btn" onclick="closeResAdd()">Cancelar</button>
