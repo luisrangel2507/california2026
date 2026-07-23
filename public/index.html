@@ -2495,6 +2495,23 @@ function renderDash(){
       (expenses.length?spendRows:'<div style="color:var(--muted);font-size:12px">Sin gastos a&uacute;n</div>')+
     '</div>';
 
+  // ── Activities progress
+  var totalActs = DAYS.reduce(function(s,d){ return s+d.acts.length; }, 0);
+  var doneActsCount = Object.keys(actDone).filter(function(k){ return actDone[k]; }).length;
+  var actPct = totalActs ? Math.round((doneActsCount/totalActs)*100) : 0;
+  var progressHTML =
+    '<div class="dash-section">'+
+      '<div class="dash-section-hd">'+
+        '<span class="dash-section-title">Actividades</span>'+
+        '<span class="dash-section-val">'+doneActsCount+'/'+totalActs+'</span>'+
+      '</div>'+
+      '<div class="crow">'+
+        '<span class="crow-lbl">Completado</span>'+
+        '<div class="crow-track"><div class="crow-fill" style="width:'+actPct+'%;background:var(--teal)"></div></div>'+
+        '<span class="crow-amt">'+actPct+'%</span>'+
+      '</div>'+
+    '</div>';
+
   // ── Categories
   var catHTML='';
   if(expenses.length){
@@ -2516,7 +2533,7 @@ function renderDash(){
     }
   }
 
-  document.getElementById('dash-body').innerHTML = ambientHTML+actHTML+daysHTML+spendHTML+catHTML;
+  document.getElementById('dash-body').innerHTML = ambientHTML+actHTML+daysHTML+spendHTML+progressHTML+catHTML;
 }
 
 // ── ITINERARY ──────────────────────────────────────────────────────────────
@@ -2587,6 +2604,7 @@ function toggleActDone(dayIdx, actIdx){
     if(btn){ btn.textContent = actDone[key] ? '✓' : ''; }
   }
   renderPlaceMarkers();
+  renderDash();
 }
 
 function computeItinStatus(){
