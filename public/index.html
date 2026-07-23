@@ -3084,18 +3084,26 @@ var FX = JSON.parse(localStorage.getItem('ca26_fx') || '{}'); // {rate, ts}
 
 async function loadFx(){
   if(!FX.rate || (Date.now()-FX.ts) > 6*60*60*1000){
-    try{
-      var r = await fetch('https://api.frankfurter.app/latest?from=USD&to=MXN');
-      if(r.ok){
-        var j = await r.json();
-        if(j.rates && j.rates.MXN){
-          FX = { rate: j.rates.MXN, ts: Date.now() };
-          localStorage.setItem('ca26_fx', JSON.stringify(FX));
-        }
-      }
-    }catch(e){ /* sin conexión — se queda con el último valor cacheado, si hay */ }
+    var rate = await fxTry('https://api.frankfurter.dev/v1/latest?base=USD&symbols=MXN', function(j){ return j.rates && j.rates.MXN; });
+    if(!rate){
+      // Respaldo por si Frankfurter falla o vuelve a migrar de dominio
+      rate = await fxTry('https://open.er-api.com/v6/latest/USD', function(j){ return j.rates && j.rates.MXN; });
+    }
+    if(rate){
+      FX = { rate: rate, ts: Date.now() };
+      localStorage.setItem('ca26_fx', JSON.stringify(FX));
+    }
   }
   renderFx();
+}
+
+async function fxTry(url, extract){
+  try{
+    var r = await fetch(url);
+    if(!r.ok) return null;
+    var j = await r.json();
+    return extract(j) || null;
+  }catch(e){ return null; }
 }
 
 function renderFx(){
