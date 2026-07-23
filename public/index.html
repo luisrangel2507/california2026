@@ -1549,7 +1549,7 @@
   <div class="geo-btn" onclick="centerMe()" title="Mi ubicación" style="font-size:13px;font-family:'Space Mono',monospace;letter-spacing:0">GPS</div>
   <div class="add-place-btn" onclick="toggleAddPlace()" title="Agregar lugar">+</div>
   <div class="map-dl-btn" id="map-dl-btn" onclick="downloadOfflineMap()" title="Descargar mapa para uso offline">📥</div>
-  <div class="car-btn" id="car-btn" onclick="saveCarLoc()" title="Marcar dónde dejamos el carro">🚗</div>
+  <div class="car-btn" id="car-btn" onclick="carBtnTap()" title="Marcar dónde dejamos el carro">🚗</div>
 
   <!-- Add place panel -->
   <div class="ap-panel" id="ap-panel">
@@ -2429,6 +2429,15 @@ async function loadCarLoc(){
   renderCarMarker();
 }
 
+function carBtnTap(){
+  if(carLoc && carMarker){
+    mapObj.setView([carLoc.lat, carLoc.lon], 16);
+    carMarker.openPopup();
+  } else {
+    saveCarLoc();
+  }
+}
+
 async function saveCarLoc(){
   if(!navigator.geolocation){ toast('GPS no disponible en este navegador.','error'); return; }
   var btn = document.getElementById('car-btn');
@@ -2482,7 +2491,8 @@ function renderCarMarker(){
     '<div class="pop-custom">'+esc(carLoc.who||'?')+' · '+carAgoLabel(carLoc.ts)+'</div>'+
     '<div class="pop-actions">'+
       '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+carLoc.lat+','+carLoc.lon+'" target="_blank">Cómo llegar</a>'+
-      '<button class="pop-del" onclick="clearCarLoc()">Quitar marca</button>'+
+      '<button class="pop-maps" onclick="saveCarLoc()" style="background:rgba(245,166,35,.1);color:var(--gold);border-color:rgba(245,166,35,.3)">Actualizar aquí</button>'+
+      '<button class="pop-del" onclick="clearCarLoc()">Ya llegué, quitar marca</button>'+
     '</div>'
   );
 }
