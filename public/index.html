@@ -693,7 +693,14 @@
       font-family:'Space Grotesk',sans-serif;
     }
 
-    /* ── DASHBOARD ── */
+    /* ── DASHBOARD (tema claro, tarjetas) ── */
+    #view-dash {
+      background: #EEF2F9;
+      --text: #16213A;
+      --muted: #7C8797;
+      --border: rgba(20,30,60,.07);
+      --panel: #ffffff;
+    }
     .dash-scroll { flex:1; overflow-y:auto; display:flex; flex-direction:column; padding-bottom:max(24px, env(safe-area-inset-bottom, 24px)); }
     /* legacy removed, now in .dash-photo-* */
 
@@ -701,9 +708,10 @@
     .dash-now-band {
       display:flex; align-items:flex-start; gap:10px;
       margin: 14px 14px 0; padding:16px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 6px 20px rgba(20,30,60,.06);
     }
     .dash-now-pill {
       display:inline-flex; align-items:center; gap:5px;
@@ -722,7 +730,7 @@
     .dash-now-next-txt {
       font-size:10px; color:var(--muted); margin-top:8px;
       font-family:'Space Mono',monospace; letter-spacing:.3px;
-      padding-top:7px; border-top:1px solid rgba(255,255,255,.06);
+      padding-top:7px; border-top:1px solid var(--border);
     }
     .dash-edit-btn {
       background:none; border:none; color:var(--muted); font-size:11px;
@@ -735,9 +743,10 @@
     .dash-pre-band {
       padding:28px 20px; text-align:center;
       margin: 14px 14px 0;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 6px 20px rgba(20,30,60,.06);
     }
     .dash-pre-num {
       font-family:'Space Mono',monospace; font-size:60px; font-weight:700;
@@ -761,7 +770,7 @@
     .dash-day-seg:last-child { border-radius:0 2px 2px 0; }
     .dash-day-seg.done { background:rgba(0,229,152,.5); }
     .dash-day-seg.today { background:var(--cyan); box-shadow:0 0 8px rgba(0,200,255,.7); }
-    .dash-day-seg.future { background:rgba(255,255,255,.08); }
+    .dash-day-seg.future { background:rgba(20,30,60,.1); }
     .dash-days-lbl {
       font-family:'Space Mono',monospace; font-size:10px; color:var(--muted);
       margin-left:12px; flex-shrink:0; letter-spacing:.5px;
@@ -770,9 +779,10 @@
     /* Section blocks */
     .dash-section {
       margin: 10px 14px 0; padding:16px;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 18px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 6px 20px rgba(20,30,60,.06);
     }
     .dash-section-hd {
       display:flex; justify-content:space-between; align-items:baseline; margin-bottom:13px;
@@ -789,7 +799,7 @@
     .prow { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
     .prow:last-child { margin-bottom:0; }
     .prow-init { font-family:'Space Mono',monospace; font-size:11px; font-weight:700; width:13px; flex-shrink:0; }
-    .prow-track { flex:1; height:3px; background:rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
+    .prow-track { flex:1; height:3px; background:rgba(20,30,60,.08); border-radius:2px; overflow:hidden; }
     .prow-fill { height:100%; border-radius:2px; transition:width .45s ease; }
     .prow-amt { font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); min-width:50px; text-align:right; }
     .prow-bal { font-size:10px; min-width:42px; text-align:right; font-family:'Space Mono',monospace; }
@@ -798,7 +808,7 @@
     .crow { display:flex; align-items:center; gap:9px; margin-bottom:8px; }
     .crow:last-child { margin-bottom:0; }
     .crow-lbl { font-size:11px; width:84px; flex-shrink:0; color:var(--text); }
-    .crow-track { flex:1; height:3px; background:rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
+    .crow-track { flex:1; height:3px; background:rgba(20,30,60,.08); border-radius:2px; overflow:hidden; }
     .crow-fill { height:100%; border-radius:2px; transition:width .45s ease; }
     .crow-amt { font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); text-align:right; white-space:nowrap; }
 
