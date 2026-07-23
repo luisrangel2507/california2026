@@ -2901,7 +2901,7 @@ async function renderPhotos(){
       var key='d'+di+'-a'+ai;
       var ps=memStore[key]||[];
       var n=ps.length;
-      var kj=JSON.stringify(key);
+      var kj=esc(JSON.stringify(key));
 
       if(n===0){
         html+='<div class="alb-row">'+
