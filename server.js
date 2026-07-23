@@ -182,6 +182,32 @@ app.post('/api/profiles', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Ubicación en vivo del grupo (opt-in por persona) ───────────────────────
+const LIVELOC_FILE = path.join(DATA_DIR, 'live-locations.json');
+let liveLocStore = {};
+try { liveLocStore = JSON.parse(fs.readFileSync(LIVELOC_FILE, 'utf8')); } catch (e) {}
+function persistLiveLoc() {
+  try { fs.writeFileSync(LIVELOC_FILE, JSON.stringify(liveLocStore)); } catch (e) {}
+}
+
+app.get('/api/live-locations', (req, res) => res.json(liveLocStore));
+
+app.post('/api/live-locations', (req, res) => {
+  const { who, lat, lon } = req.body;
+  if (!who || typeof lat !== 'number' || typeof lon !== 'number') {
+    return res.status(400).json({ error: 'missing fields' });
+  }
+  liveLocStore[who] = { lat, lon, ts: Date.now() };
+  persistLiveLoc();
+  res.json({ ok: true });
+});
+
+app.delete('/api/live-locations/:who', (req, res) => {
+  delete liveLocStore[req.params.who];
+  persistLiveLoc();
+  res.json({ ok: true });
+});
+
 // ── ¿Dónde dejamos el carro? (una sola ubicación compartida) ───────────────
 const CAR_FILE = path.join(DATA_DIR, 'car.json');
 let carLoc = null;
