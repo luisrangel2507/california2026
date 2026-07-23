@@ -155,6 +155,33 @@ app.delete('/api/expenses/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Perfiles (fecha de nacimiento, dirección, contacto de emergencia) ─────
+// Compartido entre todos para que el admin pueda ver los contactos de
+// emergencia de cada quien en caso de necesitarlos durante el viaje.
+const PROF_FILE = path.join(DATA_DIR, 'profiles.json');
+let profStore = {};
+try { profStore = JSON.parse(fs.readFileSync(PROF_FILE, 'utf8')); } catch (e) {}
+function persistProf() {
+  try { fs.writeFileSync(PROF_FILE, JSON.stringify(profStore)); } catch (e) {}
+}
+
+app.get('/api/profiles', (req, res) => res.json(profStore));
+
+app.post('/api/profiles', (req, res) => {
+  const { idx, data } = req.body;
+  if (idx === undefined || !data || typeof data !== 'object') {
+    return res.status(400).json({ error: 'missing fields' });
+  }
+  profStore[idx] = {
+    birth: data.birth || '',
+    address: data.address || '',
+    ecName: data.ecName || '',
+    ecPhone: data.ecPhone || '',
+  };
+  persistProf();
+  res.json({ ok: true });
+});
+
 // ── Push diario 10am — cuenta regresiva al viaje ───────────────────────────
 cron.schedule('0 10 * * *', async () => {
   const tripStart = new Date('2026-09-02T00:00:00-06:00');
