@@ -2947,10 +2947,15 @@ async function memAddPhoto(ev,actKey){
   var files=Array.from(ev.target.files);
   if(!files.length) return;
   var who=meIndex!==null?persons[parseInt(meIndex)]:'?';
+  var failed=0;
   for(var i=0;i<files.length;i++){
-    var photo=await compressImage(files[i]);
-    await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actKey:actKey,photo:photo,who:who})});
+    try{
+      var photo=await compressImage(files[i]);
+      var r=await fetch('/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actKey:actKey,photo:photo,who:who})});
+      if(!r.ok) failed++;
+    }catch(e){ failed++; }
   }
+  if(failed) toast(failed+' foto'+(failed>1?'s':'')+' no se pudo'+(failed>1?'ieron':'')+' subir — revisa tu conexión.','error');
   ev.target.value='';
   renderPhotos();
 }
@@ -2958,7 +2963,9 @@ async function memAddPhoto(ev,actKey){
 async function memDelPhoto(id,ev){
   if(ev) ev.stopPropagation();
   if(!isAdmin()) return;
-  await fetch('/api/memory/'+encodeURIComponent(id),{method:'DELETE'});
+  var who=persons[parseInt(meIndex)];
+  var r=await fetch('/api/memory/'+encodeURIComponent(id),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
+  if(!r.ok){ toast('No se pudo eliminar la foto.','error'); return; }
   closeOv(null,1);
   renderPhotos();
 }

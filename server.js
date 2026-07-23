@@ -6,8 +6,9 @@ const cron = require('node-cron');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const ADMIN_NAME = process.env.ADMIN_NAME || 'Eduardo';
 
-app.use(express.json());
+app.use(express.json({ limit: '8mb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, filePath) {
     if (filePath.endsWith('sw.js')) {
@@ -112,6 +113,8 @@ app.post('/api/memory', (req, res) => {
 });
 
 app.delete('/api/memory/:id', (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
   const { id } = req.params;
   let found = false;
   Object.keys(memStore).forEach(key => {
