@@ -395,6 +395,37 @@
       flex: 2; padding: 11px; border: none; border-radius: 10px;
       background: var(--cyan); color: #000; font-size: 13px; font-weight: 700; cursor: pointer;
     }
+    /* ── TOASTS ── */
+    .toast-container {
+      position: fixed; left: 0; right: 0;
+      bottom: max(24px, env(safe-area-inset-bottom, 24px));
+      display: flex; flex-direction: column-reverse; align-items: center; gap: 8px;
+      z-index: 20001; pointer-events: none; padding: 0 16px;
+    }
+    .toast {
+      pointer-events: auto;
+      display: flex; align-items: center; gap: 9px;
+      max-width: 380px; width: 100%; box-sizing: border-box;
+      padding: 13px 16px; border-radius: 12px;
+      background: #131A2A; border: 1px solid rgba(255,255,255,.1);
+      color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.35;
+      box-shadow: 0 10px 32px rgba(0,0,0,.45);
+      font-family: 'Space Grotesk', sans-serif;
+      animation: toastIn .4s cubic-bezier(.16,1,.3,1);
+    }
+    .toast.leaving { animation: toastOut .25s cubic-bezier(.4,0,1,1) forwards; }
+    .toast.success { border-color: rgba(0,229,152,.35); }
+    .toast.success .toast-dot { background: var(--green); }
+    .toast.error { border-color: rgba(255,80,80,.35); }
+    .toast.error .toast-dot { background: var(--red); }
+    .toast-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); flex-shrink: 0; }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(20px) scale(.94); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes toastOut {
+      to { opacity: 0; transform: translateY(10px) scale(.94); }
+    }
     /* ── DEMO PANEL ── */
     .demo-overlay {
       display: none; position: fixed; inset: 0; z-index: 19999;
@@ -2065,18 +2096,18 @@ function toggleAddPlace(){
 }
 
 function useGPSForPlace(){
-  if(!navigator.geolocation){ alert('GPS no disponible'); return; }
+  if(!navigator.geolocation){ toast('GPS no disponible','error'); return; }
   navigator.geolocation.getCurrentPosition(function(pos){
     document.getElementById('ap-lat').value = pos.coords.latitude.toFixed(6);
     document.getElementById('ap-lon').value = pos.coords.longitude.toFixed(6);
-  }, function(){ alert('No se pudo obtener la ubicación'); });
+  }, function(){ toast('No se pudo obtener la ubicación','error'); });
 }
 
 function saveCustomPlace(){
   var name = document.getElementById('ap-name').value.trim();
   var lat  = parseFloat(document.getElementById('ap-lat').value);
   var lon  = parseFloat(document.getElementById('ap-lon').value);
-  if(!name||isNaN(lat)||isNaN(lon)){ alert('Ingresa nombre y coordenadas'); return; }
+  if(!name||isNaN(lat)||isNaN(lon)){ toast('Ingresa nombre y coordenadas','error'); return; }
   customPlaces.push({id:Date.now(), n:name, c:[lat,lon]});
   localStorage.setItem('ca26_custom', JSON.stringify(customPlaces));
   document.getElementById('ap-name').value='';
@@ -2204,11 +2235,11 @@ function closeArrival(){
 function resetNotified(){
   notified=new Set();
   localStorage.removeItem('ca26_notif');
-  alert('Alertas de llegada reseteadas.');
+  toast('Alertas de llegada reseteadas.','success');
 }
 
 function requestNotifPerm(){
-  if(!('Notification' in window)){ alert('Tu navegador no soporta notificaciones'); return; }
+  if(!('Notification' in window)){ toast('Tu navegador no soporta notificaciones','error'); return; }
   Notification.requestPermission().then(function(p){
     updateNotifStatus();
     if(p==='granted'){
@@ -2255,15 +2286,15 @@ async function sendTestPush(){
   if(btn){ btn.disabled=true; btn.textContent='Enviando...'; }
   try{
     if(Notification.permission!=='granted'){
-      alert('Primero activa las notificaciones.');
+      toast('Primero activa las notificaciones.','error');
       return;
     }
     await subscribeForPush();
     var r = await fetch('/api/send-test', { method:'POST' });
     var data = await r.json();
-    alert(data.sent ? 'Notificación de prueba enviada — deberías verla en unos segundos.' : 'No hay suscripciones registradas todavía.');
+    toast(data.sent ? 'Notificación de prueba enviada — deberías verla en unos segundos.' : 'No hay suscripciones registradas todavía.', data.sent?'success':'error');
   }catch(e){
-    alert('Error enviando la notificación de prueba.');
+    toast('Error enviando la notificación de prueba.','error');
   }finally{
     if(btn){ btn.disabled=false; btn.textContent='Probar'; }
   }
@@ -2605,12 +2636,12 @@ function addPerson(){
   if(name===null) return;
   name=name.trim();
   if(!name) return;
-  if(persons.indexOf(name)!==-1){ alert('Ya existe esa persona.'); return; }
+  if(persons.indexOf(name)!==-1){ toast('Ya existe esa persona.','error'); return; }
   persons.push(name);
   localStorage.setItem('ca26_p', JSON.stringify(persons));
   document.documentElement.style.setProperty('--person-cols', persons.length);
   renderBudget();
-  alert(name+' se agregó al viaje.');
+  toast(name+' se agregó al viaje.','success');
 }
 
 function renderPersonsBar(){
@@ -2675,15 +2706,15 @@ async function saveExp(){
   var amt=parseFloat(document.getElementById('ef-amt').value);
   var who=document.getElementById('ef-who').value;
   var split=getSplit();
-  if(!desc||isNaN(amt)||amt<=0||who===''){alert('Completa todos los campos');return;}
-  if(!split.length){alert('Selecciona al menos una persona para dividir');return;}
+  if(!desc||isNaN(amt)||amt<=0||who===''){toast('Completa todos los campos','error');return;}
+  if(!split.length){toast('Selecciona al menos una persona para dividir','error');return;}
   var cat=document.getElementById('ef-cat').value||'other';
   var payload={desc:desc,amt:amt,who:parseInt(who),split:split,cat:cat};
   try{
     var r=await fetch('/api/expenses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     var data=await r.json();
     expenses.push(data.expense);
-  }catch(e){ alert('No se pudo guardar el gasto — revisa tu conexión.'); return; }
+  }catch(e){ toast('No se pudo guardar el gasto — revisa tu conexión.','error'); return; }
   document.getElementById('ef-desc').value='';
   document.getElementById('ef-amt').value='';
   document.getElementById('ef-who').value='';
@@ -3485,6 +3516,24 @@ function go(name,el){
 // ── UTILS ──────────────────────────────────────────────────────────────────
 function esc(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── TOASTS (reemplaza alert() con algo que no bloquee y se vea bien) ──────
+var toastContainer = null;
+function toast(msg, type){
+  if(!toastContainer){
+    toastContainer = document.createElement('div');
+    toastContainer.className = 'toast-container';
+    document.body.appendChild(toastContainer);
+  }
+  var el = document.createElement('div');
+  el.className = 'toast'+(type?' '+type:'');
+  el.innerHTML = '<span class="toast-dot"></span><span>'+esc(msg)+'</span>';
+  toastContainer.appendChild(el);
+  setTimeout(function(){
+    el.classList.add('leaving');
+    el.addEventListener('animationend', function(){ el.remove(); }, {once:true});
+  }, 3200);
 }
 
 // ── INIT ───────────────────────────────────────────────────────────────────
