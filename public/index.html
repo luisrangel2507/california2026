@@ -307,6 +307,36 @@
 
     /* ── ITIN ── */
     .scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 14px max(14px, env(safe-area-inset-bottom, 14px)); display: flex; flex-direction: column; gap: 9px; }
+
+    /* ── RESERVACIONES ── */
+    .res-card { padding: 13px 14px; background: var(--glass); border: 1px solid var(--border); border-radius: 14px; }
+    .res-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+    .res-title-lbl { font-size:12px; font-weight:700; color:var(--text); }
+    .res-count { font-family:'Space Mono',monospace; font-size:10.5px; color:var(--muted); }
+    .res-row { display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-top:1px solid var(--border); }
+    .res-row:first-of-type { border-top:none; }
+    .res-check {
+      width:22px; height:22px; border-radius:50%; flex-shrink:0; margin-top:1px;
+      border:1.5px solid var(--border2); background:none; color:var(--green);
+      font-size:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;
+      transition: transform .12s var(--ease), background .15s, border-color .15s;
+    }
+    .res-check:active { transform: scale(.9); }
+    .res-row.done .res-check { background:rgba(0,229,152,.15); border-color:var(--green); }
+    .res-body { flex:1; min-width:0; }
+    .res-name { font-size:13px; font-weight:600; }
+    .res-row.done .res-name { text-decoration:line-through; color:var(--muted); }
+    .res-meta { font-size:10.5px; color:var(--muted); margin-top:2px; font-family:'Space Mono',monospace; }
+    .res-notes { font-size:11px; color:var(--muted); margin-top:2px; }
+    .res-del { background:none; border:none; color:var(--muted); font-size:15px; cursor:pointer; padding:2px 4px; flex-shrink:0; }
+    .res-add-btn {
+      width:100%; margin-top:8px; padding:9px; border-radius:10px;
+      border:1px dashed var(--border2); background:none; color:var(--muted);
+      font-size:12px; font-family:'Space Grotesk',sans-serif; cursor:pointer;
+      transition: transform .12s var(--ease), border-color .15s, color .15s;
+    }
+    .res-add-btn:active { transform: scale(.97); border-color:var(--cyan); color:var(--cyan); }
+    .res-empty { font-size:12px; color:var(--muted); padding:6px 0; }
     .day-card { background: var(--glass); border: 1px solid var(--border); border-radius: 12px; backdrop-filter: blur(6px); }
     .day-card.open { border-color: var(--border2); }
     .day-hd { display: flex; align-items: center; gap: 11px; padding: 11px 13px; cursor: pointer; user-select: none; }
@@ -2833,6 +2863,136 @@ async function loadAllWeather(){
   renderItin();
 }
 
+// ── RESERVACIONES (horario, fecha y ubicación) — compartidas por servidor ──
+var RES_LIST = [];
+
+function findReservableActs(){
+  var out=[];
+  DAYS.forEach(function(d,di){
+    (d.acts||[]).forEach(function(a,ai){
+      if(a.note && /reservar/i.test(a.note)){
+        out.push({
+          id: 'itin-'+di+'-'+ai,
+          title: a.n.replace(/^[^\p{L}\p{N}]+/u,'').trim(),
+          date: dayDateStr(di,2026),
+          time: /^\d{1,2}:\d{2}$/.test(a.t) ? a.t : '',
+          location: d.city.split('→')[0].split('—')[0].trim(),
+          notes: a.note.replace(/\s*·?\s*¡reservar!?/i,'').trim(),
+          done: false,
+          source: 'itin'
+        });
+      }
+    });
+  });
+  return out;
+}
+
+async function seedReservations(){
+  try{
+    var existing = await (await fetch('/api/reservations')).json();
+    var existingIds = {}; existing.forEach(function(r){ existingIds[r.id]=true; });
+    var found = findReservableActs();
+    for(var i=0;i<found.length;i++){
+      if(!existingIds[found[i].id]){
+        await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(found[i])});
+      }
+    }
+  }catch(e){ /* sin conexión — se reintenta en el próximo init() */ }
+}
+
+async function loadReservations(){
+  try{
+    var r = await fetch('/api/reservations',{cache:'no-store'});
+    RES_LIST = await r.json();
+  }catch(e){ /* sin conexión — se queda con lo último cargado */ }
+}
+
+function renderResCard(){
+  var sorted = RES_LIST.slice().sort(function(a,b){ return (a.date+a.time).localeCompare(b.date+b.time); });
+  var pending = sorted.filter(function(r){ return !r.done; }).length;
+  var rows = sorted.map(function(r){
+    var d = new Date(r.date+'T12:00:00');
+    var dLbl = d.toLocaleDateString('es-MX',{day:'numeric',month:'short'});
+    var metaParts=[dLbl];
+    if(r.time) metaParts.push(r.time);
+    if(r.location) metaParts.push(r.location);
+    var delBtn = r.source==='custom'
+      ? '<button class="res-del" onclick="deleteReservation('+esc(JSON.stringify(r.id))+')">×</button>'
+      : '';
+    return '<div class="res-row'+(r.done?' done':'')+'">'+
+      '<button class="res-check" onclick="toggleReservation('+esc(JSON.stringify(r.id))+')">'+(r.done?'✓':'')+'</button>'+
+      '<div class="res-body">'+
+        '<div class="res-name">'+esc(r.title)+'</div>'+
+        '<div class="res-meta">'+esc(metaParts.join(' · '))+'</div>'+
+        (r.notes?'<div class="res-notes">'+esc(r.notes)+'</div>':'')+
+      '</div>'+
+      delBtn+
+    '</div>';
+  }).join('');
+  return '<div class="res-card">'+
+    '<div class="res-hd">'+
+      '<span class="res-title-lbl">📌 Reservaciones</span>'+
+      (sorted.length?'<span class="res-count">'+pending+' pendiente'+(pending===1?'':'s')+'</span>':'')+
+    '</div>'+
+    (sorted.length?rows:'<div class="res-empty">Sin reservaciones registradas</div>')+
+    '<button class="res-add-btn" onclick="openResAdd()">+ Agregar reservación</button>'+
+  '</div>';
+}
+
+async function toggleReservation(id){
+  var item = RES_LIST.find(function(r){ return r.id===id; });
+  if(!item) return;
+  item.done = !item.done;
+  renderItin();
+  try{
+    await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
+  }catch(e){ toast('No se pudo guardar — revisa tu conexión.','error'); }
+}
+
+function openResAdd(){
+  document.getElementById('res-title').value='';
+  document.getElementById('res-date').value='';
+  document.getElementById('res-time').value='';
+  document.getElementById('res-location').value='';
+  document.getElementById('res-notes').value='';
+  document.getElementById('res-overlay').classList.add('show');
+  document.getElementById('res-sheet').classList.add('show');
+}
+
+function closeResAdd(){
+  document.getElementById('res-overlay').classList.remove('show');
+  document.getElementById('res-sheet').classList.remove('show');
+}
+
+async function saveResCustom(){
+  var title=document.getElementById('res-title').value.trim();
+  var date=document.getElementById('res-date').value;
+  if(!title || !date){ toast('Falta el título o la fecha.','error'); return; }
+  var item={
+    id: 'custom-'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+    title: title, date: date,
+    time: document.getElementById('res-time').value,
+    location: document.getElementById('res-location').value.trim(),
+    notes: document.getElementById('res-notes').value.trim(),
+    done: false, source: 'custom'
+  };
+  RES_LIST.push(item);
+  closeResAdd();
+  renderItin();
+  try{
+    await fetch('/api/reservations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
+    toast('Reservación agregada.','success');
+  }catch(e){ toast('No se pudo guardar — revisa tu conexión.','error'); }
+}
+
+async function deleteReservation(id){
+  RES_LIST = RES_LIST.filter(function(r){ return r.id!==id; });
+  renderItin();
+  try{
+    await fetch('/api/reservations/'+encodeURIComponent(id),{method:'DELETE'});
+  }catch(e){ toast('No se pudo eliminar — revisa tu conexión.','error'); }
+}
+
 function computeItinStatus(){
   var now = new Date();
   var tripStart = new Date('2026-09-02');
@@ -2851,7 +3011,7 @@ function computeItinStatus(){
 function renderItin(){
   var unlocked=getUnlockIndex();
   var itinStatus=computeItinStatus();
-  document.getElementById('itin-body').innerHTML = DAYS.map(function(d,i){
+  document.getElementById('itin-body').innerHTML = renderResCard() + DAYS.map(function(d,i){
     var clr=DC[i];
     var isLocked=i>unlocked;
     var admin=isAdmin();
@@ -3920,12 +4080,15 @@ async function init(){
   updateNotifStatus();
   loadAllWeather();
   loadFx();
+  seedReservations().then(loadReservations).then(renderItin);
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
     await loadExpenses();
     renderExps();
     renderDash(); renderOps();
+    await loadReservations();
+    renderItin();
   }, 15000);
   if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
     startGeo();
@@ -4071,6 +4234,35 @@ if('serviceWorker' in navigator){
   <div class="bs-footer">
     <button class="bs-logout-btn" onclick="logoutMe()">Cerrar sesión</button>
     <button class="bs-save-btn" onclick="saveMyProfile()">Guardar</button>
+  </div>
+</div>
+
+<!-- RESERVACIONES BOTTOM SHEET -->
+<div class="bs-overlay" id="res-overlay" onclick="closeResAdd()"></div>
+<div class="bottom-sheet" id="res-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Nueva reservación</div>
+      <div class="bs-sub">Con horario, fecha y ubicación</div>
+    </div>
+    <button class="bs-close" onclick="closeResAdd()">&#10005;</button>
+  </div>
+  <div class="me-form">
+    <div class="ef-lbl">¿Qué hay que reservar?</div>
+    <input class="ef-i me-inp" type="text" id="res-title" placeholder="Ej. Cena en Nepenthe">
+    <div class="ef-lbl">Fecha</div>
+    <input class="ef-i me-inp" type="date" id="res-date">
+    <div class="ef-lbl">Hora</div>
+    <input class="ef-i me-inp" type="time" id="res-time">
+    <div class="ef-lbl">Ubicación</div>
+    <input class="ef-i me-inp" type="text" id="res-location" placeholder="Ej. Big Sur, CA">
+    <div class="ef-lbl">Notas (opcional)</div>
+    <input class="ef-i me-inp" type="text" id="res-notes" placeholder="Precio, link, teléfono...">
+  </div>
+  <div class="bs-footer">
+    <button class="bs-add-btn" onclick="closeResAdd()">Cancelar</button>
+    <button class="bs-save-btn" onclick="saveResCustom()">Guardar</button>
   </div>
 </div>
 

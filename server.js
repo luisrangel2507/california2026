@@ -182,16 +182,73 @@ app.post('/api/profiles', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Push diario 10am — cuenta regresiva al viaje ───────────────────────────
+// ── Reservaciones (con horario, fecha y ubicación) ─────────────────────────
+// Combina las que salen del itinerario (auto-sembradas por el cliente, ya
+// que el server no interpreta el arreglo DAYS del front) con las que agregue
+// cualquiera manualmente. Compartidas entre todos.
+const RES_FILE = path.join(DATA_DIR, 'reservations.json');
+let resStore = [];
+try { resStore = JSON.parse(fs.readFileSync(RES_FILE, 'utf8')); } catch (e) {}
+function persistRes() {
+  try { fs.writeFileSync(RES_FILE, JSON.stringify(resStore)); } catch (e) {}
+}
+
+app.get('/api/reservations', (req, res) => res.json(resStore));
+
+app.post('/api/reservations', (req, res) => {
+  const { id, title, date, time, location, notes, done, source } = req.body;
+  if (!title || !date) return res.status(400).json({ error: 'missing fields' });
+  const item = {
+    id: id || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    title, date,
+    time: time || '',
+    location: location || '',
+    notes: notes || '',
+    done: !!done,
+    source: source || 'custom',
+    ts: Date.now()
+  };
+  const idx = resStore.findIndex((r) => r.id === item.id);
+  if (idx === -1) resStore.push(item);
+  else resStore[idx] = Object.assign({}, resStore[idx], item, { ts: resStore[idx].ts });
+  persistRes();
+  res.json({ ok: true, item });
+});
+
+app.delete('/api/reservations/:id', (req, res) => {
+  const idx = resStore.findIndex((r) => r.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  resStore.splice(idx, 1);
+  persistRes();
+  res.json({ ok: true });
+});
+
+// ── Push diario 10am — cuenta regresiva al viaje + recordatorio de reservas ─
 cron.schedule('0 10 * * *', async () => {
   const tripStart = new Date('2026-09-02T00:00:00-06:00');
   const now = new Date();
-  if (now >= tripStart) return;
-  const dLeft = Math.ceil((tripStart - now) / (1000 * 60 * 60 * 24));
-  await sendPushToAll({
-    title: 'Alta Vibra · California 2026',
-    body: `Faltan ${dLeft} día${dLeft === 1 ? '' : 's'} para tu viaje`
+  if (now < tripStart) {
+    const dLeft = Math.ceil((tripStart - now) / (1000 * 60 * 60 * 24));
+    await sendPushToAll({
+      title: 'Alta Vibra · California 2026',
+      body: `Faltan ${dLeft} día${dLeft === 1 ? '' : 's'} para tu viaje`
+    });
+  }
+
+  const soonMs = 5 * 24 * 60 * 60 * 1000;
+  const pending = resStore.filter((r) => {
+    if (r.done) return false;
+    const d = new Date(r.date + 'T12:00:00-06:00');
+    const diff = d - now;
+    return diff > -12 * 60 * 60 * 1000 && diff <= soonMs;
   });
+  if (pending.length) {
+    const names = pending.map((r) => r.title).join(', ');
+    await sendPushToAll({
+      title: 'Alta Vibra · Reservaciones pendientes',
+      body: `Faltan pocos días para: ${names}. ¡Resérvalo antes de que se ocupe!`
+    });
+  }
 }, { timezone: 'America/Mexico_City' });
 
 app.listen(PORT, () => console.log(`Alta Vibra · puerto ${PORT}`));
