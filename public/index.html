@@ -820,6 +820,7 @@
       border: 1px solid rgba(0,229,152,.25); border-radius: 6px;
       cursor: pointer; font-family:'Space Grotesk',sans-serif;
     }
+    .btn-ntfy.on { background: rgba(255,106,80,.1); color: var(--coral); border-color: rgba(255,106,80,.3); }
     .reset-notif {
       font-size: 10px; color: var(--muted); background: none; border: none;
       cursor: pointer; text-decoration: underline; padding: 0;
@@ -1984,6 +1985,7 @@ async function openMyProfile(){
     adminSec.style.display='none';
   }
 
+  updateShareLocBtn();
   document.getElementById('me-overlay').classList.add('show');
   document.getElementById('me-sheet').classList.add('show');
 }
@@ -2554,6 +2556,75 @@ function haversineM(lat1,lon1,lat2,lon2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
+// ── UBICACIÓN EN VIVO DEL GRUPO (opt-in) ────────────────────────────────────
+function isSharingLoc(){ return localStorage.getItem('ca26_share_loc')==='1'; }
+
+function updateShareLocBtn(){
+  var btn=document.getElementById('share-loc-btn');
+  if(!btn) return;
+  var on=isSharingLoc();
+  btn.textContent = on ? 'Desactivar' : 'Activar';
+  btn.classList.toggle('on', on);
+}
+
+function toggleShareLoc(){
+  var on = !isSharingLoc();
+  localStorage.setItem('ca26_share_loc', on?'1':'0');
+  updateShareLocBtn();
+  if(on){
+    if(!geoWatcher) startGeo();
+    toast('Compartiendo tu ubicación con el grupo.','success');
+  } else {
+    var who = meIndex!==null ? persons[parseInt(meIndex)] : null;
+    if(who) fetch('/api/live-locations/'+encodeURIComponent(who),{method:'DELETE'}).catch(function(){});
+    toast('Dejaste de compartir tu ubicación.','success');
+  }
+}
+
+var lastLocBroadcast = 0;
+function maybeBroadcastLoc(lat,lon){
+  if(!isSharingLoc()) return;
+  var now = Date.now();
+  if(now - lastLocBroadcast < 20000) return;
+  lastLocBroadcast = now;
+  var who = meIndex!==null ? persons[parseInt(meIndex)] : null;
+  if(!who) return;
+  fetch('/api/live-locations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who,lat:lat,lon:lon})}).catch(function(){});
+}
+
+var groupMarkers = {};
+async function loadGroupLocations(){
+  if(!mapObj) return;
+  try{
+    var r = await fetch('/api/live-locations',{cache:'no-store'});
+    var data = await r.json();
+    var myName = meIndex!==null ? persons[parseInt(meIndex)] : null;
+    var seen = {};
+    Object.keys(data).forEach(function(name){
+      if(name===myName) return;
+      var loc = data[name];
+      if(!loc || Date.now()-loc.ts > 10*60*1000) return; // ubicación vieja, se ignora
+      seen[name]=true;
+      var pi = persons.indexOf(name);
+      var color = pi>=0 ? PC[pi] : '#999';
+      if(groupMarkers[name]){
+        groupMarkers[name].setLatLng([loc.lat,loc.lon]);
+      } else {
+        var icon = L.divIcon({
+          className:'',
+          html:'<div style="width:16px;height:16px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 0 0 3px '+color+'55,0 2px 8px rgba(0,0,0,.5)"></div>',
+          iconSize:[16,16], iconAnchor:[8,8], popupAnchor:[0,-10],
+        });
+        groupMarkers[name] = L.marker([loc.lat,loc.lon],{icon:icon}).addTo(mapObj)
+          .bindPopup('<div class="pop-name">'+esc(name)+'</div><div class="pop-custom">Ubicación en vivo</div>');
+      }
+    });
+    Object.keys(groupMarkers).forEach(function(name){
+      if(!seen[name]){ mapObj.removeLayer(groupMarkers[name]); delete groupMarkers[name]; }
+    });
+  }catch(e){ /* sin conexión */ }
+}
+
 function startGeo(){
   if(!navigator.geolocation) return;
   if(geoWatcher) navigator.geolocation.clearWatch(geoWatcher);
@@ -2586,6 +2657,7 @@ function startGeo(){
 
       // Auto-update dashboard location to nearest checkpoint
       autoUpdateCp(lat,lon);
+      maybeBroadcastLoc(lat,lon);
 
       document.getElementById('geo-bar').classList.add('show');
     },
@@ -4398,6 +4470,7 @@ async function init(){
   loadFx();
   seedReservations().then(loadReservations).then(renderItin);
   loadCarLoc();
+  loadGroupLocations();
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
@@ -4407,8 +4480,9 @@ async function init(){
     await loadReservations();
     renderItin();
     await loadCarLoc();
+    await loadGroupLocations();
   }, 15000);
-  if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
+  if((typeof Notification!=='undefined'&&Notification.permission==='granted') || isSharingLoc()){
     startGeo();
   }
   // Global 1-minute tick — activity notifications (runs even when not on dash tab)
@@ -4543,6 +4617,14 @@ if('serviceWorker' in navigator){
     <input class="ef-i me-inp" type="text" id="me-ec-name" placeholder="Nombre completo">
     <div class="ef-lbl">Contacto de emergencia — teléfono</div>
     <input class="ef-i me-inp" type="tel" id="me-ec-phone" placeholder="10 dígitos" inputmode="tel">
+
+    <div class="ntfy-row" style="margin-top:10px">
+      <div class="ntfy-status">
+        <span>📍</span>
+        <span>Compartir mi ubicación en vivo con el grupo</span>
+      </div>
+      <button class="btn-ntfy" id="share-loc-btn" onclick="toggleShareLoc()">Activar</button>
+    </div>
 
     <div class="me-admin-sec" id="me-admin-sec" style="display:none">
       <div class="ef-lbl" style="margin-top:6px">Contactos de emergencia — todos (admin)</div>
