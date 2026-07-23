@@ -2438,26 +2438,9 @@ function renderDash(){
 
 // ── ITINERARY ──────────────────────────────────────────────────────────────
 function getUnlockIndex(){
-  var tripStart=new Date('2026-09-02');
-  var tripEnd=new Date('2026-09-12');
-  var now=new Date();
-  if(now>=tripEnd) return DAYS.length-1; // viaje terminó — todo desbloqueado
-  if(now<tripStart) return 0;            // antes del viaje — solo día 1 preview
-
-  // Durante el viaje: desbloqueo SECUENCIAL por GPS
-  // Día N+1 se desbloquea cuando se llega a CUALQUIER lugar del Día N
-  var unlocked=0;
-  for(var i=0;i<DAYS.length-1;i++){
-    var dayNum=i+1; // PLACES.d es 1-indexed; DAYS[i] = día dayNum
-    var dayPlaces=PLACES.filter(function(p){ return p.d===dayNum; });
-    var anyArrived=dayPlaces.some(function(p){ return notified.has(p.n); });
-    if(anyArrived){
-      unlocked=i+1; // desbloquear siguiente día
-    } else {
-      break; // secuencial — no saltar días
-    }
-  }
-  return unlocked;
+  // Todos los días son visibles/expandibles siempre, sin importar el
+  // avance del viaje.
+  return DAYS.length-1;
 }
 
 var actDone = JSON.parse(localStorage.getItem('ca26_done') || '{}');
@@ -2592,9 +2575,10 @@ function renderItin(){
       (isLocked?'':'<div class="day-body">'+acts+addBtn+'</div>')+
       '</div>';
   }).join('');
-  // Auto-open most recent unlocked day
-  if(document.getElementById('dc'+unlocked)){
-    document.getElementById('dc'+unlocked).classList.add('open');
+  // Auto-open the current trip day (or Day 1 before/after the trip)
+  var defaultOpen = (itinStatus.todayIdx>=0 && itinStatus.todayIdx<DAYS.length) ? itinStatus.todayIdx : 0;
+  if(document.getElementById('dc'+defaultOpen)){
+    document.getElementById('dc'+defaultOpen).classList.add('open');
   }
 }
 
