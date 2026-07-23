@@ -3,12 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const webpush = require('web-push');
 const cron = require('node-cron');
+const visaRouter = require('./visa');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_NAME = process.env.ADMIN_NAME || 'Eduardo';
 
 app.use(express.json({ limit: '8mb' }));
+app.use('/api/visa', visaRouter);
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders(res, filePath) {
     if (filePath.endsWith('sw.js')) {
