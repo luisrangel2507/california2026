@@ -182,6 +182,32 @@ app.post('/api/profiles', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── ¿Dónde dejamos el carro? (una sola ubicación compartida) ───────────────
+const CAR_FILE = path.join(DATA_DIR, 'car.json');
+let carLoc = null;
+try { carLoc = JSON.parse(fs.readFileSync(CAR_FILE, 'utf8')); } catch (e) {}
+function persistCar() {
+  try { fs.writeFileSync(CAR_FILE, JSON.stringify(carLoc)); } catch (e) {}
+}
+
+app.get('/api/car', (req, res) => res.json(carLoc));
+
+app.post('/api/car', (req, res) => {
+  const { lat, lon, who } = req.body;
+  if (typeof lat !== 'number' || typeof lon !== 'number') {
+    return res.status(400).json({ error: 'missing coords' });
+  }
+  carLoc = { lat, lon, who: who || '?', ts: Date.now() };
+  persistCar();
+  res.json({ ok: true, carLoc });
+});
+
+app.delete('/api/car', (req, res) => {
+  carLoc = null;
+  persistCar();
+  res.json({ ok: true });
+});
+
 // ── Reservaciones (con horario, fecha y ubicación) ─────────────────────────
 // Combina las que salen del itinerario (auto-sembradas por el cliente, ya
 // que el server no interpreta el arreglo DAYS del front) con las que agregue
