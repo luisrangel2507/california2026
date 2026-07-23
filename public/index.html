@@ -41,6 +41,18 @@
       --gold:   #F5A623;
       --green:  #00E598;
       --red:    #FF5050;
+      --ease:        cubic-bezier(.32,.72,0,1);
+      --ease-spring: cubic-bezier(.34,1.56,.64,1);
+    }
+
+    /* ── PRESS FEEDBACK (motion) ── */
+    .nav-tab, .day-hd, .pick-card, .act-check, .btn-add, .day-add-btn,
+    .pin-key, .dash-edit-btn {
+      transition: transform .12s var(--ease), background .15s, border-color .15s, color .15s;
+    }
+    .nav-tab:active, .day-hd:active, .pick-card:active, .act-check:active,
+    .btn-add:active, .day-add-btn:active, .pin-key:active, .dash-edit-btn:active {
+      transform: scale(.94);
     }
 
     body {
@@ -198,6 +210,8 @@
       transition: stroke .15s;
     }
     .nav-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+    .nav-tab.active svg { animation: navPop .32s var(--ease-spring); }
+    @keyframes navPop { 0% { transform: scale(.75); } 100% { transform: scale(1); } }
     .nav-tab:hover:not(.active) { color: var(--text); }
 
     /* ── VIEWS ── */
@@ -307,10 +321,15 @@
     .day-city { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .day-wd { font-size: 10px; color: var(--muted); margin-top: 1px; letter-spacing: .3px; }
     .day-em { font-size: 16px; flex-shrink: 0; }
-    .day-ch { color: var(--muted); font-size: 14px; flex-shrink: 0; transition: transform .2s; }
+    .day-ch { color: var(--muted); font-size: 14px; flex-shrink: 0; transition: transform .3s var(--ease); }
     .day-card.open .day-ch { transform: rotate(90deg); }
-    .day-body { display: none; border-top: 1px solid var(--border); }
-    .day-card.open .day-body { display: block; }
+    .day-body {
+      display: grid; grid-template-rows: 0fr;
+      transition: grid-template-rows .32s var(--ease);
+    }
+    .day-card.open .day-body { grid-template-rows: 1fr; }
+    .day-body-in { overflow: hidden; min-height: 0; }
+    .day-card.open .day-body-in { border-top: 1px solid var(--border); }
     .act { display: flex; align-items: flex-start; gap: 9px; padding: 9px 13px; border-bottom: 1px solid rgba(255,255,255,.04); transition: background .15s; }
     .act:last-child { border-bottom: none; }
     .act.done { background: rgba(0,229,152,.04); }
@@ -2636,7 +2655,7 @@ function renderItin(){
       '</div>';
     return '<div class="day-card'+(isLocked?' locked':'')+'" id="dc'+i+'">'+
       header+
-      (isLocked?'':'<div class="day-body">'+acts+addBtn+'</div>')+
+      (isLocked?'':'<div class="day-body"><div class="day-body-in">'+acts+addBtn+'</div></div>')+
       '</div>';
   }).join('');
   // Auto-open the current trip day (or Day 1 before/after the trip)
