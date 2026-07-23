@@ -899,6 +899,16 @@
       display:flex; flex-direction:column; gap:6px;
     }
     .me-inp { flex:none; width:100%; margin-bottom:10px; }
+    .me-admin-sec {
+      margin-top:8px; padding-top:12px; border-top:1px solid var(--border);
+    }
+    .me-admin-row {
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:9px 0; border-bottom:1px solid rgba(255,255,255,.05);
+    }
+    .me-admin-row:last-child { border-bottom:none; }
+    .me-admin-name { font-size:12.5px; font-weight:700; flex-shrink:0; }
+    .me-admin-ec { font-size:12px; color:var(--text); text-align:right; }
 
     /* ── LOCKED DAY (itin) ── */
     .day-dot { display:none; }
@@ -1721,7 +1731,12 @@ function showWelcome(i){
 }
 
 // ── MI PERFIL ──────────────────────────────────────────────────────────────
-var PROFILE_DATA = JSON.parse(localStorage.getItem('ca26_profile')||'{}');
+var PROFILE_DATA = {}; // compartido entre todos via /api/profiles
+
+async function loadProfiles(){
+  try{ var r=await fetch('/api/profiles',{cache:'no-store'}); PROFILE_DATA=await r.json(); }
+  catch(e){ PROFILE_DATA=PROFILE_DATA||{}; }
+}
 
 function onAvatarClick(){
   if(meIndex===null){ showProfileScreen(); return; }
@@ -1745,7 +1760,8 @@ document.addEventListener('click', function(e){
   }
 });
 
-function openMyProfile(){
+async function openMyProfile(){
+  await loadProfiles();
   var i=parseInt(meIndex);
   var d=PROFILE_DATA[i]||{};
   document.getElementById('me-title').textContent=persons[i];
@@ -1754,6 +1770,25 @@ function openMyProfile(){
   document.getElementById('me-address').value=d.address||'';
   document.getElementById('me-ec-name').value=d.ecName||'';
   document.getElementById('me-ec-phone').value=d.ecPhone||'';
+
+  var adminSec=document.getElementById('me-admin-sec');
+  if(isAdmin()){
+    adminSec.style.display='';
+    document.getElementById('me-admin-contacts').innerHTML=persons.map(function(p,pi){
+      var pd=PROFILE_DATA[pi]||{};
+      var hasContact=pd.ecName||pd.ecPhone;
+      return '<div class="me-admin-row">'+
+        '<div class="me-admin-name" style="color:'+PC[pi]+'">'+esc(p)+'</div>'+
+        '<div class="me-admin-ec">'+(hasContact
+          ? esc(pd.ecName||'—')+(pd.ecPhone?' · '+esc(pd.ecPhone):'')
+          : '<span style="color:var(--muted)">Sin contacto registrado</span>')+
+        '</div>'+
+      '</div>';
+    }).join('');
+  } else {
+    adminSec.style.display='none';
+  }
+
   document.getElementById('me-overlay').classList.add('show');
   document.getElementById('me-sheet').classList.add('show');
 }
@@ -1763,15 +1798,18 @@ function closeMyProfile(){
   document.getElementById('me-sheet').classList.remove('show');
 }
 
-function saveMyProfile(){
+async function saveMyProfile(){
   var i=parseInt(meIndex);
-  PROFILE_DATA[i]={
+  var data={
     birth: document.getElementById('me-birth').value,
     address: document.getElementById('me-address').value,
     ecName: document.getElementById('me-ec-name').value,
     ecPhone: document.getElementById('me-ec-phone').value
   };
-  localStorage.setItem('ca26_profile', JSON.stringify(PROFILE_DATA));
+  PROFILE_DATA[i]=data;
+  try{
+    await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:data})});
+  }catch(e){ toast('No se pudo guardar tu perfil — revisa tu conexión.','error'); }
   closeMyProfile();
 }
 
@@ -3700,6 +3738,11 @@ if('serviceWorker' in navigator){
     <input class="ef-i me-inp" type="text" id="me-ec-name" placeholder="Nombre completo">
     <div class="ef-lbl">Contacto de emergencia — teléfono</div>
     <input class="ef-i me-inp" type="tel" id="me-ec-phone" placeholder="10 dígitos" inputmode="tel">
+
+    <div class="me-admin-sec" id="me-admin-sec" style="display:none">
+      <div class="ef-lbl" style="margin-top:6px">Contactos de emergencia — todos (admin)</div>
+      <div id="me-admin-contacts"></div>
+    </div>
   </div>
   <div class="bs-footer">
     <button class="bs-logout-btn" onclick="logoutMe()">Cerrar sesión</button>
