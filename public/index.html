@@ -412,6 +412,17 @@
     .act.st-past:not(.done) { border-left: 3px solid #00E598; background: rgba(0,229,152,.05); padding-left: 10px; }
     .act-t { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted); min-width: 36px; padding-top: 3px; flex-shrink: 0; }
     .act-dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+    /* El mismo número que lleva el pin en el mapa, para poder cruzarlos */
+    .act-num {
+      width: 19px; height: 19px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700;
+      color: #fff; background: #7C8DA6; border: 1px solid transparent;
+    }
+    .act-num.done  { background: #00C77E; }
+    .act-num.guess { background: #E0921A; }
+    /* Sin pin: hueco, porque ese número no está en el mapa */
+    .act-num.nopin { background: transparent; border: 1px dashed rgba(255,255,255,.25); color: var(--muted); }
     .act-body { flex: 1; min-width: 0; }
     .act-n { font-size: 12.5px; font-weight: 500; line-height: 1.3; }
     .act-note { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
@@ -3775,7 +3786,7 @@ function renderGeoFixList(){
     return '<div class="gfx-row">'+
       '<div class="gfx-top">'+
         '<span class="gfx-badge '+(falta?'miss':'guess')+'">'+(falta?'SIN PIN':'ADIVINADA')+'</span>'+
-        '<span class="gfx-where">DÍA '+(r.di+1)+' · '+esc(d.date)+(a.t?' · '+esc(a.t):'')+'</span>'+
+        '<span class="gfx-where">#'+globalActNumber(r.di,r.ai)+' · DÍA '+(r.di+1)+' · '+esc(d.date)+(a.t?' · '+esc(a.t):'')+'</span>'+
       '</div>'+
       '<div class="gfx-name">'+esc(a.n)+'</div>'+
       verDonde+
@@ -3846,7 +3857,13 @@ function renderItin(){
         else if(ai===itinStatus.curActIdx) status='current';
         else if(ai===itinStatus.curActIdx+1) status='next';
       }
-      var dotClr = status==='current' ? '#00C8FF' : status==='next' ? '#F5A623' : status==='past' ? '#00E598' : clr;
+      // El número es el mismo del pin en el mapa, y su color dice en qué
+      // estado está esa ubicación: ubicada, adivinada o todavía sin pin.
+      var num = globalActNumber(i, ai);
+      var numCls = !a.c ? 'nopin' : done ? 'done' : actPinGuessed(a) ? 'guess' : '';
+      var numTit = !a.c ? 'Todavía no aparece en el mapa'
+        : actPinGuessed(a) ? 'Pin #'+num+' — lo ubiqué por el nombre, verifícalo'
+        : 'Pin #'+num+' en el mapa';
       var mapsUrl = a.g || ('https://www.google.com/maps/search/?api=1&query='+
         encodeURIComponent(a.n.replace(/^[^\p{L}\p{N}]+/u,'').trim()+', '+d.city.split('→')[0].trim()));
       var mapsBtn = '<a class="act-map" href="'+esc(mapsUrl)+'" target="_blank" onclick="event.stopPropagation()">📍</a>';
@@ -3855,7 +3872,7 @@ function renderItin(){
         : '';
       return '<div class="act'+(done?' done':'')+' st-'+status+'" id="act-'+key+'">'+
         '<div class="act-t">'+esc(a.t)+'</div>'+
-        '<div class="act-dot" style="background:'+dotClr+';margin-top:6px"></div>'+
+        '<div class="act-num '+numCls+'" title="'+numTit+'">'+num+'</div>'+
         '<div class="act-body"><div class="act-n">'+esc(a.n)+'</div>'+
         (a.note?'<div class="act-note">'+esc(a.note)+'</div>':'')+
         '</div>'+
