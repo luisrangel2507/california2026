@@ -234,6 +234,51 @@ app.post('/api/translate', async (req, res) => {
   res.status(502).json({ error: 'translation unavailable' });
 });
 
+// ── Itinerario compartido (título del día + actividades) ───────────────────
+// Antes esto vivía solo en el localStorage de cada teléfono, así que lo que
+// el admin armaba no lo veía nadie más. Ahora es del servidor, como los
+// gastos y las reservaciones.
+const ITIN_FILE = path.join(DATA_DIR, 'itinerary.json');
+let itinStore = {};   // { "0": { city, acts:[...] }, ... }
+try { itinStore = JSON.parse(fs.readFileSync(ITIN_FILE, 'utf8')); } catch (e) {}
+function persistItin() {
+  try { fs.writeFileSync(ITIN_FILE, JSON.stringify(itinStore)); } catch (e) {}
+}
+
+app.get('/api/itinerary', (req, res) => res.json(itinStore));
+
+app.post('/api/itinerary', (req, res) => {
+  const { idx, city, acts, who } = req.body || {};
+  const i = parseInt(idx, 10);
+  if (!Number.isInteger(i) || i < 0 || i > 60) {
+    return res.status(400).json({ error: 'bad day index' });
+  }
+  if (who !== ADMIN_NAME) {
+    return res.status(403).json({ error: 'solo el admin puede editar el itinerario' });
+  }
+  const entry = itinStore[i] || {};
+  if (typeof city === 'string') entry.city = city.slice(0, 120);
+  if (Array.isArray(acts)) {
+    entry.acts = acts.slice(0, 60).map((a) => {
+      const out = {
+        t: typeof a.t === 'string' ? a.t.slice(0, 12) : '',
+        n: typeof a.n === 'string' ? a.n.slice(0, 160) : '',
+        note: typeof a.note === 'string' ? a.note.slice(0, 240) : '',
+      };
+      if (typeof a.g === 'string' && a.g) out.g = a.g.slice(0, 500);
+      // Coordenadas solo si son números válidos
+      if (Array.isArray(a.c) && a.c.length === 2 &&
+          typeof a.c[0] === 'number' && typeof a.c[1] === 'number') {
+        out.c = [a.c[0], a.c[1]];
+      }
+      return out;
+    });
+  }
+  itinStore[i] = entry;
+  persistItin();
+  res.json({ ok: true, entry });
+});
+
 // ── Ubicación en vivo del grupo (opt-in por persona) ───────────────────────
 const LIVELOC_FILE = path.join(DATA_DIR, 'live-locations.json');
 let liveLocStore = {};
