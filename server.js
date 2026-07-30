@@ -375,6 +375,29 @@ function mapsHeaders(ua, conCookie) {
   return h;
 }
 
+// Muchos links cortos acaban en una URL así:
+//   https://www.google.com/maps?q=418+Pier+Ave,+Hermosa+Beach,+CA&ftid=0x80c2...
+// Sin coordenadas, pero con la dirección completa que Google mismo resolvió
+// para ese lugar. Buscar esa dirección es exacto: no es adivinar por el nombre
+// de la actividad, es la dirección del sitio que el usuario eligió.
+function addressFromMapsUrl(url) {
+  let u;
+  try { u = new URL(url); } catch (e) { return null; }
+  for (const k of ['q', 'query', 'destination', 'daddr']) {
+    const v = u.searchParams.get(k);
+    if (!v) continue;
+    let t = v.trim();
+    // Si ya son coordenadas, de eso se encarga coordsFromMapsUrl
+    if (/^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(t)) continue;
+    if (t.length < 4) continue;
+    // Google la devuelve en el idioma de la petición: "EE. UU." no lo entienden
+    // los buscadores, "USA" sí.
+    t = t.replace(/,?\s*EE\.?\s*UU\.?\s*$/i, ', USA');
+    return t.slice(0, 200);
+  }
+  return null;
+}
+
 // Un solo recorrido de la cadena de redirecciones con un User-Agent dado. La
 // coordenada puede aparecer en cualquier paso: en una redirección intermedia,
 // en la URL final o dentro del HTML.
@@ -390,21 +413,21 @@ async function seguirCadena(url, ua, note, conCookie) {
       });
     } catch (e) {
       note('no se pudo abrir el link: ' + (e && e.message ? e.message : e));
-      return null;
+      return { url: actual };
     }
 
     const loc = r.headers.get('location');
     if (r.status >= 300 && r.status < 400 && loc) {
       actual = new URL(loc, actual).toString();
       const c = coordsFromMapsUrl(actual);
-      if (c) return c;
+      if (c) return { c };
       continue;
     }
-    if (!r.ok) { note('Google respondió ' + r.status); return null; }
+    if (!r.ok) { note('Google respondió ' + r.status); return { url: actual }; }
 
     const html = await r.text().catch(() => '');
     const c = coordsFromMapsHtml(html);
-    if (c) return c;
+    if (c) return { c };
 
     // A veces la redirección viene dentro de la página, no en la cabecera
     const dentro = html.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]*?url=([^"'>\s]+)/i)
@@ -421,26 +444,31 @@ async function seguirCadena(url, ua, note, conCookie) {
             ? ', parece pantalla de consentimiento o bloqueo' : '') +
          (/comgooglemaps:|intent:\/\/|itms-apps/i.test(html.slice(0, 5000))
             ? ', es la página para abrir la app' : '') + ')');
-    return null;
+    return { url: actual };
   }
   note('demasiadas redirecciones');
-  return null;
+  return { url: actual };
 }
 
+// Devuelve {c:[lat,lon]} si sacó la coordenada, {addr:'...'} si lo único que
+// consiguió fue la dirección del lugar, o null.
 async function resolveMapsUrl(url, diag) {
   const direct = coordsFromMapsUrl(url);
-  if (direct) return direct;
+  if (direct) return { c: direct };
+  const dirEnLink = addressFromMapsUrl(url);
   if (!/^https?:\/\//i.test(url)) {
     if (diag) diag.push('no es un link');
     return null;
   }
+  let addr = dirEnLink;
   for (const [nombre, ua, conCookie] of MAPS_UAS) {
     const pasos = [];
-    const c = await seguirCadena(url, ua, (m) => pasos.push(m), conCookie);
-    if (c) return c;
+    const res = await seguirCadena(url, ua, (m) => pasos.push(m), conCookie);
+    if (res && res.c) return { c: res.c };
+    if (!addr && res && res.url) addr = addressFromMapsUrl(res.url);
     if (diag) diag.push('como ' + nombre + ': ' + (pasos[0] || 'sin resultado'));
   }
-  return null;
+  return addr ? { addr } : null;
 }
 
 // Lo que se pega en el campo de ubicación no siempre es un link: puede ser la
@@ -494,6 +522,32 @@ async function geoPhoton(q) {
 
 const GEO_PROVIDERS = [['nominatim', geoNominatim], ['photon', geoPhoton]];
 
+// Busca una dirección con los dos proveedores. Se usa tanto para lo que pega
+// el usuario a mano como para la dirección que deja el link de Maps.
+async function buscarDireccion(addr, tried) {
+  const queries = [addr];
+  if (!/(?:^|[\s,])(?:usa|united states|california|ca)(?:[\s,.]|$)/i.test(addr)) {
+    queries.push(addr + ', California, USA');
+  }
+  for (const [pname, pfn] of GEO_PROVIDERS) {
+    if (geoIsDown(pname)) { tried.push(pname + ' omitido (falló hace poco)'); continue; }
+    for (const q of queries) {
+      const key = 'q:' + pname + ':' + q.toLowerCase();
+      if (geoCache[key]) return geoCache[key];
+      try {
+        const c = await geoThrottle(() => pfn(q), pname);
+        if (c) { geoCache[key] = c; persistGeo(); return c; }
+        tried.push(pname + ' sin resultados: ' + q);
+      } catch (e) {
+        tried.push(pname + ' ERROR: ' + (e && e.message ? e.message : e));
+        geoDown[pname] = Date.now();   // se apaga un rato
+        break;
+      }
+    }
+  }
+  return null;
+}
+
 app.post('/api/geocode', async (req, res) => {
   const { mapsUrl } = req.body || {};
 
@@ -511,8 +565,23 @@ app.post('/api/geocode', async (req, res) => {
     const key = 'url:' + hint.value;
     if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
     const diag = [];
-    const c = await geoThrottle(() => resolveMapsUrl(hint.value, diag), 'maps');
-    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
+    const r = await geoThrottle(() => resolveMapsUrl(hint.value, diag), 'maps');
+    if (r && r.c) { geoCache[key] = r.c; persistGeo(); return res.json({ c: r.c, source: 'maps' }); }
+
+    // El link no soltó coordenadas pero sí la dirección del lugar: se busca esa.
+    if (r && r.addr) {
+      const c = await buscarDireccion(r.addr, diag);
+      if (c) {
+        geoCache[key] = c; persistGeo();
+        return res.json({ c, source: 'maps-dir', addr: r.addr });
+      }
+      return res.status(404).json({
+        error: 'not found',
+        why: 'el link apunta a «' + r.addr + '» pero no encontré esa dirección',
+        tried: diag,
+      });
+    }
+
     return res.status(404).json({
       error: 'not found',
       why: diag[0] || 'el link no soltó coordenadas',
@@ -520,34 +589,12 @@ app.post('/api/geocode', async (req, res) => {
     });
   }
 
-  // Dirección: se busca tal cual. Se le agrega el estado y el país sólo si no
-  // los trae ya.
-  const addr = hint.value;
-  const queries = [addr];
-  if (!/(?:^|[\s,])(?:usa|united states|ee\.?\s?uu\.?|california|ca)(?:[\s,]|$)/i.test(addr)) {
-    queries.push(addr + ', California, USA');
-  }
-
-  // Se guarda el motivo real del fallo: sin esto, un 404 no distingue entre
-  // "no existe la dirección" y "el proveedor nos está bloqueando".
+  // Dirección pegada a mano: mismo camino
+  const c = await buscarDireccion(hint.value, []);
+  if (c) return res.json({ c, source: 'dir' });
   const tried = [];
-  for (const [pname, pfn] of GEO_PROVIDERS) {
-    if (geoIsDown(pname)) { tried.push(pname + ' omitido (falló hace poco)'); continue; }
-    for (const q of queries) {
-      const key = 'q:' + pname + ':' + q.toLowerCase();
-      if (geoCache[key]) return res.json({ c: geoCache[key], source: pname, cached: true });
-      try {
-        const c = await geoThrottle(() => pfn(q), pname);
-        if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: pname, q }); }
-        tried.push(pname + ' sin resultados: ' + q);
-      } catch (e) {
-        tried.push(pname + ' ERROR: ' + (e && e.message ? e.message : e));
-        geoDown[pname] = Date.now();   // se apaga un rato
-        break;
-      }
-    }
-  }
-  res.status(404).json({ error: 'not found', tried });
+  await buscarDireccion(hint.value, tried);
+  res.status(404).json({ error: 'not found', why: tried[0], tried });
 });
 
 // Diagnóstico: dice si los proveedores responden desde este servidor. Nominatim
