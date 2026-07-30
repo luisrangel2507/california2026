@@ -2743,15 +2743,13 @@ function renderDash(){
   var mm = String(now.getMinutes()).padStart(2,'0');
   var timeStr = hh+':'+mm;
 
-  var cp = CHECKPOINTS[cpIndex]||CHECKPOINTS[0];
-
   // ── Photo hero card
   var ambientHTML =
     '<div class="dash-photo-hero">'+
       '<div class="dash-photo-overlay"></div>'+
       '<div class="dash-hero-logo"><img src="logo-altavibra.png" alt="Alta Vibra"></div>'+
       '<div class="dash-photo-content">'+
-        '<div class="dash-photo-city">'+cp.emoji+'&nbsp;'+esc(cp.label)+'</div>'+
+        '<div class="dash-photo-city">La hora es:</div>'+
         '<div class="dash-photo-time">'+timeStr+'</div>'+
       '</div>'+
     '</div>';
