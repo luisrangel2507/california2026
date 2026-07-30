@@ -313,31 +313,39 @@ function coordsFromMapsUrl(text) {
 // Google le sirve una página distinta (o de consentimiento) a los clientes que
 // no parecen navegador, y ahí no vienen las coordenadas. Por eso aquí sí se usa
 // un User-Agent de navegador, a diferencia de las llamadas a los buscadores.
-const MAPS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
-  'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
-const MAPS_HEADERS = {
-  'User-Agent': MAPS_UA,
-  'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
-  'Accept': 'text/html,application/xhtml+xml',
-};
+// A un navegador de celular, maps.app.goo.gl le contesta con una página para
+// abrir la app de Maps, no con la ficha web — y ahí no hay coordenadas por
+// ningún lado. Con un navegador de escritorio la redirección sí lleva a la
+// ficha completa. Se intentan los dos, empezando por el de escritorio.
+const MAPS_UAS = [
+  ['escritorio', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+    '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'],
+  ['celular', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
+    'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'],
+];
 
-// Los links cortos de Maps redirigen varias veces, y la coordenada puede
-// aparecer en cualquier paso: en una redirección intermedia, en la URL final o
-// dentro del HTML. Se sigue la cadena a mano para poder mirar cada uno y, sobre
-// todo, para poder decir en qué punto se perdió — antes fallaba en silencio.
-async function resolveMapsUrl(url, diag) {
-  const note = (m) => { if (diag) diag.push(m); };
-  const direct = coordsFromMapsUrl(url);
-  if (direct) return direct;
-  if (!/^https?:\/\//i.test(url)) { note('no es un link'); return null; }
+function mapsHeaders(ua) {
+  return {
+    'User-Agent': ua,
+    // En inglés y con la cookie de consentimiento ya puesta: en español y sin
+    // ella, Google mete la pantalla de "acepta las cookies" antes del mapa.
+    'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
+    'Accept': 'text/html,application/xhtml+xml',
+    'Cookie': 'CONSENT=YES+cb; SOCS=CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwNzA5LjA3X3AxGgJlbiADGgYIgLD_tQY',
+  };
+}
 
+// Un solo recorrido de la cadena de redirecciones con un User-Agent dado. La
+// coordenada puede aparecer en cualquier paso: en una redirección intermedia,
+// en la URL final o dentro del HTML.
+async function seguirCadena(url, ua, note) {
   let actual = url;
   for (let salto = 0; salto < 6; salto++) {
     let r;
     try {
       r = await fetch(actual, {
         redirect: 'manual',
-        headers: MAPS_HEADERS,
+        headers: mapsHeaders(ua),
         signal: AbortSignal.timeout(12000),
       });
     } catch (e) {
@@ -364,16 +372,34 @@ async function resolveMapsUrl(url, diag) {
       || html.match(/<link[^>]+rel=["']?canonical["']?[^>]+href=["']([^"']+)["']/i);
     if (dentro && salto < 5) {
       const sig = new URL(dentro[1].replace(/&amp;/g, '&'), actual).toString();
-      if (sig !== actual) { actual = sig; continue; }
+      if (sig !== actual && /^https?:/i.test(sig)) { actual = sig; continue; }
     }
 
-    note('el link abre en ' + actual.slice(0, 90) +
-         ' pero esa página no trae coordenadas (' + html.length + ' bytes' +
-         (/consent|sorry\/index|captcha/i.test(actual + html.slice(0, 2000))
-            ? ', parece pantalla de consentimiento o bloqueo' : '') + ')');
+    note('acabó en ' + actual.slice(0, 90) + ' y esa página no trae coordenadas (' +
+         html.length + ' bytes' +
+         (/consent|sorry\/index|captcha/i.test(actual + html.slice(0, 3000))
+            ? ', parece pantalla de consentimiento o bloqueo' : '') +
+         (/comgooglemaps:|intent:\/\/|itms-apps/i.test(html.slice(0, 5000))
+            ? ', es la página para abrir la app' : '') + ')');
     return null;
   }
   note('demasiadas redirecciones');
+  return null;
+}
+
+async function resolveMapsUrl(url, diag) {
+  const direct = coordsFromMapsUrl(url);
+  if (direct) return direct;
+  if (!/^https?:\/\//i.test(url)) {
+    if (diag) diag.push('no es un link');
+    return null;
+  }
+  for (const [nombre, ua] of MAPS_UAS) {
+    const pasos = [];
+    const c = await seguirCadena(url, ua, (m) => pasos.push(m));
+    if (c) return c;
+    if (diag) diag.push('como ' + nombre + ': ' + (pasos[0] || 'sin resultado'));
+  }
   return null;
 }
 
