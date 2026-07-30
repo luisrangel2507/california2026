@@ -3556,6 +3556,7 @@ async function migrateLocalItinerary(){
 // cuanto cada una se ubica, sin esperar a que terminen todas.
 var geoBusy = false;
 
+var geoLastFail = '';   // por qué falló la última, para poder avisar bien
 async function geocodeAct(dayIdx, actIdx){
   var a = DAYS[dayIdx] && DAYS[dayIdx].acts[actIdx];
   if(!a || a.c) return false;
@@ -3564,12 +3565,18 @@ async function geocodeAct(dayIdx, actIdx){
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ name:a.n, city:DAYS[dayIdx].city, mapsUrl:a.g||'' })
     });
-    if(!r.ok) return false;
-    var j = await r.json();
-    if(!j.c) return false;
+    var j = await r.json().catch(function(){ return {}; });
+    if(!r.ok || !j.c){
+      // Si los proveedores devolvieron error (no "sin resultados"), es un
+      // problema del servicio, no del nombre del lugar.
+      var t = (j.tried||[]).join(' | ');
+      if(/ERROR/.test(t)) geoLastFail = 'servicio';
+      else if(!geoLastFail) geoLastFail = 'nombre';
+      return false;
+    }
     a.c = j.c;
     return true;
-  }catch(e){ return false; }
+  }catch(e){ geoLastFail = 'red'; return false; }
 }
 
 // Recorre las actividades sin coordenada y las va ubicando de una en una,
@@ -3602,8 +3609,16 @@ async function locateMissingCoords(opts){
   // Se guarda una sola vez por día, no por actividad
   for(var k in touched){ if(touched.hasOwnProperty(k)) await saveItinDay(parseInt(k,10)); }
   geoBusy = false;
-  if(ok) toast(ok+' actividad'+(ok===1?'':'es')+' ubicada'+(ok===1?'':'s')+' en el mapa.','success');
-  else if(opts && opts.loud) toast('No se pudo ubicar ninguna. Prueba pegando el link de Google Maps.','error');
+  if(ok){
+    toast(ok+' actividad'+(ok===1?'':'es')+' ubicada'+(ok===1?'':'s')+' en el mapa.','success');
+  } else if(opts && opts.loud){
+    toast(
+      geoLastFail==='servicio' ? 'El buscador de lugares no responde ahora. Intenta más tarde o pega el link de Google Maps.' :
+      geoLastFail==='red'      ? 'Sin conexión con el servidor.' :
+      'No encontré esos lugares por su nombre. Edita la actividad y pega el link de Google Maps.',
+    'error');
+  }
+  geoLastFail = '';
 }
 
 function renderItin(){
