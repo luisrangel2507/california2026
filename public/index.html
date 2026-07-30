@@ -1099,13 +1099,14 @@
       border-radius:6px; padding:5px 7px;
     }
     .gfx-inp { width:100%; font-size:11px; padding:8px 10px; }
+    /* Lo manual es el respaldo: se ve como un enlace, no compite con el campo */
+    .gfx-alt { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     .gfx-pick {
-      align-self:flex-start; background:rgba(0,229,197,.09);
-      border:1px solid rgba(0,229,197,.3); border-radius:8px; color:#00E5C5;
-      font-family:'Space Grotesk',sans-serif; font-size:11.5px; font-weight:600;
-      padding:6px 11px; cursor:pointer;
+      background:none; border:none; padding:0; cursor:pointer; color:#00E5C5;
+      font-family:'Space Grotesk',sans-serif; font-size:10.5px;
+      text-decoration:underline; text-underline-offset:2px;
     }
-    .gfx-pick:active { background:rgba(0,229,197,.2); }
+    .gfx-pick:active { opacity:.6; }
     /* Barra de "toca el mapa" */
     #pinpick-bar {
       position:absolute; left:10px; right:10px; top:10px; z-index:1200;
@@ -3923,12 +3924,14 @@ function renderGeoFixList(){
       '</div>'+
       '<div class="gfx-name">'+esc(a.n)+'</div>'+
       porque+
-      verDonde+
-      '<button class="gfx-pick" onclick="startPinPick('+r.di+','+r.ai+')">'+
-        '📍 '+(puesta?'Está mal — moverlo a mano':'Ponerlo a mano en el mapa')+'</button>'+
       '<input class="ied-maps gfx-inp" type="text" value="'+esc(r.g)+'" '+
-        'placeholder="Pega el link de Google Maps o la dirección" '+
+        'placeholder="Pega aquí el link de Google Maps" '+
         'oninput="gfxRows['+i+'].g=this.value">'+
+      '<div class="gfx-alt">'+
+        verDonde+
+        '<button class="gfx-pick" onclick="startPinPick('+r.di+','+r.ai+')">'+
+          (puesta?'está mal, moverlo a mano':'o ponerlo a mano en el mapa')+'</button>'+
+      '</div>'+
       '</div>';
   }).join('');
 }
@@ -5952,9 +5955,9 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeGeoFix()">&#10005;</button>
   </div>
   <div class="gfx-tip">
-    Lo más seguro: en Google Maps deja apretado el lugar hasta que salga el pin
-    rojo, copia las coordenadas de arriba (<span class="gfx-tip-ej">34.0522, -118.2437</span>)
-    y pégalas aquí — se ubican al instante. O ponlo tú mismo tocando el mapa.
+    Pega el link de Google Maps de cada lugar y dale a Guardar y ubicar — con eso
+    basta. Si alguno se resiste, también sirve pegar las coordenadas
+    (<span class="gfx-tip-ej">34.0522, -118.2437</span>) o ponerlo a mano en el mapa.
   </div>
   <div class="ied-list" id="gfx-list"></div>
   <div class="bs-footer">
