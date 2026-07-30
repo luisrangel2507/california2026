@@ -1099,31 +1099,7 @@
       border-radius:6px; padding:5px 7px;
     }
     .gfx-inp { width:100%; font-size:11px; padding:8px 10px; }
-    /* Lo manual es el respaldo: se ve como un enlace, no compite con el campo */
-    .gfx-alt { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-    .gfx-pick {
-      background:none; border:none; padding:0; cursor:pointer; color:#00E5C5;
-      font-family:'Space Grotesk',sans-serif; font-size:10.5px;
-      text-decoration:underline; text-underline-offset:2px;
-    }
-    .gfx-pick:active { opacity:.6; }
-    /* Barra de "toca el mapa" */
-    #pinpick-bar {
-      position:absolute; left:10px; right:10px; top:10px; z-index:1200;
-      display:none; align-items:center; gap:10px; padding:11px 13px;
-      border-radius:13px; background:rgba(8,14,26,.94);
-      border:1px solid rgba(0,229,197,.4); box-shadow:0 8px 26px rgba(0,0,0,.5);
-      backdrop-filter:blur(10px);
-    }
-    #pinpick-bar.show { display:flex; }
-    .pp-txt { flex:1; min-width:0; font-size:12px; line-height:1.35; color:var(--txt); }
-    .pp-txt b { color:#00E5C5; display:block; font-size:12.5px; }
-    .pp-cancel {
-      flex-shrink:0; background:none; border:1px solid rgba(255,255,255,.18);
-      border-radius:8px; color:var(--muted); font-size:11px; padding:6px 10px;
-      font-family:'Space Grotesk',sans-serif; cursor:pointer;
-    }
-    .leaflet-container.picking { cursor:crosshair; }
+
     .gfx-tip {
       margin:0 16px 4px; padding:9px 11px; border-radius:9px; font-size:11.5px;
       line-height:1.4; color:var(--muted);
@@ -1949,10 +1925,6 @@
 <!-- MAP -->
 <div id="view-map" class="view">
   <div id="map"></div>
-  <div id="pinpick-bar">
-    <div class="pp-txt"><b id="pinpick-name"></b>Toca en el mapa dónde va.</div>
-    <button class="pp-cancel" onclick="cancelPinPick()">Cancelar</button>
-  </div>
   <div class="ops-map-chip" id="ops-map-chip" style="display:none">
     <div class="ops-chip-dot"></div>
     <div class="ops-chip-txt" id="ops-chip-txt">—</div>
@@ -2605,11 +2577,6 @@ function initMap(){
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
     attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd'
   }).addTo(mapObj);
-
-  // Tocar el mapa mientras se está poniendo un pin a mano
-  mapObj.on('click', function(e){
-    if(pinPick) pinPickAt(e.latlng.lat, e.latlng.lng);
-  });
 
   renderPlaceMarkers();
   updateMapDlStatus();
@@ -3722,9 +3689,12 @@ function coordsFromPasted(txt){
   return null;
 }
 
-async function geocodeAct(dayIdx, actIdx){
+async function geocodeAct(dayIdx, actIdx, opts){
   var a = DAYS[dayIdx] && DAYS[dayIdx].acts[actIdx];
-  if(!a || a.c) return false;
+  if(!a) return false;
+  // Con force se vuelve a resolver aunque ya tenga coordenada: sirve para
+  // cuando cambian el link y hay que ubicarlo de nuevo.
+  if(a.c && !(opts && opts.force)) return false;
   // Sin ubicación pegada no se ubica nada. Antes se adivinaba por el nombre y
   // el pin acababa donde fuera: "Comida en Rockefeller" cayó en Irvine.
   if(!(a.g||'').trim()) return false;
@@ -3750,34 +3720,6 @@ async function geocodeAct(dayIdx, actIdx){
     delete a._why;
     return true;
   }catch(e){ geoLastFail = 'red'; a._why = 'sin conexión con el servidor'; return false; }
-}
-
-// Un pin de un itinerario viejo que se sacó del nombre: no tiene ubicación
-// pegada, así que no pudo salir de otro lado. Ya no se generan, pero hay que
-// poder reconocer los que quedaron guardados.
-function actPinGuessed(a){
-  if(!a || !a.c) return false;
-  return a.cs ? a.cs === 'nombre' : !a.g;
-}
-
-// Los pins que quedaron de cuando se adivinaba por el nombre no cumplen la
-// regla de ahora, y uno de ellos estaba en otra ciudad. Se quitan una sola vez
-// para que el mapa muestre nada más lo que salió de Google Maps.
-async function dropGuessedPins(){
-  if(!isAdmin()) return;
-  var dias = {}, n = 0;
-  DAYS.forEach(function(d,di){
-    (d.acts||[]).forEach(function(a){
-      if(!actPinGuessed(a)) return;
-      delete a.c; delete a.cs;
-      dias[di] = true; n++;
-    });
-  });
-  if(!n) return;
-  renderItin(); renderPlaceMarkers();
-  for(var k in dias){ if(dias.hasOwnProperty(k)) await saveItinDay(parseInt(k,10)); }
-  toast('Quité '+n+' pin'+(n===1?'':'s')+' que había adivinado por el nombre. '+
-        'Pégales el link de Google Maps.','error');
 }
 
 // Recorre las actividades sin coordenada y las va ubicando de una en una,
@@ -3872,41 +3814,6 @@ function closeGeoFix(){
   document.getElementById('gfx-sheet').classList.remove('show');
 }
 
-// Poner el pin a mano sobre el mapa. Es el único camino que no depende de que
-// Google nos deje leer sus páginas: el usuario toca dónde va y ya.
-var pinPick = null;   // {di, ai} mientras se está escogiendo
-
-function startPinPick(di, ai){
-  var a = DAYS[di] && DAYS[di].acts[ai];
-  if(!a) return;
-  pinPick = {di:di, ai:ai};
-  closeGeoFix();
-  go('map', document.querySelectorAll('.nav-tab')[1]);
-  document.getElementById('pinpick-bar').classList.add('show');
-  document.getElementById('pinpick-name').textContent = a.n;
-  if(mapObj) mapObj.getContainer && mapObj.getContainer().classList.add('picking');
-}
-
-function cancelPinPick(){
-  pinPick = null;
-  document.getElementById('pinpick-bar').classList.remove('show');
-  if(mapObj && mapObj.getContainer) mapObj.getContainer().classList.remove('picking');
-}
-
-async function pinPickAt(lat, lon){
-  if(!pinPick) return;
-  var di = pinPick.di, ai = pinPick.ai;
-  var a = DAYS[di] && DAYS[di].acts[ai];
-  cancelPinPick();
-  if(!a) return;
-  a.c = [lat, lon];
-  a.cs = 'link';           // la puso una persona: cuenta como confirmada
-  delete a._why;
-  renderPlaceMarkers(); renderItin();
-  await saveItinDay(di);
-  toast('«'+a.n+'» quedó en el mapa.','success');
-}
-
 function renderGeoFixList(){
   document.getElementById('gfx-list').innerHTML = gfxRows.map(function(r,i){
     var d = DAYS[r.di], a = d.acts[r.ai];
@@ -3927,35 +3834,38 @@ function renderGeoFixList(){
       '<input class="ied-maps gfx-inp" type="text" value="'+esc(r.g)+'" '+
         'placeholder="Pega aquí el link de Google Maps" '+
         'oninput="gfxRows['+i+'].g=this.value">'+
-      '<div class="gfx-alt">'+
-        verDonde+
-        '<button class="gfx-pick" onclick="startPinPick('+r.di+','+r.ai+')">'+
-          (puesta?'está mal, moverlo a mano':'o ponerlo a mano en el mapa')+'</button>'+
-      '</div>'+
+      verDonde+
       '</div>';
   }).join('');
 }
 
 async function saveGeoFix(){
-  var dias = {};
+  var cambiadas = [], dias = {};
   gfxRows.forEach(function(r){
     var link = (r.g||'').trim();
     if(link === (r._g0||'')) return;      // ese no lo tocaron
     var a = DAYS[r.di].acts[r.ai];
     if(link) a.g = link; else delete a.g;
-    // Se tira lo que había: la coordenada vieja apunta al lugar anterior
-    delete a.c; delete a.cs; delete a._why;
-    dias[r.di] = true;
+    delete a._why;
+    cambiadas.push(r); dias[r.di] = true;
   });
   closeGeoFix();
-  var cambiados = Object.keys(dias);
+
+  // Las que cambiaron de link se vuelven a ubicar, pero la coordenada vieja
+  // NO se tira hasta que la nueva funcione: quedarse sin un pin que ya servía
+  // porque el link nuevo no resolvió es peor que conservarlo un rato más.
+  for(var i=0;i<cambiadas.length;i++){
+    var r = cambiadas[i], a = DAYS[r.di].acts[r.ai];
+    if(!a.g){ delete a.c; delete a.cs; continue; }   // le quitaron el link a propósito
+    await geocodeAct(r.di, r.ai, {force:true});
+  }
   renderItin(); renderPlaceMarkers();
-  for(var i=0;i<cambiados.length;i++) await saveItinDay(parseInt(cambiados[i],10));
-  // Se reintenta siempre, aunque no se haya cambiado ningún link: el caso
-  // normal es que los links ya estuvieran puestos y lo que falló fue
-  // ubicarlos. Antes, si no cambiabas nada, el botón no hacía absolutamente
-  // nada y sólo decía "no cambiaste ninguna ubicación".
-  gfxRows.forEach(function(r){ delete DAYS[r.di].acts[r.ai]._why; });
+  for(var k in dias){ if(dias.hasOwnProperty(k)) await saveItinDay(parseInt(k,10)); }
+
+  // Y se reintentan las que sigan sin pin, aunque no se haya cambiado ningún
+  // link: el caso normal es que los links ya estuvieran puestos y lo que falló
+  // fue ubicarlos.
+  gfxRows.forEach(function(r){ if(!DAYS[r.di].acts[r.ai].c) delete DAYS[r.di].acts[r.ai]._why; });
   locateMissingCoords({loud:true});
 }
 
@@ -5753,9 +5663,7 @@ async function init(){
   loadGroupLocations();
   // Primero se sube lo que estaba local, y ya con todo cargado se ubican en el
   // mapa las actividades que no tengan coordenada.
-  migrateLocalItinerary()
-    .then(dropGuessedPins)
-    .then(function(){ locateMissingCoords(); });
+  migrateLocalItinerary().then(function(){ locateMissingCoords(); });
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
@@ -5955,9 +5863,8 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeGeoFix()">&#10005;</button>
   </div>
   <div class="gfx-tip">
-    Pega el link de Google Maps de cada lugar y dale a Guardar y ubicar — con eso
-    basta. Si alguno se resiste, también sirve pegar las coordenadas
-    (<span class="gfx-tip-ej">34.0522, -118.2437</span>) o ponerlo a mano en el mapa.
+    Pega el link de Google Maps de cada lugar y dale a Guardar y ubicar.
+    Si alguno no sale, debajo te digo por qué.
   </div>
   <div class="ied-list" id="gfx-list"></div>
   <div class="bs-footer">
