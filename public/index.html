@@ -369,6 +369,13 @@
     }
     .day-wx .wx-ic { font-size: 13px; }
     .day-wx.wx-hist { opacity: .7; }
+    .day-edit {
+      background:rgba(0,200,255,.1); border:1px solid rgba(0,200,255,.28);
+      color:var(--cyan); border-radius:8px; width:30px; height:26px;
+      font-size:13px; line-height:1; cursor:pointer; flex-shrink:0; padding:0;
+      transition: transform .12s var(--ease), background .15s;
+    }
+    .day-edit:active { transform: scale(.9); background:rgba(0,200,255,.2); }
     .day-ch { color: var(--muted); font-size: 14px; flex-shrink: 0; transition: transform .3s var(--ease); }
     .day-card.open .day-ch { transform: rotate(90deg); }
     .day-body {
@@ -977,6 +984,9 @@
     .bs-title { font-size:15px; font-weight:700; }
     .bs-sub { font-size:10px; color:var(--muted); margin-top:3px; font-family:'Space Mono',monospace; letter-spacing:.3px; }
     .bs-close { background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; padding:0 4px; line-height:1; }
+    .ied-city-row { padding:10px 18px 4px; flex-shrink:0; }
+    .ied-city-row .ef-lbl { margin-bottom:5px; }
+    .ied-city { width:100%; box-sizing:border-box; font-size:14px; }
     .ied-list { flex:1; overflow-y:auto; padding:4px 0 8px; }
     .ied-row {
       display:flex; align-items:flex-start; gap:6px;
@@ -2063,6 +2073,8 @@ const CATS = [
 
 // ── PROFILE + PIN ──────────────────────────────────────────────────────────
 var meIndex = localStorage.getItem('ca26_me'); // null | '0' | '1' | '2'
+// Itinerario que alguna vez se guardó solo en este teléfono. Ya no se
+// escribe aquí: sirve para migrar una vez lo que quedó local al servidor.
 var ITIN_OVERRIDE = JSON.parse(localStorage.getItem('ca26_itin')||'{}');
 var iedDayIdx = 0;
 var iedActs = [];
@@ -3151,21 +3163,20 @@ function saveActModal(){
   if(!n){ document.getElementById('amod-n').focus(); return; }
   var act = {t: t||'', n: n, note: note};
   if(g) act.g = g;
-  DAYS[_addActDay].acts.push(act);
-  ITIN_OVERRIDE[_addActDay] = DAYS[_addActDay].acts.slice();
-  localStorage.setItem('ca26_itin', JSON.stringify(ITIN_OVERRIDE));
+  var day = _addActDay;
+  DAYS[day].acts.push(act);
   document.getElementById('act-modal-overlay').classList.remove('show');
   _addActDay = null;
   renderItin();
   renderDash(); renderOps();
+  saveItinDay(day);
 }
 
 function deleteAct(dayIdx, actIdx){
   DAYS[dayIdx].acts.splice(actIdx, 1);
-  ITIN_OVERRIDE[dayIdx] = DAYS[dayIdx].acts.slice();
-  localStorage.setItem('ca26_itin', JSON.stringify(ITIN_OVERRIDE));
   renderItin();
   renderDash(); renderOps();
+  saveItinDay(dayIdx);
 }
 
 function toggleActDone(dayIdx, actIdx){
@@ -3421,6 +3432,70 @@ function computeItinStatus(){
   return {todayIdx:todayIdx, curActIdx:curActIdx};
 }
 
+// ── ITINERARIO COMPARTIDO ───────────────────────────────────────────────────
+// El título del día y sus actividades viven en el servidor para que todos vean
+// lo mismo. Antes eran localStorage, o sea solo del teléfono del admin.
+function applyItinStore(store){
+  if(!store) return;
+  Object.keys(store).forEach(function(k){
+    var i = parseInt(k,10);
+    if(!DAYS[i]) return;
+    var e = store[k] || {};
+    if(typeof e.city === 'string' && e.city) DAYS[i].city = e.city;
+    if(Array.isArray(e.acts)) DAYS[i].acts = e.acts;
+  });
+}
+
+async function loadItinerary(){
+  try{
+    var r = await fetch('/api/itinerary',{cache:'no-store'});
+    if(!r.ok) return;
+    applyItinStore(await r.json());
+  }catch(e){ /* sin conexión: se queda con lo que ya tenía cargado */ }
+}
+
+async function saveItinDay(dayIdx){
+  if(!DAYS[dayIdx]) return;
+  var who = meIndex!==null ? persons[parseInt(meIndex)] : '';
+  try{
+    var r = await fetch('/api/itinerary',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ idx:dayIdx, city:DAYS[dayIdx].city, acts:DAYS[dayIdx].acts, who:who })
+    });
+    if(!r.ok){
+      toast(r.status===403 ? 'Solo el admin puede editar el itinerario.' : 'No se pudo guardar.','error');
+      return false;
+    }
+    return true;
+  }catch(e){ toast('No se pudo guardar — revisa tu conexión.','error'); return false; }
+}
+
+// Sube una sola vez el itinerario que quedó atrapado en este teléfono.
+async function migrateLocalItinerary(){
+  var keys = Object.keys(ITIN_OVERRIDE);
+  if(!keys.length) return;
+  if(localStorage.getItem('ca26_itin_migrated')==='1') return;
+  if(!isAdmin()) return;   // solo el admin puede escribir el itinerario
+  var server = {};
+  try{ server = await (await fetch('/api/itinerary',{cache:'no-store'})).json(); }catch(e){ return; }
+  var subidos = 0;
+  for(var n=0;n<keys.length;n++){
+    var i = parseInt(keys[n],10);
+    if(!DAYS[i]) continue;
+    var yaHay = server[i] && Array.isArray(server[i].acts) && server[i].acts.length;
+    if(yaHay) continue;                       // el servidor ya tiene algo, no se pisa
+    var acts = ITIN_OVERRIDE[i];
+    if(!Array.isArray(acts) || !acts.length) continue;
+    DAYS[i].acts = acts;
+    if(await saveItinDay(i)) subidos++;
+  }
+  localStorage.setItem('ca26_itin_migrated','1');
+  if(subidos){
+    toast('Se subieron '+subidos+' día'+(subidos===1?'':'s')+' del itinerario para que todos los vean.','success');
+    renderItin(); renderDash(); renderOps(); renderPlaceMarkers();
+  }
+}
+
 function renderItin(){
   var unlocked=getUnlockIndex();
   var itinStatus=computeItinStatus();
@@ -3469,6 +3544,9 @@ function renderItin(){
       '<div class="day-m" style="color:'+clr+(isLocked?';opacity:.5':'')+'">'+d.date.split(' ')[1]+'</div>'+
       '</div>'+
       '<div class="day-inf"><div class="day-city">'+esc(d.city)+'</div><div class="day-wd">'+d.wd+'</div></div>'+
+      (admin && !isLocked
+        ? '<button class="day-edit" onclick="event.stopPropagation();openItinEdit('+i+')" title="Editar título y actividades">✎</button>'
+        : '')+
       (WX[i]
         ? '<div class="day-wx'+(WX[i].isForecast?'':' wx-hist')+'" title="'+(WX[i].isForecast?'Pron&oacute;stico':'Clima t&iacute;pico (a&ntilde;o anterior)')+'">'+
             '<span class="wx-ic">'+wxIcon(WX[i].code)+'</span>'+WX[i].tmax+'&deg;/'+WX[i].tmin+'&deg;'+
@@ -4031,11 +4109,20 @@ function checkCountdownNotif(){
 
 // ── ITINERARY EDITOR ──────────────────────────────────────────────────────
 function openItinEdit(dayIdx){
+  if(!isAdmin()){ toast('Solo el admin puede editar el itinerario.','error'); return; }
   iedDayIdx = dayIdx;
-  iedActs = DAYS[dayIdx].acts.map(function(a){ return {t:a.t||'',n:a.n||'',note:a.note||''}; });
+  // Se conservan c (coordenadas) y g (link de maps): sin esto, editar un día
+  // borraba los pines de ese día en el mapa.
+  iedActs = DAYS[dayIdx].acts.map(function(a){
+    var o = {t:a.t||'', n:a.n||'', note:a.note||''};
+    if(a.c) o.c = a.c;
+    if(a.g) o.g = a.g;
+    return o;
+  });
   var day = DAYS[dayIdx];
   document.getElementById('ied-title').textContent = day.date+' · '+day.wd;
   document.getElementById('ied-sub').textContent = day.city;
+  document.getElementById('ied-city').value = (day.city==='Por definir') ? '' : day.city;
   renderIedList();
   document.getElementById('ied-overlay').classList.add('show');
   document.getElementById('ied-sheet').classList.add('show');
@@ -4077,12 +4164,15 @@ function iedAddAct(){
 }
 
 function saveItinEdit(){
-  DAYS[iedDayIdx].acts=iedActs.slice();
-  ITIN_OVERRIDE[iedDayIdx]=iedActs.slice();
-  localStorage.setItem('ca26_itin',JSON.stringify(ITIN_OVERRIDE));
+  var day = iedDayIdx;
+  var city = document.getElementById('ied-city').value.trim();
+  DAYS[day].acts = iedActs.slice();
+  DAYS[day].city = city || 'Por definir';
   closeItinEdit();
   renderDash(); renderOps();
   renderItin();
+  renderPlaceMarkers();
+  saveItinDay(day);
 }
 
 // ── TOUCH/MOUSE DRAG REORDER ───────────────────────────────────────────────
@@ -5073,11 +5163,14 @@ function nativeShare(){
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 async function init(){
-  // Apply saved itinerary edits
+  // Lo que quedó guardado solo en este teléfono se muestra de inmediato, y
+  // más abajo migrateLocalItinerary() lo sube para que lo vean los demás.
   Object.keys(ITIN_OVERRIDE).forEach(function(k){
     var i=parseInt(k); if(DAYS[i]) DAYS[i].acts=ITIN_OVERRIDE[i];
   });
   await openDB();
+  // El itinerario del servidor manda sobre la copia local
+  await loadItinerary();
   await loadExpenses();
   updateHeroProfile();
   renderDash(); renderOps();
@@ -5091,6 +5184,7 @@ async function init(){
   seedReservations().then(loadReservations).then(renderItin);
   loadCarLoc();
   loadGroupLocations();
+  migrateLocalItinerary();
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
@@ -5098,7 +5192,10 @@ async function init(){
     renderExps();
     renderDash(); renderOps();
     await loadReservations();
+    // Si el admin cambia el itinerario, los demás lo ven sin recargar
+    await loadItinerary();
     renderItin();
+    renderPlaceMarkers();
     await loadCarLoc();
     await loadGroupLocations();
   }, 15000);
@@ -5242,6 +5339,11 @@ if('serviceWorker' in navigator){
       <div class="bs-sub" id="ied-sub"></div>
     </div>
     <button class="bs-close" onclick="closeItinEdit()">&#10005;</button>
+  </div>
+  <div class="ied-city-row">
+    <div class="ef-lbl">Título del día</div>
+    <input class="ef-i ied-city" id="ied-city" type="text" maxlength="120"
+      placeholder="Ej. San Diego — Coronado + Gaslamp">
   </div>
   <div class="ied-list" id="ied-list"></div>
   <div class="bs-footer">
