@@ -1035,6 +1035,54 @@
     }
     .me-inp { flex:none; width:100%; margin-bottom:10px; }
 
+    /* ── TRADUCTOR ── */
+    .tr-body { flex:1; overflow-y:auto; padding:10px 18px 24px; display:flex; flex-direction:column; gap:12px; }
+    .tr-langbar { display:flex; align-items:center; justify-content:center; gap:12px; }
+    .tr-lang {
+      font-size:11.5px; font-weight:700; color:var(--muted);
+      text-transform:uppercase; letter-spacing:1.2px; font-family:'Space Mono',monospace;
+    }
+    .tr-swap {
+      background:rgba(0,200,255,.12); border:1px solid rgba(0,200,255,.3); color:var(--cyan);
+      width:34px; height:26px; border-radius:8px; font-size:15px; cursor:pointer; line-height:1;
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+      transition: transform .12s var(--ease);
+    }
+    .tr-swap:active { transform: scale(.9); }
+    .tr-box { position:relative; }
+    .tr-input {
+      width:100%; box-sizing:border-box; resize:none;
+      background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:12px;
+      color:var(--text); font-size:15px; font-family:'Space Grotesk',sans-serif;
+      padding:12px 12px 34px; outline:none; line-height:1.4;
+    }
+    .tr-input:focus { border-color:rgba(0,200,255,.4); }
+    .tr-box-actions { position:absolute; right:8px; bottom:8px; display:flex; gap:6px; }
+    .tr-icon-btn {
+      background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:8px;
+      width:28px; height:24px; font-size:12px; cursor:pointer; line-height:1;
+      display:flex; align-items:center; justify-content:center; flex-shrink:0;
+      transition: transform .12s var(--ease), background .15s, border-color .15s;
+    }
+    .tr-icon-btn:active { transform: scale(.9); }
+    .tr-icon-btn.tr-big { width:44px; height:42px; font-size:17px; border-radius:10px; }
+    .tr-icon-btn.rec { background:rgba(255,80,80,.18); border-color:rgba(255,80,80,.45); animation:pulse 1.1s ease-in-out infinite; }
+    .tr-out {
+      min-height:78px; padding:12px 14px; border-radius:12px;
+      background:rgba(0,200,255,.06); border:1px solid rgba(0,200,255,.18);
+      font-size:16px; line-height:1.4; color:var(--text); word-break:break-word;
+    }
+    .tr-out-placeholder, .tr-out-loading { color:var(--muted); font-size:13px; }
+    .tr-out-err { color:var(--coral); font-size:13px; }
+    .tr-actions { display:flex; gap:8px; align-items:stretch; }
+    .tr-btn {
+      flex:1; padding:12px; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer;
+      font-family:'Space Grotesk',sans-serif;
+      transition: transform .12s var(--ease), background .15s;
+    }
+    .tr-btn:active { transform: scale(.97); }
+    .tr-btn-primary { background:rgba(0,200,255,.14); color:var(--cyan); border:1px solid rgba(0,200,255,.32); }
+
     /* ── FRASES ÚTILES ── */
     .phrases-body { flex:1; overflow-y:auto; padding:8px 18px 24px; }
     .phr-cat {
@@ -1536,6 +1584,7 @@
     <div class="hero-name-sm" id="hero-name-sm"></div>
     <div class="av-menu" id="av-menu">
       <div class="av-menu-item" onclick="avMenuAction('profile')">Mi Perfil</div>
+      <div class="av-menu-item" onclick="avMenuAction('translate')">Traductor</div>
       <div class="av-menu-item" onclick="avMenuAction('phrases')">Frases útiles</div>
       <div class="av-menu-item" onclick="avMenuAction('recap')">Resumen del viaje</div>
       <div class="av-menu-item" onclick="avMenuAction('share')">Compartir la app</div>
@@ -2014,6 +2063,7 @@ function avMenuAction(action){
   closeAvMenu();
   if(action==='profile') openMyProfile();
   else if(action==='logout') logoutMe();
+  else if(action==='translate') openTranslate();
   else if(action==='phrases') openPhrases();
   else if(action==='recap') openRecap();
   else if(action==='share') openShare();
@@ -4306,6 +4356,163 @@ function closePhrases(){
   document.getElementById('phrases-sheet').classList.remove('show');
 }
 
+// ── TRADUCTOR ────────────────────────────────────────────────────────────────
+var TR_LANGS = { es:{label:'Español', voice:'es-MX'}, en:{label:'Inglés', voice:'en-US'} };
+var trFrom = 'es', trTo = 'en';
+var trLastResult = '';
+var trDebounce = null;
+var trSeq = 0;          // ignora respuestas que llegan fuera de orden
+var trRecognition = null;
+var trRecording = false;
+
+function openTranslate(){
+  trSyncLangs();
+  document.getElementById('tr-overlay').classList.add('show');
+  document.getElementById('tr-sheet').classList.add('show');
+}
+function closeTranslate(){
+  trStopMic();
+  if(window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById('tr-overlay').classList.remove('show');
+  document.getElementById('tr-sheet').classList.remove('show');
+}
+
+function trSyncLangs(){
+  document.getElementById('tr-lang-from').textContent = TR_LANGS[trFrom].label;
+  document.getElementById('tr-lang-to').textContent = TR_LANGS[trTo].label;
+  document.getElementById('tr-sub').textContent = TR_LANGS[trFrom].label+' → '+TR_LANGS[trTo].label;
+  var mic = document.getElementById('tr-mic');
+  if(mic) mic.style.display = trSpeechSupported() ? '' : 'none';
+}
+
+function trSwap(){
+  // Si ya hay una traducción, se vuelve el nuevo texto de entrada
+  var input = document.getElementById('tr-input');
+  var prev = trLastResult;
+  var t = trFrom; trFrom = trTo; trTo = t;
+  trSyncLangs();
+  trStopMic();
+  if(prev){
+    input.value = prev;
+    trSetOut('');
+    trTranslateNow();
+  }
+}
+
+function trClear(){
+  document.getElementById('tr-input').value = '';
+  trSetOut('');
+  trStopMic();
+}
+
+function trSetOut(html, cls){
+  var out = document.getElementById('tr-out');
+  if(!html){
+    trLastResult = '';
+    out.innerHTML = '<div class="tr-out-placeholder">La traducción aparecerá aquí</div>';
+    return;
+  }
+  out.innerHTML = cls ? '<div class="'+cls+'">'+html+'</div>' : html;
+}
+
+function trOnInput(){
+  clearTimeout(trDebounce);
+  var v = document.getElementById('tr-input').value.trim();
+  if(!v){ trSetOut(''); return; }
+  trDebounce = setTimeout(trTranslateNow, 700);
+}
+
+async function trTranslateNow(){
+  clearTimeout(trDebounce);
+  var text = document.getElementById('tr-input').value.trim();
+  if(!text){ trSetOut(''); return; }
+  var mySeq = ++trSeq;
+  trSetOut('Traduciendo…','tr-out-loading');
+  try{
+    var r = await fetch('/api/translate',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text:text, from:trFrom, to:trTo})
+    });
+    if(mySeq !== trSeq) return; // llegó una petición más nueva
+    if(!r.ok) throw new Error('bad status');
+    var j = await r.json();
+    if(mySeq !== trSeq) return;
+    trLastResult = j.translated || '';
+    trSetOut(esc(trLastResult));
+  }catch(e){
+    if(mySeq !== trSeq) return;
+    trLastResult = '';
+    trSetOut('No se pudo traducir — revisa tu conexión. Mientras, checa "Frases útiles".','tr-out-err');
+  }
+}
+
+function trSpeak(){
+  if(!trLastResult){ toast('Primero traduce algo.','error'); return; }
+  if(!window.speechSynthesis){ toast('Tu navegador no puede leer en voz alta.','error'); return; }
+  speechSynthesis.cancel();
+  var u = new SpeechSynthesisUtterance(trLastResult);
+  u.lang = TR_LANGS[trTo].voice;
+  u.rate = 0.95;
+  speechSynthesis.speak(u);
+}
+
+function trCopy(){
+  if(!trLastResult){ toast('Primero traduce algo.','error'); return; }
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(trLastResult)
+      .then(function(){ toast('Traducción copiada.','success'); })
+      .catch(function(){ toast('No se pudo copiar.','error'); });
+  } else { toast('No se pudo copiar.','error'); }
+}
+
+// ── Dictado por voz (donde el navegador lo soporte) ──
+function trSpeechSupported(){
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+function trToggleMic(){
+  if(trRecording){ trStopMic(); return; }
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ toast('Tu navegador no soporta dictado.','error'); return; }
+  try{
+    trRecognition = new SR();
+    trRecognition.lang = TR_LANGS[trFrom].voice;
+    trRecognition.interimResults = true;
+    trRecognition.continuous = false;
+    var input = document.getElementById('tr-input');
+    var base = input.value ? input.value.trim()+' ' : '';
+
+    trRecognition.onresult = function(ev){
+      var txt = '';
+      for(var i=ev.resultIndex;i<ev.results.length;i++) txt += ev.results[i][0].transcript;
+      input.value = (base + txt).slice(0,500);
+    };
+    trRecognition.onerror = function(ev){
+      trStopMic();
+      if(ev && ev.error==='not-allowed') toast('Permiso de micrófono denegado.','error');
+      else toast('No se pudo escuchar. Intenta de nuevo.','error');
+    };
+    trRecognition.onend = function(){
+      trStopMic();
+      if(document.getElementById('tr-input').value.trim()) trTranslateNow();
+    };
+
+    trRecognition.start();
+    trRecording = true;
+    document.getElementById('tr-mic').classList.add('rec');
+  }catch(e){ toast('No se pudo iniciar el dictado.','error'); }
+}
+
+function trStopMic(){
+  if(trRecognition){
+    try{ trRecognition.stop(); }catch(e){}
+    trRecognition = null;
+  }
+  trRecording = false;
+  var mic = document.getElementById('tr-mic');
+  if(mic) mic.classList.remove('rec');
+}
+
 // ── RESUMEN DEL VIAJE ────────────────────────────────────────────────────────
 function haversineKm(a,b){
   var R=6371;
@@ -4629,6 +4836,46 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closePhrases()">&#10005;</button>
   </div>
   <div class="phrases-body" id="phrases-body"></div>
+</div>
+
+<!-- TRADUCTOR BOTTOM SHEET -->
+<div class="bs-overlay" id="tr-overlay" onclick="closeTranslate()"></div>
+<div class="bottom-sheet" id="tr-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Traductor</div>
+      <div class="bs-sub" id="tr-sub">Español → Inglés</div>
+    </div>
+    <button class="bs-close" onclick="closeTranslate()">&#10005;</button>
+  </div>
+  <div class="tr-body">
+    <div class="tr-langbar">
+      <span class="tr-lang" id="tr-lang-from">Español</span>
+      <button class="tr-swap" onclick="trSwap()" title="Invertir idiomas">&#8646;</button>
+      <span class="tr-lang" id="tr-lang-to">Inglés</span>
+    </div>
+
+    <div class="tr-box">
+      <textarea class="tr-input" id="tr-input" rows="3" maxlength="500"
+        placeholder="Escribe o dicta lo que quieras traducir…"
+        oninput="trOnInput()"></textarea>
+      <div class="tr-box-actions">
+        <button class="tr-icon-btn" id="tr-mic" onclick="trToggleMic()" title="Dictar">🎤</button>
+        <button class="tr-icon-btn" onclick="trClear()" title="Limpiar">✕</button>
+      </div>
+    </div>
+
+    <div class="tr-out" id="tr-out">
+      <div class="tr-out-placeholder">La traducción aparecerá aquí</div>
+    </div>
+
+    <div class="tr-actions">
+      <button class="tr-btn tr-btn-primary" onclick="trTranslateNow()">Traducir</button>
+      <button class="tr-icon-btn tr-big" id="tr-speak" onclick="trSpeak()" title="Escuchar">🔊</button>
+      <button class="tr-icon-btn tr-big" onclick="trCopy()" title="Copiar">📋</button>
+    </div>
+  </div>
 </div>
 
 <!-- RESUMEN DEL VIAJE BOTTOM SHEET -->

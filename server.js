@@ -182,6 +182,58 @@ app.post('/api/profiles', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Traductor ──────────────────────────────────────────────────────────────
+// Se proxea por aquí en vez de llamar desde el navegador: evita problemas de
+// CORS y permite tener un segundo proveedor de respaldo si el primero falla o
+// cambia de dominio (como ya nos pasó con la API de tipo de cambio).
+const TRANSLATE_EMAIL = process.env.TRANSLATE_EMAIL || '';
+
+async function tryMyMemory(text, from, to) {
+  let url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) +
+    '&langpair=' + encodeURIComponent(from + '|' + to);
+  if (TRANSLATE_EMAIL) url += '&de=' + encodeURIComponent(TRANSLATE_EMAIL);
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return null;
+  const j = await r.json();
+  const out = j && j.responseData && j.responseData.translatedText;
+  if (!out) return null;
+  // MyMemory devuelve los avisos de cuota dentro del propio campo de traducción
+  if (/MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID LANGUAGE/i.test(out)) return null;
+  return out;
+}
+
+async function tryGoogleGtx(text, from, to) {
+  const url = 'https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=' +
+    encodeURIComponent(from) + '&tl=' + encodeURIComponent(to) + '&q=' + encodeURIComponent(text);
+  const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!r.ok) return null;
+  const j = await r.json();
+  if (!Array.isArray(j) || !Array.isArray(j[0])) return null;
+  const out = j[0].map((seg) => (seg && seg[0]) || '').join('');
+  return out || null;
+}
+
+app.post('/api/translate', async (req, res) => {
+  const { text, from, to } = req.body || {};
+  if (!text || typeof text !== 'string') return res.status(400).json({ error: 'missing text' });
+  if (text.length > 500) return res.status(400).json({ error: 'text too long' });
+  const langRe = /^[a-z]{2}$/;
+  const src = langRe.test(from) ? from : 'es';
+  const dst = langRe.test(to) ? to : 'en';
+  if (src === dst) return res.json({ translated: text, provider: 'none' });
+
+  const providers = [['mymemory', tryMyMemory], ['google', tryGoogleGtx]];
+  for (const [name, fn] of providers) {
+    try {
+      const out = await fn(text, src, dst);
+      if (out) return res.json({ translated: out, provider: name });
+    } catch (e) {
+      // se intenta con el siguiente proveedor
+    }
+  }
+  res.status(502).json({ error: 'translation unavailable' });
+});
+
 // ── Ubicación en vivo del grupo (opt-in por persona) ───────────────────────
 const LIVELOC_FILE = path.join(DATA_DIR, 'live-locations.json');
 let liveLocStore = {};
