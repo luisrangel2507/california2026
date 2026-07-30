@@ -1063,6 +1063,15 @@
     }
     .share-btns { display:flex; gap:8px; width:100%; }
     .share-btns button { flex:1; padding:11px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; font-family:'Space Grotesk',sans-serif; }
+
+    /* ── INSTALAR APP ── */
+    .install-steps { display:flex; flex-direction:column; gap:14px; width:100%; }
+    .install-step { display:flex; align-items:flex-start; gap:10px; font-size:13px; color:var(--text); line-height:1.5; text-align:left; }
+    .install-num {
+      width:22px; height:22px; border-radius:50%; background:rgba(0,200,255,.12); color:var(--cyan);
+      display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
+      font-family:'Space Mono',monospace; flex-shrink:0; margin-top:1px;
+    }
     .me-admin-sec {
       margin-top:8px; padding-top:12px; border-top:1px solid var(--border);
     }
@@ -1529,6 +1538,7 @@
       <div class="av-menu-item" onclick="avMenuAction('phrases')">Frases útiles</div>
       <div class="av-menu-item" onclick="avMenuAction('recap')">Resumen del viaje</div>
       <div class="av-menu-item" onclick="avMenuAction('share')">Compartir la app</div>
+      <div class="av-menu-item" onclick="avMenuAction('install')">Instalar la app</div>
       <div class="av-menu-item logout" onclick="avMenuAction('logout')">Log out</div>
     </div>
   </div>
@@ -1739,6 +1749,65 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="qrcode.js"></script>
 <script>
+// ── INSTALAR APP (Android/desktop: prompt nativo · iOS: instrucciones) ──────
+var deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+window.addEventListener('appinstalled', function(){
+  deferredInstallPrompt = null;
+  toast('¡App instalada! 🎉','success');
+});
+
+function isStandaloneApp(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+}
+function isIOSDevice(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+}
+
+function openInstall(){
+  var body = document.getElementById('install-body');
+  if(isStandaloneApp()){
+    body.innerHTML =
+      '<div style="font-size:40px">🎉</div>'+
+      '<div class="share-url" style="text-align:center">Ya la tienes instalada como app.</div>';
+  } else if(deferredInstallPrompt){
+    body.innerHTML =
+      '<img src="logo-altavibra.png" style="width:64px;height:64px;border-radius:16px;object-fit:cover" alt="">'+
+      '<div class="share-url" style="text-align:center">Instálala para abrirla como cualquier otra app, con ícono propio y sin la barra del navegador.</div>'+
+      '<div class="share-btns"><button onclick="doInstallApp()" style="background:rgba(0,200,255,.12);color:var(--cyan);border:1px solid rgba(0,200,255,.3)">Instalar</button></div>';
+  } else if(isIOSDevice()){
+    body.innerHTML =
+      '<div class="install-steps">'+
+        '<div class="install-step"><span class="install-num">1</span> Toca el bot&oacute;n <b>Compartir</b> (&#8593;) en la barra de Safari.</div>'+
+        '<div class="install-step"><span class="install-num">2</span> Elige <b>"A&ntilde;adir a pantalla de inicio"</b>.</div>'+
+        '<div class="install-step"><span class="install-num">3</span> Toca <b>"A&ntilde;adir"</b> arriba a la derecha.</div>'+
+      '</div>';
+  } else {
+    body.innerHTML =
+      '<div class="install-steps">'+
+        '<div class="install-step"><span class="install-num">1</span> Abre el men&uacute; de tu navegador (&#8942; o &#9776;).</div>'+
+        '<div class="install-step"><span class="install-num">2</span> Busca <b>"Instalar app"</b> o <b>"A&ntilde;adir a pantalla de inicio"</b>.</div>'+
+      '</div>';
+  }
+  document.getElementById('install-overlay').classList.add('show');
+  document.getElementById('install-sheet').classList.add('show');
+}
+function closeInstall(){
+  document.getElementById('install-overlay').classList.remove('show');
+  document.getElementById('install-sheet').classList.remove('show');
+}
+async function doInstallApp(){
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  var choice = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  if(choice.outcome==='accepted') toast('¡Instalando! 🎉','success');
+  closeInstall();
+}
+
 // ── DEMO MODE ──────────────────────────────────────────────────────────────
 (function(){
   var d = localStorage.getItem('ca26_demo');
@@ -1947,6 +2016,7 @@ function avMenuAction(action){
   else if(action==='phrases') openPhrases();
   else if(action==='recap') openRecap();
   else if(action==='share') openShare();
+  else if(action==='install') openInstall();
 }
 
 document.addEventListener('click', function(e){
@@ -4588,6 +4658,20 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeShare()">&#10005;</button>
   </div>
   <div class="share-body" id="share-body"></div>
+</div>
+
+<!-- INSTALAR APP BOTTOM SHEET -->
+<div class="bs-overlay" id="install-overlay" onclick="closeInstall()"></div>
+<div class="bottom-sheet" id="install-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Instalar la app</div>
+      <div class="bs-sub">Como una app de verdad, sin navegador</div>
+    </div>
+    <button class="bs-close" onclick="closeInstall()">&#10005;</button>
+  </div>
+  <div class="share-body" id="install-body"></div>
 </div>
 
 </body>
