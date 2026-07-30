@@ -284,8 +284,10 @@ function coordsFromMapsUrl(text) {
     // el centro de la vista, que puede estar desplazado.
     [/!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, false],
     [/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, false],
-    [/[?&](?:q|query|daddr|destination|saddr)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/, false],
-    [/[?&](?:ll|sll|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/, false],
+    // En los og:image de las vistas previas la coma viene codificada (%2C)
+    [/[?&](?:q|query|daddr|destination|saddr)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i, false],
+    [/[?&](?:ll|sll|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i, false],
+    [/[?&]markers=[^&"'\s]*?(-?\d+\.\d+)(?:,|%2C)(-?\d+\.\d+)/i, false],
     [/\/maps\/(?:search|dir|place)\/(-?\d+\.\d+),\s*(-?\d+\.\d+)/, false],
     [/@(-?\d+\.\d+),(-?\d+\.\d+)/, false],
     // En el HTML de Google las coordenadas vienen dentro de arreglos
@@ -295,10 +297,11 @@ function coordsFromMapsUrl(text) {
     // La página de Maps arranca con APP_INITIALIZATION_STATE=[[[zoom,lng,lat]
     [/APP_INITIALIZATION_STATE\s*=\s*\[\[\[[-\d.]+,(-?\d+\.\d+),(-?\d+\.\d+)\]/, true],
     // Y las tarjetas de compartir traen la miniatura del mapa con center=lat,lng
-    [/staticmap[^"']*[?&]center=(-?\d+\.\d+),(-?\d+\.\d+)/, false],
+    [/staticmap[^"']*?[?&]center=(-?\d+\.\d+)(?:,|%2C)(-?\d+\.\d+)/i, false],
   ];
+  const txt = String(text).replace(/&amp;/g, '&');
   for (const [p, swap] of pats) {
-    const m = String(text).match(p);
+    const m = txt.match(p);
     if (!m) continue;
     let lat = parseFloat(m[1]), lon = parseFloat(m[2]);
     if (swap) { const t = lat; lat = lon; lon = t; }
@@ -318,6 +321,11 @@ function coordsFromMapsUrl(text) {
 // ningún lado. Con un navegador de escritorio la redirección sí lleva a la
 // ficha completa. Se intentan los dos, empezando por el de escritorio.
 const MAPS_UAS = [
+  // La vista previa que Google sirve a los rastreadores de los chats — es lo
+  // que usan WhatsApp e iMessage para pintar la tarjetita del link. Página
+  // chica, hecha para leerse por máquinas, y con la miniatura del mapa que
+  // trae center=lat,lng. Es la respuesta más confiable desde un servidor.
+  ['vista previa', 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'],
   ['escritorio', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
     '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'],
   ['celular', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
