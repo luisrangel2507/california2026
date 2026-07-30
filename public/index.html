@@ -2724,8 +2724,7 @@ function renderPlaceMarkers(){
         '<div class="pop-day">DÍA '+(di+1)+' · Actividad #'+num+' · '+esc(day.date)+(a.t?' · '+esc(a.t):'')+(done?' · ✓ hecho':'')+'</div>'+
         (a.note?'<div class="pop-day">'+esc(a.note)+'</div>':'')+
         '<div class="pop-actions">'+
-          '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+a.c[0]+','+a.c[1]+'" target="_blank">Cómo llegar</a>'+
-          '<a class="pop-maps" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank" style="background:rgba(0,229,197,.1);color:#00E5C5;border-color:rgba(0,229,197,.3)">Ver en Maps</a>'+
+          '<a class="pop-maps" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank">Ver en Maps</a>'+
         '</div>'
       );
       placeMarkers.push(marker);
@@ -2797,8 +2796,7 @@ function renderCustomMarkers(){
       '<div class="pop-name">'+esc(p.n)+'</div>'+
       '<div class="pop-custom">Lugar personalizado</div>'+
       '<div class="pop-actions">'+
-        '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+p.c[0]+','+p.c[1]+'" target="_blank">Cómo llegar</a>'+
-        '<a class="pop-maps" href="https://maps.google.com/?q='+p.c[0]+','+p.c[1]+'" target="_blank" style="background:rgba(0,229,197,.1);color:#00E5C5;border-color:rgba(0,229,197,.3)">Ver en Maps</a>'+
+        '<a class="pop-maps" href="https://maps.google.com/?q='+p.c[0]+','+p.c[1]+'" target="_blank">Ver en Maps</a>'+
         '<button class="pop-del" onclick="deleteCustomPlace('+p.id+')">Eliminar</button>'+
       '</div>'
     );
