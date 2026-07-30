@@ -277,27 +277,34 @@ function geoIsDown(name) {
 
 function coordsFromMapsUrl(text) {
   if (!text) return null;
+  // Algunos formatos traen la longitud primero (GeoJSON, los arreglos internos
+  // de Google), por eso cada patrón dice en qué orden vienen.
   const pats = [
     // !3d/!4d es la coordenada exacta del lugar; va primero porque @... es
     // el centro de la vista, que puede estar desplazado.
-    /!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
-    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
-    /[?&](?:q|query|daddr|destination|saddr)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
-    /[?&](?:ll|sll|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
-    /\/maps\/(?:search|dir|place)\/(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
-    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    [/!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, false],
+    [/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, false],
+    [/[?&](?:q|query|daddr|destination|saddr)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/, false],
+    [/[?&](?:ll|sll|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/, false],
+    [/\/maps\/(?:search|dir|place)\/(-?\d+\.\d+),\s*(-?\d+\.\d+)/, false],
+    [/@(-?\d+\.\d+),(-?\d+\.\d+)/, false],
     // En el HTML de Google las coordenadas vienen dentro de arreglos
-    /"center"\s*:\s*\{\s*"lat"\s*:\s*(-?\d+\.\d+)\s*,\s*"lng"\s*:\s*(-?\d+\.\d+)/,
-    /\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/,
+    [/"center"\s*:\s*\{\s*"lat"\s*:\s*(-?\d+\.\d+)\s*,\s*"lng"\s*:\s*(-?\d+\.\d+)/, false],
+    [/"latitude"\s*:\s*(-?\d+\.\d+)\s*,\s*"longitude"\s*:\s*(-?\d+\.\d+)/, false],
+    [/\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/, false],
+    // La página de Maps arranca con APP_INITIALIZATION_STATE=[[[zoom,lng,lat]
+    [/APP_INITIALIZATION_STATE\s*=\s*\[\[\[[-\d.]+,(-?\d+\.\d+),(-?\d+\.\d+)\]/, true],
+    // Y las tarjetas de compartir traen la miniatura del mapa con center=lat,lng
+    [/staticmap[^"']*[?&]center=(-?\d+\.\d+),(-?\d+\.\d+)/, false],
   ];
-  for (const p of pats) {
+  for (const [p, swap] of pats) {
     const m = String(text).match(p);
-    if (m) {
-      const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
-      // Descarta 0,0 y valores fuera de rango
-      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0)) {
-        return [lat, lon];
-      }
+    if (!m) continue;
+    let lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+    if (swap) { const t = lat; lat = lon; lon = t; }
+    // Descarta 0,0 y valores fuera de rango
+    if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0)) {
+      return [lat, lon];
     }
   }
   return null;
@@ -308,26 +315,66 @@ function coordsFromMapsUrl(text) {
 // un User-Agent de navegador, a diferencia de las llamadas a los buscadores.
 const MAPS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
   'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const MAPS_HEADERS = {
+  'User-Agent': MAPS_UA,
+  'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
+  'Accept': 'text/html,application/xhtml+xml',
+};
 
-async function resolveMapsUrl(url) {
+// Los links cortos de Maps redirigen varias veces, y la coordenada puede
+// aparecer en cualquier paso: en una redirección intermedia, en la URL final o
+// dentro del HTML. Se sigue la cadena a mano para poder mirar cada uno y, sobre
+// todo, para poder decir en qué punto se perdió — antes fallaba en silencio.
+async function resolveMapsUrl(url, diag) {
+  const note = (m) => { if (diag) diag.push(m); };
   const direct = coordsFromMapsUrl(url);
   if (direct) return direct;
-  if (!/^https?:\/\//i.test(url)) return null;
-  try {
-    const r = await fetch(url, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': MAPS_UA,
-        'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-      signal: AbortSignal.timeout(12000),
-    });
-    // La URL final tras la redirección suele traerlas ya
-    const fromUrl = coordsFromMapsUrl(r.url);
-    if (fromUrl) return fromUrl;
-    return coordsFromMapsUrl(await r.text());
-  } catch (e) { return null; }
+  if (!/^https?:\/\//i.test(url)) { note('no es un link'); return null; }
+
+  let actual = url;
+  for (let salto = 0; salto < 6; salto++) {
+    let r;
+    try {
+      r = await fetch(actual, {
+        redirect: 'manual',
+        headers: MAPS_HEADERS,
+        signal: AbortSignal.timeout(12000),
+      });
+    } catch (e) {
+      note('no se pudo abrir el link: ' + (e && e.message ? e.message : e));
+      return null;
+    }
+
+    const loc = r.headers.get('location');
+    if (r.status >= 300 && r.status < 400 && loc) {
+      actual = new URL(loc, actual).toString();
+      const c = coordsFromMapsUrl(actual);
+      if (c) return c;
+      continue;
+    }
+    if (!r.ok) { note('Google respondió ' + r.status); return null; }
+
+    const html = await r.text().catch(() => '');
+    const c = coordsFromMapsUrl(html);
+    if (c) return c;
+
+    // A veces la redirección viene dentro de la página, no en la cabecera
+    const dentro = html.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]*?url=([^"'>\s]+)/i)
+      || html.match(/location\.replace\(["']([^"']+)["']\)/i)
+      || html.match(/<link[^>]+rel=["']?canonical["']?[^>]+href=["']([^"']+)["']/i);
+    if (dentro && salto < 5) {
+      const sig = new URL(dentro[1].replace(/&amp;/g, '&'), actual).toString();
+      if (sig !== actual) { actual = sig; continue; }
+    }
+
+    note('el link abre en ' + actual.slice(0, 90) +
+         ' pero esa página no trae coordenadas (' + html.length + ' bytes' +
+         (/consent|sorry\/index|captcha/i.test(actual + html.slice(0, 2000))
+            ? ', parece pantalla de consentimiento o bloqueo' : '') + ')');
+    return null;
+  }
+  note('demasiadas redirecciones');
+  return null;
 }
 
 // Lo que se pega en el campo de ubicación no siempre es un link: puede ser la
@@ -397,11 +444,13 @@ app.post('/api/geocode', async (req, res) => {
   if (hint.kind === 'url') {
     const key = 'url:' + hint.value;
     if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
-    const c = await geoThrottle(() => resolveMapsUrl(hint.value), 'maps');
+    const diag = [];
+    const c = await geoThrottle(() => resolveMapsUrl(hint.value, diag), 'maps');
     if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
     return res.status(404).json({
       error: 'not found',
-      tried: ['el link no soltó coordenadas: ' + hint.value.slice(0, 120)],
+      why: diag[0] || 'el link no soltó coordenadas',
+      tried: diag,
     });
   }
 
