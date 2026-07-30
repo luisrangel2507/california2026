@@ -4556,6 +4556,71 @@ function trSpeechSupported(){
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
 
+// ── PUNTUACIÓN DEL DICTADO ───────────────────────────────────────────────────
+// Los navegadores casi nunca devuelven signos al dictar, y cuando lo hacen
+// omiten los de apertura del español (¿ ¡). Esto se arregla en tres capas:
+//   1. unspokenPunctuation, la API nueva que deduce signos de la entonación
+//      real (se activa sola donde exista, ver trStartMic).
+//   2. Comandos dictados en voz ("signo de exclamación").
+//   3. Heurística por las palabras iniciales, para cuando no llegó nada.
+
+// Solo comandos de varias palabras: convertir "punto" o "coma" sueltos
+// arruinaría frases normales ("punto de encuentro", "que se lo coma").
+var TR_SPOKEN_MARKS = [
+  [/\s*signos?\s+de\s+(exclamaci[oó]n|admiraci[oó]n)\s*/gi, '! '],
+  [/\s*signos?\s+de\s+(interrogaci[oó]n|pregunta)\s*/gi, '? '],
+  [/\s*\bexclamation\s+(mark|point)\b\s*/gi, '! '],
+  [/\s*\bquestion\s+mark\b\s*/gi, '? '],
+];
+
+// Aperturas que delatan una pregunta.
+// Se usa (?![\p{L}\p{N}]) en vez de \b porque \b en JavaScript es solo ASCII:
+// después de una vocal acentuada ("qué", "por qué") no detecta el límite de
+// palabra y la coincidencia se cae.
+var TR_Q_ES = /^(por\s+qu[eé]|para\s+qu[eé]|qu[eé]|cu[aá]l(es)?|qui[eé]n(es)?|c[oó]mo|cu[aá]ndo|cu[aá]nt[oa]s?|d[oó]nde|ad[oó]nde|me\s+puede|se\s+puede|puedo|puede[sn]?|tiene[sn]?|hay|sabe[sn]?|acepta[sn]?)(?![\p{L}\p{N}])/iu;
+var TR_Q_EN = /^(where|when|why|how|what|which|who|whose|do|does|did|can|could|would|will|is|are|am|was|were|have|has|may|might|should)(?![\p{L}\p{N}])/iu;
+
+// Frases que piden signos de exclamación
+var TR_X_ES = /^(qu[eé]\s+(bonito|bonita|rico|rica|lindo|linda|hermoso|hermosa|caro|cara|padre|chido|bueno|buena|guapo|guapa|grande)|cuidado|auxilio|ayuda|socorro|muchas\s+gracias|gracias|felicidades|salud|[oó]rale|guau|wow|incre[ií]ble|perfecto|excelente|genial|buen[ií]simo)(?![\p{L}\p{N}])/iu;
+var TR_X_EN = /^(careful|look\s+out|watch\s+out|help|thank\s+you|thanks|wow|awesome|amazing|great|perfect|excellent|congratulations|congrats|cheers|beautiful|delicious)(?![\p{L}\p{N}])/iu;
+
+function trPunctuate(text, lang){
+  var t = String(text || '').trim();
+  if(!t) return '';
+
+  // Capa 2: comandos de puntuación dictados
+  TR_SPOKEN_MARKS.forEach(function(pair){ t = t.replace(pair[0], pair[1]); });
+
+  // Normalizar espacios sueltos alrededor de los signos
+  t = t.replace(/\s+([,.;:!?…])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  // Quitar signos de apertura que hayan quedado a media frase
+  t = t.replace(/([¿¡])\s+/g, '$1');
+  if(!t) return '';
+
+  var isEs = (lang || 'es').slice(0,2) === 'es';
+  var hasEnd = /[.!?…]$/.test(t);
+
+  // Capa 3: si no llegó ningún signo final, deducirlo de cómo empieza
+  if(!hasEnd){
+    var qRe = isEs ? TR_Q_ES : TR_Q_EN;
+    var xRe = isEs ? TR_X_ES : TR_X_EN;
+    // Se revisa exclamación primero: "qué bonito" exclama, "qué es esto" pregunta
+    if(xRe.test(t))      t += '!';
+    else if(qRe.test(t)) t += '?';
+    else                 t += '.';
+  }
+
+  // El español necesita el signo de apertura, que ningún motor agrega
+  if(isEs){
+    if(/\?$/.test(t) && t.indexOf('¿') === -1) t = '¿' + t;
+    if(/!$/.test(t)  && t.indexOf('¡') === -1) t = '¡' + t;
+  }
+
+  // Mayúscula inicial, respetando ¿ y ¡
+  t = t.replace(/^([¿¡]?)(\p{Ll})/u, function(_, mark, ch){ return mark + ch.toUpperCase(); });
+  return t;
+}
+
 // Dictado genérico, compartido por el modo simple y el de conversación.
 var trMicBtnId = null;
 function trStartMic(opts){
@@ -4565,16 +4630,28 @@ function trStartMic(opts){
   if(!SR){ toast('Tu navegador no soporta dictado.','error'); return; }
   try{
     var input = document.getElementById(opts.inputId);
-    var base = input.value ? input.value.trim()+' ' : '';
+    // En conversación cada lado se reemplaza: lo que hay es la traducción de
+    // lo que dijo el otro, no un borrador propio al que haya que sumarle.
+    var base = (opts.replace || !input.value) ? '' : input.value.trim()+' ';
+    if(opts.replace) input.value = '';
     trRecognition = new SR();
     trRecognition.lang = opts.lang;
     trRecognition.interimResults = true;
     trRecognition.continuous = false;
+    // Capa 1: donde exista, que el motor deduzca los signos de la entonación
+    // y las pausas reales en vez de que haya que dictarlos.
+    if('unspokenPunctuation' in trRecognition){
+      try{ trRecognition.unspokenPunctuation = true; }catch(e){}
+    }
 
+    var spoken = '';
     trRecognition.onresult = function(ev){
       var txt = '';
-      for(var i=ev.resultIndex;i<ev.results.length;i++) txt += ev.results[i][0].transcript;
-      input.value = (base + txt).slice(0,500);
+      for(var i=0;i<ev.results.length;i++) txt += ev.results[i][0].transcript;
+      spoken = txt.trim();
+      // Mientras se habla se muestra tal cual; los signos se ajustan al final
+      // para que el texto no brinque en cada palabra.
+      input.value = (base + spoken).slice(0,500);
     };
     trRecognition.onerror = function(ev){
       trStopMic();
@@ -4582,6 +4659,9 @@ function trStartMic(opts){
       else toast('No se pudo escuchar. Intenta de nuevo.','error');
     };
     trRecognition.onend = function(){
+      if(spoken){
+        input.value = (base + trPunctuate(spoken, opts.lang)).slice(0,500);
+      }
       trStopMic();
       if(input.value.trim() && opts.onDone) opts.onDone();
     };
@@ -4683,6 +4763,7 @@ function trCvMic(side){
     inputId: 'tr-cv-'+side,
     lang: TR_LANGS[trCvLangOf(side)].voice,
     btnId: 'tr-cv-mic-'+side,
+    replace: true,
     onDone: function(){ trCvTranslate(side); }
   });
 }
