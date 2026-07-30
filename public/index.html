@@ -3660,7 +3660,7 @@ async function locateMissingCoords(opts){
     toast(
       geoLastFail==='servicio' ? 'El buscador de lugares no responde ahora. Intenta más tarde o pega el link de Google Maps.' :
       geoLastFail==='red'      ? 'Sin conexión con el servidor.' :
-      'No encontré esos lugares por su nombre. Edita la actividad y pega el link de Google Maps.',
+      'No encontré esos lugares. Edita la actividad y pega el link de Google Maps o la dirección.',
     'error');
   }
   geoLastFail = '';
@@ -4331,8 +4331,8 @@ function renderIedList(){
         '<input class="ied-note" value="'+esc(a.note)+'" placeholder="Nota (opcional)" oninput="iedActs['+i+'].note=this.value">'+
         '<div class="ied-maps-row">'+
           '<span class="ied-pin '+(a.c?'has':'')+'" title="'+(a.c?'Ya tiene pin en el mapa':'Todavía sin pin')+'">'+(a.c?'📍':'○')+'</span>'+
-          '<input class="ied-maps" type="url" inputmode="url" value="'+esc(a.g||'')+'" '+
-            'placeholder="Pega el link de Google Maps" oninput="iedActs['+i+'].g=this.value">'+
+          '<input class="ied-maps" type="text" value="'+esc(a.g||'')+'" '+
+            'placeholder="Link de Google Maps o dirección" oninput="iedActs['+i+'].g=this.value">'+
         '</div>'+
       '</div>'+
       '<button class="ied-del" onclick="iedDel('+i+')">&#215;</button>'+
@@ -5572,9 +5572,9 @@ if('serviceWorker' in navigator){
       <input class="act-modal-inp" id="amod-note" placeholder="Costo, detalle...">
     </div>
     <div class="act-modal-field">
-      <label>LINK DE GOOGLE MAPS (opcional)</label>
-      <input class="act-modal-inp" id="amod-g" placeholder="https://maps.app.goo.gl/..." type="url" inputmode="url">
-      <div class="act-modal-hint">Abre Google Maps → Share → copia el link</div>
+      <label>UBICACIÓN (opcional)</label>
+      <input class="act-modal-inp" id="amod-g" placeholder="Link de Google Maps o dirección" type="text">
+      <div class="act-modal-hint">Pega el link de Maps, la dirección, o las coordenadas</div>
     </div>
     <div class="act-modal-btns">
       <button class="act-modal-cancel" onclick="closeActModal()">Cancelar</button>

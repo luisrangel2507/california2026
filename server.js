@@ -330,6 +330,25 @@ async function resolveMapsUrl(url) {
   } catch (e) { return null; }
 }
 
+// Lo que se pega en el campo de ubicación no siempre es un link: puede ser la
+// dirección tal cual, unas coordenadas copiadas de Maps, o el texto completo
+// que comparte la app ("Beverly Hills\nhttps://maps.app.goo.gl/..."). Sea lo
+// que sea, lo puso el usuario a mano y manda sobre el nombre de la actividad.
+function parseLocHint(text) {
+  const s = String(text || '').trim().slice(0, 300);
+  if (!s) return null;
+  const url = s.match(/https?:\/\/[^\s<>"']+/);
+  if (url) return { kind: 'url', value: url[0] };
+  const pair = s.match(/^\(?\s*(-?\d{1,2}(?:\.\d+)?)\s*[,;]\s*(-?\d{1,3}(?:\.\d+)?)\s*\)?$/);
+  if (pair) {
+    const lat = parseFloat(pair[1]), lon = parseFloat(pair[2]);
+    if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0)) {
+      return { kind: 'coords', value: [lat, lon] };
+    }
+  }
+  return { kind: 'address', value: s };
+}
+
 // Los nombres del itinerario no son nombres de lugar: "Comida en Rockefeller",
 // "Manejar a LA", "🍔 Tour Downtown - Little Tokyo". Se les quita el emoji y el
 // verbo de adelante para dejar algo que un geocodificador sí pueda encontrar.
@@ -408,18 +427,29 @@ app.post('/api/geocode', async (req, res) => {
   const cleanCity = typeof city === 'string' ? city.trim().slice(0, 120) : '';
   if (!cleanName && !mapsUrl) return res.status(400).json({ error: 'missing name' });
 
-  // Si hay link de Maps, ese manda: apunta al lugar exacto que el usuario
+  // Si el usuario puso una ubicación, esa manda: apunta al lugar exacto que
   // eligió. Buscar el nombre por su cuenta pondría el pin en otro lado.
+  const hint = parseLocHint(mapsUrl);
   const mapsFail = [];
-  if (typeof mapsUrl === 'string' && /^https?:\/\//.test(mapsUrl)) {
-    const key = 'url:' + mapsUrl;
-    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
-    const c = await geoThrottle(() => resolveMapsUrl(mapsUrl), 'maps');
-    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
-    mapsFail.push('el link no soltó coordenadas: ' + mapsUrl.slice(0, 120));
+
+  if (hint && hint.kind === 'coords') {
+    return res.json({ c: hint.value, source: 'coords' });
   }
 
-  if (!cleanName) return res.status(404).json({ error: 'not found', tried: mapsFail });
+  if (hint && hint.kind === 'url') {
+    const key = 'url:' + hint.value;
+    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
+    const c = await geoThrottle(() => resolveMapsUrl(hint.value), 'maps');
+    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
+    mapsFail.push('el link no soltó coordenadas: ' + hint.value.slice(0, 120));
+  }
+
+  // Una dirección pegada se busca tal cual. El nombre de la actividad describe
+  // qué se va a hacer ("Manejar a LA"), no adónde se llega, así que la
+  // dirección va primero y el nombre queda solo como último recurso.
+  const addr = hint && hint.kind === 'address' ? hint.value : '';
+
+  if (!cleanName && !addr) return res.status(404).json({ error: 'not found', tried: mapsFail });
 
   // Se le pega la ciudad del día como contexto: "Beverly Hills" solo es
   // ambiguo, "Beverly Hills, Los Ángeles" no.
@@ -427,6 +457,13 @@ app.post('/api/geocode', async (req, res) => {
     ? cleanCity.split('→')[0].split('—')[0].trim() : '';
 
   const queries = [];
+  if (addr) {
+    // Una dirección ya viene completa: no se le pega la ciudad del día encima.
+    queries.push(addr);
+    if (!/(?:^|[\s,])(?:usa|united states|ee\.?\s?uu\.?|california|ca)(?:[\s,]|$)/i.test(addr)) {
+      queries.push(addr + ', California, USA');
+    }
+  }
   for (const variant of geoNameVariants(cleanName)) {
     if (cityCtx) queries.push(variant + ', ' + cityCtx + ', California, USA');
     queries.push(variant + ', California, USA');
