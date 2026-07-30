@@ -234,6 +234,117 @@ app.post('/api/translate', async (req, res) => {
   res.status(502).json({ error: 'translation unavailable' });
 });
 
+// ── Geocodificación (para que las actividades aparezcan en el mapa) ────────
+// Las actividades que se agregan desde la app no traen coordenadas, así que
+// el mapa no las podía mostrar. Aquí se resuelven: primero del link de Google
+// Maps si lo pegaron (es exacto), si no buscando el nombre en Nominatim.
+// Nominatim pide User-Agent identificable y máximo 1 petición por segundo, así
+// que se serializa y se cachea en disco.
+const GEO_FILE = path.join(DATA_DIR, 'geocache.json');
+let geoCache = {};
+try { geoCache = JSON.parse(fs.readFileSync(GEO_FILE, 'utf8')); } catch (e) {}
+function persistGeo() {
+  try { fs.writeFileSync(GEO_FILE, JSON.stringify(geoCache)); } catch (e) {}
+}
+
+const GEO_UA = 'AltaVibra-California2026/1.0 (viaje privado; contacto via app)';
+let geoQueue = Promise.resolve();
+let geoLastCall = 0;
+// Encola para respetar el límite de 1 req/seg de Nominatim
+function geoThrottle(fn) {
+  const run = async () => {
+    const wait = Math.max(0, 1100 - (Date.now() - geoLastCall));
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    geoLastCall = Date.now();
+    return fn();
+  };
+  geoQueue = geoQueue.then(run, run);
+  return geoQueue;
+}
+
+function coordsFromMapsUrl(url) {
+  if (!url) return null;
+  const pats = [
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,          // formato interno de place
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,              // /maps/place/.../@lat,lon,17z
+    /[?&](?:q|query|daddr|destination)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+  ];
+  for (const p of pats) {
+    const m = url.match(p);
+    if (m) {
+      const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return [lat, lon];
+    }
+  }
+  return null;
+}
+
+async function resolveMapsUrl(url) {
+  const direct = coordsFromMapsUrl(url);
+  if (direct) return direct;
+  // Los links cortos (maps.app.goo.gl) no traen coordenadas: hay que seguir
+  // la redirección para llegar a la URL larga que sí las tiene.
+  if (!/goo\.gl|maps\.app/.test(url)) return null;
+  try {
+    const r = await fetch(url, {
+      redirect: 'follow',
+      headers: { 'User-Agent': GEO_UA },
+      signal: AbortSignal.timeout(9000),
+    });
+    return coordsFromMapsUrl(r.url) || coordsFromMapsUrl(await r.text());
+  } catch (e) { return null; }
+}
+
+async function geocodeName(q) {
+  const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=' +
+    encodeURIComponent(q);
+  const r = await fetch(url, {
+    headers: { 'User-Agent': GEO_UA, 'Accept-Language': 'es,en' },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!r.ok) return null;
+  const j = await r.json();
+  if (!Array.isArray(j) || !j.length) return null;
+  const lat = parseFloat(j[0].lat), lon = parseFloat(j[0].lon);
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  return [lat, lon];
+}
+
+app.post('/api/geocode', async (req, res) => {
+  const { name, city, mapsUrl } = req.body || {};
+  const cleanName = typeof name === 'string' ? name.trim().slice(0, 160) : '';
+  const cleanCity = typeof city === 'string' ? city.trim().slice(0, 120) : '';
+  if (!cleanName && !mapsUrl) return res.status(400).json({ error: 'missing name' });
+
+  // El link de Maps es más preciso que buscar por nombre
+  if (typeof mapsUrl === 'string' && /^https?:\/\//.test(mapsUrl)) {
+    const key = 'url:' + mapsUrl;
+    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
+    const c = await geoThrottle(() => resolveMapsUrl(mapsUrl));
+    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
+  }
+
+  if (!cleanName) return res.status(404).json({ error: 'not found' });
+
+  // Se le pega la ciudad del día como contexto: "Beverly Hills" solo es
+  // ambiguo, "Beverly Hills, Los Ángeles" no.
+  const cityCtx = cleanCity && cleanCity !== 'Por definir'
+    ? cleanCity.split('→')[0].split('—')[0].trim() : '';
+  const queries = [];
+  if (cityCtx) queries.push(cleanName + ', ' + cityCtx + ', California, USA');
+  queries.push(cleanName + ', California, USA');
+
+  for (const q of queries) {
+    const key = 'q:' + q.toLowerCase();
+    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'nominatim', cached: true });
+    try {
+      const c = await geoThrottle(() => geocodeName(q));
+      if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'nominatim', q }); }
+    } catch (e) { /* se intenta la siguiente variante */ }
+  }
+  res.status(404).json({ error: 'not found' });
+});
+
 // ── Itinerario compartido (título del día + actividades) ───────────────────
 // Antes esto vivía solo en el localStorage de cada teléfono, así que lo que
 // el admin armaba no lo veía nadie más. Ahora es del servidor, como los
