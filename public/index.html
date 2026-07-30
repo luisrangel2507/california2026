@@ -1029,7 +1029,17 @@
       border-radius:7px; color:var(--muted); font-size:11px;
       font-family:'Space Grotesk',sans-serif; padding:5px 9px; width:100%; outline:none;
     }
-    .ied-time:focus,.ied-name:focus,.ied-note:focus { border-color:rgba(0,200,255,.4); }
+    .ied-maps-row { display:flex; align-items:center; gap:6px; }
+    .ied-pin { font-size:11px; flex-shrink:0; width:16px; text-align:center; color:var(--muted); }
+    .ied-pin.has { color:var(--green); }
+    .ied-maps {
+      flex:1; min-width:0; background:rgba(0,200,255,.05);
+      border:1px solid rgba(0,200,255,.15); border-radius:7px;
+      color:var(--cyan); font-size:10.5px; font-family:'Space Mono',monospace;
+      padding:5px 9px; outline:none;
+    }
+    .ied-maps::placeholder { color:var(--muted); font-family:'Space Grotesk',sans-serif; font-size:11px; }
+    .ied-time:focus,.ied-name:focus,.ied-note:focus,.ied-maps:focus { border-color:rgba(0,200,255,.4); }
     .ied-del {
       background:none; border:none; color:rgba(255,255,255,.2); font-size:20px;
       cursor:pointer; padding:2px 6px; flex-shrink:0; line-height:1; margin-top:2px;
@@ -4290,6 +4300,9 @@ function openItinEdit(dayIdx){
     var o = {t:a.t||'', n:a.n||'', note:a.note||''};
     if(a.c) o.c = a.c;
     if(a.g) o.g = a.g;
+    // Se recuerda el link con el que venía: la lista se puede reordenar
+    // arrastrando, así que comparar por posición al guardar sería incorrecto.
+    o._g0 = a.g || '';
     return o;
   });
   var day = DAYS[dayIdx];
@@ -4316,6 +4329,11 @@ function renderIedList(){
           '<input class="ied-name" value="'+esc(a.n)+'" placeholder="Actividad" oninput="iedActs['+i+'].n=this.value">'+
         '</div>'+
         '<input class="ied-note" value="'+esc(a.note)+'" placeholder="Nota (opcional)" oninput="iedActs['+i+'].note=this.value">'+
+        '<div class="ied-maps-row">'+
+          '<span class="ied-pin '+(a.c?'has':'')+'" title="'+(a.c?'Ya tiene pin en el mapa':'Todavía sin pin')+'">'+(a.c?'📍':'○')+'</span>'+
+          '<input class="ied-maps" type="url" inputmode="url" value="'+esc(a.g||'')+'" '+
+            'placeholder="Pega el link de Google Maps" oninput="iedActs['+i+'].g=this.value">'+
+        '</div>'+
       '</div>'+
       '<button class="ied-del" onclick="iedDel('+i+')">&#215;</button>'+
     '</div>';
@@ -4328,7 +4346,7 @@ function iedDel(idx){
 }
 
 function iedAddAct(){
-  iedActs.push({t:'',n:'Nueva actividad',note:''});
+  iedActs.push({t:'',n:'Nueva actividad',note:'',g:'',_g0:''});
   renderIedList();
   var list=document.getElementById('ied-list');
   list.scrollTop=list.scrollHeight;
@@ -4336,16 +4354,30 @@ function iedAddAct(){
   if(rows.length) setTimeout(function(){ rows[rows.length-1].querySelector('.ied-name').focus(); },50);
 }
 
-function saveItinEdit(){
+async function saveItinEdit(){
   var day = iedDayIdx;
   var city = document.getElementById('ied-city').value.trim();
-  DAYS[day].acts = iedActs.slice();
+  var nuevos = iedActs.map(function(a){
+    var o = {t:a.t||'', n:a.n||'', note:a.note||''};
+    var link = (a.g||'').trim();
+    if(link) o.g = link;
+    // La coordenada solo se conserva si el link no cambió. Si pegaron uno
+    // nuevo, la vieja apuntaría al lugar anterior.
+    if(a.c && link === (a._g0||'')) o.c = a.c;
+    return o;
+  });
+
+  DAYS[day].acts = nuevos;
   DAYS[day].city = city || 'Por definir';
   closeItinEdit();
   renderDash(); renderOps();
   renderItin();
   renderPlaceMarkers();
-  saveItinDay(day);
+  await saveItinDay(day);
+
+  // Se resuelven las que quedaron sin coordenada (las de link nuevo incluidas)
+  var faltan = nuevos.some(function(a){ return !a.c && a.n; });
+  if(faltan) locateMissingCoords();
 }
 
 // ── TOUCH/MOUSE DRAG REORDER ───────────────────────────────────────────────
