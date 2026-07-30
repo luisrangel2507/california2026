@@ -2059,146 +2059,22 @@ const BUDGET = [
 
 // ── ITINERARY DATA ─────────────────────────────────────────────────────────
 const DAYS = [
-  {date:'2 Sep',wd:'Martes',city:'San Diego — Downtown + Gaslamp + Coronado',e:'🛃',acts:[
-    {t:'8:30', n:'🛃 Llegada a Tijuana Aeropuerto',note:'',c:[32.5430,-117.0320]},
-    {t:'9:00', n:'🚶 Cruce CBX + trámite I-94',note:'Cross Border Xpress · $20-30 + $30',c:[32.5509,-117.0198]},
-    {t:'11:00',n:'🍳 Desayuno — Pinpoint Café',note:'$20 por persona',c:[32.7233,-117.1686]},
-    {t:'15:00',n:'🏨 Check-in — Days Inn Wyndham',note:'Hotel Circle South',c:[32.7626,-117.1869]},
-    {t:'16:00',n:'⛴️ Coronado Ferry',note:'Round trip · $18',c:[32.6860,-117.1831]},
-    {t:'16:15',n:'🚲 Renta de bici ~1.5 hrs',note:'$15-22',c:[32.6860,-117.1831]},
-    {t:'16:30',n:'🏖️ Tidelands Park',note:'En bici',c:[32.6892,-117.1719]},
-    {t:'17:00',n:'🏨 Orange Ave / Hotel del Coronado',note:'En bici',c:[32.6801,-117.1748]},
-    {t:'18:00',n:'🌊 Coronado Beach',note:'Tiempo libre',c:[32.6755,-117.1725]},
-    {t:'19:15',n:'🌅 Atardecer en Coronado Beach',note:'',c:[32.6755,-117.1725]},
-    {t:'19:45',n:'⛴️ Regreso al Ferry Landing',note:'',c:[32.6860,-117.1831]},
-    {t:'20:30',n:'🚗 Traslado a Downtown',note:'',c:[32.7157,-117.1611]},
-    {t:'20:45',n:'🌉 Embarcadero & Broadway Pier',note:'',c:[32.7137,-117.1745]},
-    {t:'21:30',n:'🍽️ Cena — Gaslamp Quarter',note:'$20 por persona',c:[32.7099,-117.1604]},
-  ]},
-  {date:'3 Sep',wd:'Miércoles',city:'San Diego — La Jolla + Playas + Sunset Cliffs',e:'🌊',acts:[
-    {t:'10:00',n:'🍽️ Comida — Duke\'s La Jolla',note:'$15-25',c:[32.8495,-117.2743]},
-    {t:'11:30',n:'🦭 La Jolla Cove',note:'',c:[32.8501,-117.2726]},
-    {t:'13:00',n:'🌿 Kate Sessions Park',note:'',c:[32.8082,-117.2478]},
-    {t:'14:00',n:'🏖️ Pacific Beach',note:'Tiempo libre',c:[32.7962,-117.2531]},
-    {t:'14:30',n:'🍔 Comida — Pacific Beach',note:'$15-20',c:[32.7962,-117.2531]},
-    {t:'16:00',n:'🛹 Mission Beach / Boardwalk',note:'',c:[32.7659,-117.2522]},
-    {t:'17:00',n:'🌅 Sunset Cliffs',note:'Tiempo libre',c:[32.7207,-117.2556]},
-    {t:'19:15',n:'🌅 Atardecer en Sunset Cliffs',note:'',c:[32.7207,-117.2556]},
-    {t:'19:45',n:'🚗 Salida rumbo a Los Ángeles',note:'~2h de manejo'},
-    {t:'21:45',n:'🌆 Llegada a LA',note:'Cena no incluida',c:[34.0522,-118.2437]},
-  ]},
-  {date:'4 Sep',wd:'Jueves',city:'Los Ángeles — Palos Verdes + South Bay + Venice + Santa Monica',e:'🌴',acts:[
-    {t:'5:30', n:'🌄 Sunrise at Point Vicente',note:'',c:[33.7436,-118.4102]},
-    {t:'6:15', n:'🏔️ Via del Monte Overlook',note:'',c:[33.7627,-118.3947]},
-    {t:'6:45', n:'🌿 Vanderlip Park',note:'',c:[33.7745,-118.4104]},
-    {t:'7:20', n:'🏖️ Terranea Beach',note:'',c:[33.7436,-118.4019]},
-    {t:'8:25', n:'🍳 Desayuno',note:'Lugar por definir · $15'},
-    {t:'10:20',n:'🎣 Redondo Beach Pier',note:'',c:[33.8414,-118.3934]},
-    {t:'11:10',n:'🏄 Hermosa Beach',note:'',c:[33.8622,-118.3998]},
-    {t:'12:00',n:'🏖️ Manhattan Beach',note:'Parking + snack · $25',c:[33.8847,-118.4109]},
-    {t:'15:20',n:'⚓ Fisherman\'s Village',note:'Marina del Rey',c:[33.9803,-118.4470]},
-    {t:'16:15',n:'🎣 Venice Fishing Pier',note:'',c:[33.9850,-118.4770]},
-    {t:'16:45',n:'🛹 Venice Boardwalk',note:'$15',c:[33.9850,-118.4723]},
-    {t:'18:25',n:'🎡 Santa Monica Pier',note:'Golden hour + cena · $35',c:[34.0092,-118.4975]},
-  ]},
-  {date:'5 Sep',wd:'Viernes',city:'Los Ángeles — Beverly Hills + Hollywood + Griffith + DTLA',e:'⭐',acts:[
-    {t:'10:30',n:'🍳 Desayuno — Redondo Beach Pier',note:'$15',c:[33.8414,-118.3934]},
-    {t:'11:30',n:'✈️ Airplane Viewing Area',note:'LAX',c:[33.9522,-118.3839]},
-    {t:'13:00',n:'🍔 In-N-Out',note:'Cerca de LAX · $15',c:[33.9522,-118.3839]},
-    {t:'14:00',n:'💎 Rodeo Drive, Beverly Hills',note:'',c:[34.0681,-118.4000]},
-    {t:'15:00',n:'⭐ Hollywood Walk of Fame',note:'',c:[34.1016,-118.3267]},
-    {t:'16:00',n:'🚗 Mulholland Drive',note:'',c:[34.1341,-118.3215]},
-    {t:'16:30',n:'🔭 Griffith Observatory',note:'Golden hour + sunset · $15',c:[34.1184,-118.3004]},
-    {t:'20:50',n:'🌆 Downtown LA',note:'',c:[34.0560,-118.2370]},
-    {t:'21:45',n:'🚉 Union Station',note:'',c:[34.0561,-118.2365]},
-    {t:'22:30',n:'🎭 Speakeasy — Black Rabbit Rose',note:'$60 máx. · ¡reservar!',c:[34.1016,-118.3400]},
-  ]},
-  {date:'6 Sep',wd:'Sábado',city:'LA → Ragged Point',e:'🚗',acts:[
-    {t:'6:00', n:'🚗 Salida de Los Ángeles',note:''},
-    {t:'6:45', n:'🏖️ Malibu — Point Dume / El Matador',note:'',c:[34.0286,-118.8734]},
-    {t:'8:00', n:'🍳 Desayuno en Malibu',note:'$15-20',c:[34.0286,-118.8734]},
-    {t:'10:15',n:'⚓ Santa Barbara',note:'Stearns Wharf, State St — 1 hora',c:[34.4208,-119.6982]},
-    {t:'11:15',n:'🚗 Salida hacia San Luis Obispo',note:''},
-    {t:'12:45',n:'🏘️ San Luis Obispo',note:'',c:[35.2828,-120.6596]},
-    {t:'13:15',n:'🌊 Morro Bay',note:'',c:[35.3658,-120.8496]},
-    {t:'13:45',n:'🏨 Check-in — Ragged Point Inn and Resort',note:'',c:[35.7937,-121.3330]},
-  ]},
-  {date:'7 Sep',wd:'Domingo',city:'Ragged Point → Monterey (whale watching)',e:'🌉',acts:[
-    {t:'8:15', n:'🏞️ McWay Falls',note:'Julia Pfeiffer Burns SP · $10',c:[36.1578,-121.6720]},
-    {t:'9:00', n:'🍽️ Desayuno — Nepenthe',note:'$20-25 · vistas al Pacífico',c:[36.2553,-121.8220]},
-    {t:'10:15',n:'🏛️ Point Sur State Historic Park',note:'Vista exterior',c:[36.3048,-121.9022]},
-    {t:'10:45',n:'🌉 Bixby Creek Bridge',note:'El puente más fotografiado de CA',c:[36.3726,-121.9018]},
-    {t:'11:15',n:'🐋 Whale Peak',note:'',c:[36.4557,-121.9339]},
-    {t:'12:00',n:'🌿 Point Lobos State Natural Reserve',note:'$10',c:[36.5145,-121.9438]},
-    {t:'13:15',n:'🏨 Check-in — Monterey Bay Lodge',note:'',c:[36.5849,-121.9020]},
-    {t:'17:00',n:'🐋 Whale Watching Tour',note:'Fisherman\'s Wharf · ~2.5-3 hrs · $70 ¡reservar!',c:[36.6057,-121.8907]},
-    {t:'20:00',n:'🦞 Cena — Cannery Row',note:'$15',c:[36.6177,-121.8958]},
-  ]},
-  {date:'8 Sep',wd:'Lunes',city:'Monterey → San Francisco (Freestyle con Pollo)',e:'🌁',acts:[
-    {t:'8:00', n:'🚗 Salida de Monterey',note:''},
-    {t:'11:00',n:'🌁 Llegada a San Francisco',note:'Check-in',c:[37.7749,-122.4194]},
-    {t:'Tarde',n:'🎉 Libre con Pollo',note:'Tour a su manera por la ciudad · ~$100',c:[37.7749,-122.4194]},
-  ]},
-  {date:'9 Sep',wd:'Martes',city:'San Francisco — Giants + Catamarán',e:'⚾',acts:[
-    {t:'Mañana',n:'🆓 Libre',note:'Según lo que decidan ver'},
-    {t:'12:45',n:'⚾ Partido de los SF Giants',note:'Oracle Park · $30 · ¡reservar!',c:[37.7786,-122.3893]},
-    {t:'15:45',n:'🏁 Fin del partido (aprox.)',note:'',c:[37.7786,-122.3893]},
-    {t:'18:00',n:'⛵ Crucero en Catamarán',note:'Adventure Cat, Pier 39 · ~1.5 hrs · $80-90 ¡reservar!',c:[37.8087,-122.4098]},
-  ]},
-  {date:'10 Sep',wd:'Miércoles',city:'San Francisco → San Diego (regreso)',e:'🏁',acts:[
-    {t:'10:00',n:'🚗 Salida de San Francisco',note:'~8h de manejo por la I-5'},
-    {t:'Tarde',n:'🍔 Comida en el camino',note:'$20'},
-    {t:'18:30',n:'🏨 Llegada a San Diego',note:'819 University Avenue — check-in',c:[32.7454,-117.1613]},
-    {t:'Noche',n:'😴 Solo a dormir',note:'¡Gran viaje completado!',c:[32.7454,-117.1613]},
-  ]},
+  {date:'2 Sep',wd:'Martes',city:'Por definir',e:'📍',acts:[]},
+  {date:'3 Sep',wd:'Miércoles',city:'Por definir',e:'📍',acts:[]},
+  {date:'4 Sep',wd:'Jueves',city:'Por definir',e:'📍',acts:[]},
+  {date:'5 Sep',wd:'Viernes',city:'Por definir',e:'📍',acts:[]},
+  {date:'6 Sep',wd:'Sábado',city:'Por definir',e:'📍',acts:[]},
+  {date:'7 Sep',wd:'Domingo',city:'Por definir',e:'📍',acts:[]},
+  {date:'8 Sep',wd:'Lunes',city:'Por definir',e:'📍',acts:[]},
+  {date:'9 Sep',wd:'Martes',city:'Por definir',e:'📍',acts:[]},
+  {date:'10 Sep',wd:'Miércoles',city:'Por definir',e:'📍',acts:[]},
 ];
 
 // ── MAP PLACES ─────────────────────────────────────────────────────────────
-const PLACES = [
-  // Día 1 — San Diego
-  {n:'Tijuana CBX / Aeropuerto',    c:[32.5430,-117.0320], d:1,  e:'🛃'},
-  {n:'Days Inn Wyndham',           c:[32.7626,-117.1869], d:1,  e:'🏨'},
-  {n:'Coronado Beach',             c:[32.6755,-117.1725], d:1,  e:'🌊'},
-  {n:'Hotel del Coronado',         c:[32.6801,-117.1748], d:1,  e:'🏨'},
-  {n:'Gaslamp Quarter',            c:[32.7099,-117.1604], d:1,  e:'🌃'},
-  // Día 2 — San Diego
-  {n:'La Jolla Cove',              c:[32.8501,-117.2726], d:2,  e:'🦭'},
-  {n:"Duke's La Jolla",            c:[32.8495,-117.2743], d:2,  e:'🍽️'},
-  {n:'Pacific Beach',              c:[32.7962,-117.2531], d:2,  e:'🏖️'},
-  {n:'Mission Beach',              c:[32.7659,-117.2522], d:2,  e:'🛹'},
-  {n:'Sunset Cliffs',              c:[32.7207,-117.2556], d:2,  e:'🌅'},
-  // Día 3 — LA sur
-  {n:'Point Vicente Lighthouse',   c:[33.7436,-118.4102], d:3,  e:'🌄'},
-  {n:'Terranea Beach',             c:[33.7436,-118.4019], d:3,  e:'🏖️'},
-  {n:'Redondo Beach Pier',         c:[33.8414,-118.3934], d:3,  e:'🎣'},
-  {n:'Manhattan Beach',            c:[33.8847,-118.4109], d:3,  e:'🏖️'},
-  {n:'Venice Boardwalk',           c:[33.9850,-118.4723], d:3,  e:'🛹'},
-  {n:'Santa Monica Pier',          c:[34.0092,-118.4975], d:3,  e:'🎡'},
-  // Día 4 — Hollywood
-  {n:'Rodeo Drive',                c:[34.0681,-118.4000], d:4,  e:'💎'},
-  {n:'Hollywood Walk of Fame',     c:[34.1016,-118.3267], d:4,  e:'⭐'},
-  {n:'Griffith Observatory',       c:[34.1184,-118.3004], d:4,  e:'🔭'},
-  {n:'Downtown LA / Union Station',c:[34.0560,-118.2370], d:4,  e:'🌆'},
-  {n:'Black Rabbit Rose',          c:[34.1016,-118.3400], d:4,  e:'🎭'},
-  // Día 5 — LA → Ragged Point
-  {n:'El Matador Beach',           c:[34.0286,-118.8734], d:5,  e:'🏖️'},
-  {n:'Santa Barbara',              c:[34.4208,-119.6982], d:5,  e:'⚓'},
-  {n:'Morro Bay',                  c:[35.3658,-120.8496], d:5,  e:'🌊'},
-  {n:'Ragged Point Inn',           c:[35.7937,-121.3330], d:5,  e:'🏨'},
-  // Día 6 — Big Sur → Monterey
-  {n:'McWay Falls',                c:[36.1578,-121.6720], d:6,  e:'🏞️'},
-  {n:'Nepenthe',                   c:[36.2553,-121.8220], d:6,  e:'🍽️'},
-  {n:'Bixby Creek Bridge',         c:[36.3726,-121.9018], d:6,  e:'🌉'},
-  {n:'Point Lobos',                c:[36.5145,-121.9438], d:6,  e:'🌿'},
-  {n:'Monterey Bay Lodge',         c:[36.5849,-121.9020], d:6,  e:'🏨'},
-  // Día 7 — San Francisco (freestyle)
-  {n:'San Francisco',              c:[37.7749,-122.4194], d:7,  e:'🌁'},
-  // Día 8 — Giants + Catamarán
-  {n:'Oracle Park',                c:[37.7786,-122.3893], d:8,  e:'⚾'},
-  {n:'Pier 39 / Adventure Cat',    c:[37.8087,-122.4098], d:8,  e:'⛵'},
-  // Día 9 — Regreso
-  {n:'San Diego (regreso)',        c:[32.7454,-117.1613], d:9,  e:'🏁'},
-];
+// Vacío a propósito mientras se reestructura el itinerario — el mapa sigue
+// siendo accesible, solo que sin lugares activos hasta que se agreguen de
+// nuevo (a mano aquí, o desde "+ Agregar actividad" en Itinerario).
+const PLACES = [];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
 let persons = JSON.parse(localStorage.getItem('ca26_p') || '["Erick","Rafa","Eduardo"]');
@@ -2839,6 +2715,7 @@ function renderDash(){
       else if(!nextAct) nextAct=a;
     });
     if(!curAct) curAct=day.acts[0];
+    if(!curAct) curAct={n:'Sin actividades todavía',note:''};
     actHTML =
       '<div class="dash-now-band">'+
         '<div class="dash-now-pill"><span class="dot"></span>AHORA</div>'+
@@ -3280,6 +3157,9 @@ function renderItin(){
         delBtn+
         '</div>';
     }).join('');
+    if(!d.acts.length){
+      acts = '<div style="padding:16px 13px;color:var(--muted);font-size:12px;text-align:center">Sin actividades todavía</div>';
+    }
     var addBtn = admin
       ? '<button class="day-add-btn" onclick="openActModal('+i+')">+ Agregar actividad</button>'
       : '';
