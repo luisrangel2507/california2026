@@ -141,6 +141,10 @@
       font-family:'Space Mono',monospace; font-size: 52px; font-weight: 700;
       line-height: 1; letter-spacing: -2px; margin-top: 4px;
     }
+    .dash-photo-ampm {
+      font-size: 20px; font-weight: 700; letter-spacing: 0;
+      margin-left: 7px; opacity: .85;
+    }
 
     /* ── GEO STATUS BAR ── */
     #geo-bar {
@@ -1064,6 +1068,47 @@
     }
     /* Se oculta mientras no hay sesión iniciada */
     .tr-fab.hidden { display: none; }
+
+    /* ── TRADUCTOR: selector de modo ── */
+    .tr-modes {
+      display:flex; gap:6px; margin:2px 18px 0; padding:4px;
+      background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:11px;
+      flex-shrink:0;
+    }
+    .tr-mode {
+      flex:1; padding:8px; border:none; background:none; cursor:pointer;
+      border-radius:8px; color:var(--muted); font-size:12.5px; font-weight:700;
+      font-family:'Space Grotesk',sans-serif; letter-spacing:.3px;
+      transition: background .18s, color .18s;
+    }
+    .tr-mode.active { background:rgba(0,200,255,.16); color:var(--cyan); }
+
+    /* ── TRADUCTOR: modo conversación (dos partes) ── */
+    .tr-side {
+      background:rgba(255,255,255,.05); border:1px solid var(--border);
+      border-radius:12px; padding:10px 12px 4px;
+    }
+    .tr-side-hd { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+    .tr-side-lang {
+      font-size:11px; font-weight:700; color:var(--cyan);
+      text-transform:uppercase; letter-spacing:1.2px; font-family:'Space Mono',monospace;
+    }
+    .tr-side-actions { display:flex; gap:6px; }
+    .tr-side-input {
+      width:100%; box-sizing:border-box; resize:none; background:none; border:none;
+      color:var(--text); font-size:15.5px; font-family:'Space Grotesk',sans-serif;
+      outline:none; line-height:1.4; padding:0 0 8px;
+    }
+    .tr-side-input::placeholder { color:var(--muted); }
+    .tr-cv-mid {
+      text-align:center; color:var(--muted); font-size:15px;
+      font-family:'Space Mono',monospace; line-height:1;
+    }
+    .tr-cv-mid .cv-working { color:var(--cyan); }
+    .tr-cv-mid .cv-err { color:var(--coral); font-size:11.5px; }
+    .tr-btn-ghost {
+      background:none; color:var(--muted); border:1px dashed var(--border2);
+    }
 
     /* ── TRADUCTOR ── */
     .tr-body { flex:1; overflow-y:auto; padding:10px 18px 24px; display:flex; flex-direction:column; gap:12px; }
@@ -2821,9 +2866,11 @@ function parseMins(t){
 
 function renderDash(){
   var now = new Date();
-  var hh = String(now.getHours()).padStart(2,'0');
+  var h24 = now.getHours();
+  var ampm = h24 < 12 ? 'AM' : 'PM';
+  var h12 = h24 % 12; if(h12 === 0) h12 = 12;   // medianoche y mediodía son las 12
   var mm = String(now.getMinutes()).padStart(2,'0');
-  var timeStr = hh+':'+mm;
+  var timeStr = h12+':'+mm;
 
   // ── Photo hero card
   var ambientHTML =
@@ -2832,7 +2879,7 @@ function renderDash(){
       '<div class="dash-hero-logo"><img src="logo-altavibra.png" alt="Alta Vibra"></div>'+
       '<div class="dash-photo-content">'+
         '<div class="dash-photo-city">La hora es:</div>'+
-        '<div class="dash-photo-time">'+timeStr+'</div>'+
+        '<div class="dash-photo-time">'+timeStr+'<span class="dash-photo-ampm">'+ampm+'</span></div>'+
       '</div>'+
     '</div>';
 
@@ -4411,9 +4458,17 @@ function closeTranslate(){
 function trSyncLangs(){
   document.getElementById('tr-lang-from').textContent = TR_LANGS[trFrom].label;
   document.getElementById('tr-lang-to').textContent = TR_LANGS[trTo].label;
-  document.getElementById('tr-sub').textContent = TR_LANGS[trFrom].label+' → '+TR_LANGS[trTo].label;
-  var mic = document.getElementById('tr-mic');
-  if(mic) mic.style.display = trSpeechSupported() ? '' : 'none';
+  document.getElementById('tr-sub').textContent = trMode==='convo'
+    ? TR_LANGS[trFrom].label+' ⇅ '+TR_LANGS[trTo].label
+    : TR_LANGS[trFrom].label+' → '+TR_LANGS[trTo].label;
+  // Etiquetas de los dos paneles del modo conversación
+  document.getElementById('tr-cv-lang-a').textContent = TR_LANGS[trFrom].label;
+  document.getElementById('tr-cv-lang-b').textContent = TR_LANGS[trTo].label;
+  var supported = trSpeechSupported();
+  ['tr-mic','tr-cv-mic-a','tr-cv-mic-b'].forEach(function(id){
+    var b = document.getElementById(id);
+    if(b) b.style.display = supported ? '' : 'none';
+  });
 }
 
 function trSwap(){
@@ -4501,17 +4556,20 @@ function trSpeechSupported(){
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
 }
 
-function trToggleMic(){
+// Dictado genérico, compartido por el modo simple y el de conversación.
+var trMicBtnId = null;
+function trStartMic(opts){
+  // opts: {inputId, lang, btnId, onDone}
   if(trRecording){ trStopMic(); return; }
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if(!SR){ toast('Tu navegador no soporta dictado.','error'); return; }
   try{
+    var input = document.getElementById(opts.inputId);
+    var base = input.value ? input.value.trim()+' ' : '';
     trRecognition = new SR();
-    trRecognition.lang = TR_LANGS[trFrom].voice;
+    trRecognition.lang = opts.lang;
     trRecognition.interimResults = true;
     trRecognition.continuous = false;
-    var input = document.getElementById('tr-input');
-    var base = input.value ? input.value.trim()+' ' : '';
 
     trRecognition.onresult = function(ev){
       var txt = '';
@@ -4525,13 +4583,22 @@ function trToggleMic(){
     };
     trRecognition.onend = function(){
       trStopMic();
-      if(document.getElementById('tr-input').value.trim()) trTranslateNow();
+      if(input.value.trim() && opts.onDone) opts.onDone();
     };
 
     trRecognition.start();
     trRecording = true;
-    document.getElementById('tr-mic').classList.add('rec');
+    trMicBtnId = opts.btnId;
+    var b = document.getElementById(opts.btnId);
+    if(b) b.classList.add('rec');
   }catch(e){ toast('No se pudo iniciar el dictado.','error'); }
+}
+
+function trToggleMic(){
+  trStartMic({
+    inputId:'tr-input', lang:TR_LANGS[trFrom].voice, btnId:'tr-mic',
+    onDone: trTranslateNow
+  });
 }
 
 function trStopMic(){
@@ -4540,8 +4607,104 @@ function trStopMic(){
     trRecognition = null;
   }
   trRecording = false;
-  var mic = document.getElementById('tr-mic');
-  if(mic) mic.classList.remove('rec');
+  if(trMicBtnId){
+    var b = document.getElementById(trMicBtnId);
+    if(b) b.classList.remove('rec');
+    trMicBtnId = null;
+  }
+}
+
+// ── MODO CONVERSACIÓN (dos partes, una por idioma) ──────────────────────────
+// Lado 'a' = idioma origen, lado 'b' = idioma destino.
+var trMode = 'simple';
+var trCvDebounce = { a:null, b:null };
+var trCvSeq = { a:0, b:0 };
+
+function trSetMode(m){
+  trMode = m;
+  trStopMic();
+  if(window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById('tr-body-simple').style.display = m==='simple' ? '' : 'none';
+  document.getElementById('tr-body-convo').style.display  = m==='convo'  ? '' : 'none';
+  document.getElementById('tr-mode-simple').classList.toggle('active', m==='simple');
+  document.getElementById('tr-mode-convo').classList.toggle('active', m==='convo');
+  trSyncLangs();
+}
+
+function trCvLangOf(side){ return side==='a' ? trFrom : trTo; }
+function trCvOther(side){ return side==='a' ? 'b' : 'a'; }
+
+function trCvSetStatus(html, cls){
+  var el = document.getElementById('tr-cv-status');
+  if(!el) return;
+  el.className = cls || '';
+  el.innerHTML = html;
+}
+
+function trCvInput(side){
+  clearTimeout(trCvDebounce[side]);
+  var v = document.getElementById('tr-cv-'+side).value.trim();
+  if(!v){
+    // Al vaciar un lado, se limpia la traducción del otro
+    document.getElementById('tr-cv-'+trCvOther(side)).value = '';
+    trCvSetStatus('&#8645;');
+    return;
+  }
+  trCvDebounce[side] = setTimeout(function(){ trCvTranslate(side); }, 700);
+}
+
+async function trCvTranslate(side){
+  clearTimeout(trCvDebounce[side]);
+  var text = document.getElementById('tr-cv-'+side).value.trim();
+  var other = trCvOther(side);
+  if(!text) return;
+  var mySeq = ++trCvSeq[side];
+  trCvSetStatus('traduciendo…','cv-working');
+  try{
+    var r = await fetch('/api/translate',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text:text, from:trCvLangOf(side), to:trCvLangOf(other)})
+    });
+    if(mySeq !== trCvSeq[side]) return;   // llegó una petición más nueva
+    if(!r.ok) throw new Error('bad status');
+    var j = await r.json();
+    if(mySeq !== trCvSeq[side]) return;
+    // Asignar .value no dispara 'input', así que no se cicla de vuelta
+    document.getElementById('tr-cv-'+other).value = j.translated || '';
+    trCvSetStatus('&#8645;');
+  }catch(e){
+    if(mySeq !== trCvSeq[side]) return;
+    trCvSetStatus('sin conexión','cv-err');
+  }
+}
+
+function trCvMic(side){
+  trStartMic({
+    inputId: 'tr-cv-'+side,
+    lang: TR_LANGS[trCvLangOf(side)].voice,
+    btnId: 'tr-cv-mic-'+side,
+    onDone: function(){ trCvTranslate(side); }
+  });
+}
+
+function trCvSpeak(side){
+  var txt = document.getElementById('tr-cv-'+side).value.trim();
+  if(!txt){ toast('Ese lado está vacío.','error'); return; }
+  if(!window.speechSynthesis){ toast('Tu navegador no puede leer en voz alta.','error'); return; }
+  speechSynthesis.cancel();
+  var u = new SpeechSynthesisUtterance(txt);
+  u.lang = TR_LANGS[trCvLangOf(side)].voice;
+  u.rate = 0.95;
+  speechSynthesis.speak(u);
+}
+
+function trCvClear(){
+  trStopMic();
+  clearTimeout(trCvDebounce.a); clearTimeout(trCvDebounce.b);
+  trCvSeq.a++; trCvSeq.b++;   // invalida respuestas en vuelo
+  document.getElementById('tr-cv-a').value = '';
+  document.getElementById('tr-cv-b').value = '';
+  trCvSetStatus('&#8645;');
 }
 
 // ── RESUMEN DEL VIAJE ────────────────────────────────────────────────────────
@@ -4890,7 +5053,44 @@ if('serviceWorker' in navigator){
     </div>
     <button class="bs-close" onclick="closeTranslate()">&#10005;</button>
   </div>
-  <div class="tr-body">
+
+  <div class="tr-modes">
+    <button class="tr-mode active" id="tr-mode-simple" onclick="trSetMode('simple')">Simple</button>
+    <button class="tr-mode" id="tr-mode-convo" onclick="trSetMode('convo')">Conversación</button>
+  </div>
+
+  <!-- Modo conversación: dos partes, una por idioma -->
+  <div class="tr-body" id="tr-body-convo" style="display:none">
+    <div class="tr-side">
+      <div class="tr-side-hd">
+        <span class="tr-side-lang" id="tr-cv-lang-a">Español</span>
+        <div class="tr-side-actions">
+          <button class="tr-icon-btn" id="tr-cv-mic-a" onclick="trCvMic('a')" title="Dictar en español">🎤</button>
+          <button class="tr-icon-btn" onclick="trCvSpeak('a')" title="Escuchar">🔊</button>
+        </div>
+      </div>
+      <textarea class="tr-side-input" id="tr-cv-a" rows="3" maxlength="500"
+        placeholder="Habla o escribe en español…" oninput="trCvInput('a')"></textarea>
+    </div>
+
+    <div class="tr-cv-mid"><span id="tr-cv-status">&#8645;</span></div>
+
+    <div class="tr-side">
+      <div class="tr-side-hd">
+        <span class="tr-side-lang" id="tr-cv-lang-b">Inglés</span>
+        <div class="tr-side-actions">
+          <button class="tr-icon-btn" id="tr-cv-mic-b" onclick="trCvMic('b')" title="Dictar en inglés">🎤</button>
+          <button class="tr-icon-btn" onclick="trCvSpeak('b')" title="Escuchar">🔊</button>
+        </div>
+      </div>
+      <textarea class="tr-side-input" id="tr-cv-b" rows="3" maxlength="500"
+        placeholder="Speak or type in English…" oninput="trCvInput('b')"></textarea>
+    </div>
+
+    <button class="tr-btn tr-btn-ghost" onclick="trCvClear()">Limpiar</button>
+  </div>
+
+  <div class="tr-body" id="tr-body-simple">
     <div class="tr-langbar">
       <span class="tr-lang" id="tr-lang-from">Español</span>
       <button class="tr-swap" onclick="trSwap()" title="Invertir idiomas">&#8646;</button>
