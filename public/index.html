@@ -1320,6 +1320,15 @@
       display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
       font-family:'Space Mono',monospace; flex-shrink:0; margin-top:1px;
     }
+    .me-wipe-btn {
+      width:100%; margin-top:12px; padding:10px; border-radius:10px; cursor:pointer;
+      background:rgba(255,80,80,.1); border:1px solid rgba(255,80,80,.3);
+      color:var(--red); font-size:12.5px; font-weight:700;
+      font-family:'Space Grotesk',sans-serif;
+      transition: transform .12s var(--ease), background .15s;
+    }
+    .me-wipe-btn:active { transform: scale(.98); background:rgba(255,80,80,.2); }
+    .me-wipe-note { font-size:9.5px; color:var(--muted); margin-top:5px; line-height:1.5; }
     .me-version {
       margin-top:14px; padding-top:10px; border-top:1px solid var(--border);
       font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; line-height:1.6;
@@ -3525,6 +3534,32 @@ async function saveItinDay(dayIdx){
 }
 
 // Sube una sola vez el itinerario que quedó atrapado en este teléfono.
+// Deja el itinerario en blanco para empezar de cero. Es destructivo, así que
+// pide confirmación escrita antes.
+async function wipeItinerary(){
+  if(!isAdmin()){ toast('Solo el admin.','error'); return; }
+  var total = DAYS.reduce(function(s,d){ return s+(d.acts||[]).length; }, 0);
+  if(!confirm('Se van a borrar los 9 días del itinerario'+(total?' y sus '+total+' actividades':'')+'.\n\nLos gastos, fotos y reservaciones NO se tocan.\n\n¿Continuar?')) return;
+  var who = meIndex!==null ? persons[parseInt(meIndex)] : '';
+  try{
+    var r = await fetch('/api/itinerary',{
+      method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({who:who})
+    });
+    if(!r.ok){ toast(r.status===403?'Solo el admin puede borrar el itinerario.':'No se pudo borrar.','error'); return; }
+  }catch(e){ toast('Sin conexión con el servidor.','error'); return; }
+
+  // Se limpia también lo que quedaba guardado en este teléfono, si no la
+  // próxima carga volvería a aplicarlo encima.
+  ITIN_OVERRIDE = {};
+  localStorage.removeItem('ca26_itin');
+  localStorage.setItem('ca26_itin_migrated','1');
+  DAYS.forEach(function(d){ d.acts = []; d.city = 'Por definir'; });
+
+  closeMyProfile();
+  renderItin(); renderDash(); renderOps(); renderPlaceMarkers();
+  toast('Itinerario borrado. Ya puedes cargar el nuevo.','success');
+}
+
 async function migrateLocalItinerary(){
   var keys = Object.keys(ITIN_OVERRIDE);
   if(!keys.length) return;
@@ -5571,6 +5606,8 @@ if('serviceWorker' in navigator){
     <div class="me-admin-sec" id="me-admin-sec" style="display:none">
       <div class="ef-lbl" style="margin-top:6px">Contactos de emergencia — todos (admin)</div>
       <div id="me-admin-contacts"></div>
+      <button class="me-wipe-btn" onclick="wipeItinerary()">Borrar todo el itinerario</button>
+      <div class="me-wipe-note">Deja los 9 días en blanco para empezar de cero. Los gastos, fotos y reservaciones no se tocan.</div>
     </div>
     <div class="me-version" id="me-version"></div>
   </div>

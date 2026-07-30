@@ -275,36 +275,58 @@ function geoIsDown(name) {
   return geoDown[name] && (Date.now() - geoDown[name]) < GEO_DOWN_MS;
 }
 
-function coordsFromMapsUrl(url) {
-  if (!url) return null;
+function coordsFromMapsUrl(text) {
+  if (!text) return null;
   const pats = [
-    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,          // formato interno de place
-    /@(-?\d+\.\d+),(-?\d+\.\d+)/,              // /maps/place/.../@lat,lon,17z
-    /[?&](?:q|query|daddr|destination)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+    // !3d/!4d es la coordenada exacta del lugar; va primero porque @... es
+    // el centro de la vista, que puede estar desplazado.
+    /!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+    /[?&](?:q|query|daddr|destination|saddr)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+    /[?&](?:ll|sll|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+    /\/maps\/(?:search|dir|place)\/(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+    /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    // En el HTML de Google las coordenadas vienen dentro de arreglos
+    /"center"\s*:\s*\{\s*"lat"\s*:\s*(-?\d+\.\d+)\s*,\s*"lng"\s*:\s*(-?\d+\.\d+)/,
+    /\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/,
   ];
   for (const p of pats) {
-    const m = url.match(p);
+    const m = String(text).match(p);
     if (m) {
       const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
-      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return [lat, lon];
+      // Descarta 0,0 y valores fuera de rango
+      if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0)) {
+        return [lat, lon];
+      }
     }
   }
   return null;
 }
 
+// Google le sirve una página distinta (o de consentimiento) a los clientes que
+// no parecen navegador, y ahí no vienen las coordenadas. Por eso aquí sí se usa
+// un User-Agent de navegador, a diferencia de las llamadas a los buscadores.
+const MAPS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
+  'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
 async function resolveMapsUrl(url) {
   const direct = coordsFromMapsUrl(url);
   if (direct) return direct;
-  // Los links cortos (maps.app.goo.gl) no traen coordenadas: hay que seguir
-  // la redirección para llegar a la URL larga que sí las tiene.
-  if (!/goo\.gl|maps\.app/.test(url)) return null;
+  if (!/^https?:\/\//i.test(url)) return null;
   try {
     const r = await fetch(url, {
       redirect: 'follow',
-      headers: { 'User-Agent': GEO_UA },
-      signal: AbortSignal.timeout(9000),
+      headers: {
+        'User-Agent': MAPS_UA,
+        'Accept-Language': 'es-MX,es;q=0.9,en;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      signal: AbortSignal.timeout(12000),
     });
-    return coordsFromMapsUrl(r.url) || coordsFromMapsUrl(await r.text());
+    // La URL final tras la redirección suele traerlas ya
+    const fromUrl = coordsFromMapsUrl(r.url);
+    if (fromUrl) return fromUrl;
+    return coordsFromMapsUrl(await r.text());
   } catch (e) { return null; }
 }
 
@@ -386,15 +408,18 @@ app.post('/api/geocode', async (req, res) => {
   const cleanCity = typeof city === 'string' ? city.trim().slice(0, 120) : '';
   if (!cleanName && !mapsUrl) return res.status(400).json({ error: 'missing name' });
 
-  // El link de Maps es más preciso que buscar por nombre
+  // Si hay link de Maps, ese manda: apunta al lugar exacto que el usuario
+  // eligió. Buscar el nombre por su cuenta pondría el pin en otro lado.
+  const mapsFail = [];
   if (typeof mapsUrl === 'string' && /^https?:\/\//.test(mapsUrl)) {
     const key = 'url:' + mapsUrl;
     if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
     const c = await geoThrottle(() => resolveMapsUrl(mapsUrl), 'maps');
     if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
+    mapsFail.push('el link no soltó coordenadas: ' + mapsUrl.slice(0, 120));
   }
 
-  if (!cleanName) return res.status(404).json({ error: 'not found' });
+  if (!cleanName) return res.status(404).json({ error: 'not found', tried: mapsFail });
 
   // Se le pega la ciudad del día como contexto: "Beverly Hills" solo es
   // ambiguo, "Beverly Hills, Los Ángeles" no.
@@ -409,7 +434,7 @@ app.post('/api/geocode', async (req, res) => {
 
   // Se guarda el motivo real del fallo: sin esto, un 404 no distingue entre
   // "no existe el lugar" y "el proveedor nos está bloqueando".
-  const tried = [];
+  const tried = mapsFail.slice();
   for (const [pname, pfn] of GEO_PROVIDERS) {
     if (geoIsDown(pname)) { tried.push(pname + ' omitido (falló hace poco)'); continue; }
     for (const q of [...new Set(queries)]) {
@@ -490,6 +515,20 @@ app.post('/api/itinerary', (req, res) => {
   itinStore[i] = entry;
   persistItin();
   res.json({ ok: true, entry });
+});
+
+// Borra el itinerario completo para empezar de cero. Solo el admin.
+app.delete('/api/itinerary', (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  const dias = Object.keys(itinStore).length;
+  itinStore = {};
+  persistItin();
+  // También se limpia el caché de ubicaciones: si el viaje cambia por
+  // completo, las coordenadas viejas ya no sirven de nada.
+  geoCache = {};
+  persistGeo();
+  res.json({ ok: true, borrados: dias });
 });
 
 // ── Ubicación en vivo del grupo (opt-in por persona) ───────────────────────
