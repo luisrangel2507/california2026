@@ -236,11 +236,6 @@
     .leaflet-popup-content { margin: 10px 14px !important; font-family: 'Space Grotesk', sans-serif; }
     .pop-name { font-size: 13px; font-weight: 700; color: #16233A; }
     .pop-day { font-size: 10px; color: #6B7A94; margin-top: 3px; font-family:'Space Mono',monospace; letter-spacing:.5px; }
-    .pop-warn {
-      font-size: 10.5px; line-height: 1.35; color: #9A6410; margin-top: 6px;
-      background: rgba(224,146,26,.12); border: 1px solid rgba(224,146,26,.3);
-      border-radius: 6px; padding: 5px 7px;
-    }
     .pop-dist { font-size: 10px; color: #00A968; margin-top: 4px; }
     .pop-actions { display: flex; gap: 6px; margin-top: 8px; }
     .pop-maps {
@@ -438,7 +433,6 @@
       color: #fff; background: #7C8DA6; border: 1px solid transparent;
     }
     .act-num.done  { background: #00C77E; }
-    .act-num.guess { background: #E0921A; }
     /* Sin pin: hueco, porque ese número no está en el mapa */
     .act-num.nopin { background: transparent; border: 1px dashed rgba(255,255,255,.25); color: var(--muted); }
     .act-body { flex: 1; min-width: 0; }
@@ -1068,7 +1062,6 @@
     .ied-maps-row { display:flex; align-items:center; gap:6px; }
     .ied-pin { font-size:11px; flex-shrink:0; width:22px; text-align:center; color:var(--muted); }
     .ied-pin.has { color:var(--green); }
-    .ied-pin.guess { color:#F5A623; }
     .ied-maps {
       flex:1; min-width:0; background:rgba(0,200,255,.05);
       border:1px solid rgba(0,200,255,.15); border-radius:7px;
@@ -1090,15 +1083,10 @@
       border-radius:5px; font-family:'Space Mono',monospace; flex-shrink:0;
     }
     .gfx-badge.miss  { background:rgba(255,90,110,.14); color:#FF7A88; border:1px solid rgba(255,90,110,.3); }
-    .gfx-badge.guess { background:rgba(245,166,35,.14); color:#F5A623; border:1px solid rgba(245,166,35,.3); }
     .gfx-where {
       font-size:9.5px; color:var(--muted); font-family:'Space Mono',monospace; letter-spacing:.5px;
     }
     .gfx-name { font-size:14px; font-weight:600; color:var(--txt); line-height:1.25; }
-    .gfx-see {
-      font-size:10.5px; color:var(--cyan); text-decoration:none;
-      font-family:'Space Grotesk',sans-serif; align-self:flex-start;
-    }
     .gfx-inp { width:100%; font-size:11px; padding:8px 10px; }
     .ied-time:focus,.ied-name:focus,.ied-note:focus,.ied-maps:focus { border-color:rgba(0,200,255,.4); }
     .ied-del {
@@ -2670,15 +2658,12 @@ function renderPlaceMarkers(){
       routePts.push(a.c);
       var done = !!actDone[di+'-'+ai];
       var num = globalActNumber(di, ai);
-      // Ámbar = la app adivinó el lugar por el nombre; puede estar mal puesto
-      var guess = actPinGuessed(a);
-      var clr = done ? '#00C77E' : guess ? '#E0921A' : '#7C8DA6';
+      var clr = done ? '#00C77E' : '#7C8DA6';
       var icon = L.divIcon({
         className:'',
         html:'<div style="position:relative;width:32px;height:32px">' +
           '<div style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+clr+';border:2px solid #fff;box-shadow:0 3px 8px rgba(20,30,50,.35)"></div>' +
           '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)">'+num+'</div>' +
-          (guess ? '<div style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:#fff;color:#E0921A;font-size:10px;font-weight:700;line-height:14px;text-align:center;box-shadow:0 1px 3px rgba(20,30,50,.4)">?</div>' : '') +
           '</div>',
         iconSize:[32,32],
         iconAnchor:[16,32],
@@ -2688,7 +2673,6 @@ function renderPlaceMarkers(){
         '<div class="pop-name">'+esc(a.n)+'</div>'+
         '<div class="pop-day">DÍA '+(di+1)+' · Actividad #'+num+' · '+esc(day.date)+(a.t?' · '+esc(a.t):'')+(done?' · ✓ hecho':'')+'</div>'+
         (a.note?'<div class="pop-day">'+esc(a.note)+'</div>':'')+
-        (guess?'<div class="pop-warn">Lo ubiqué por el nombre — si no es aquí, edita la actividad y pega el link o la dirección.</div>':'')+
         '<div class="pop-actions">'+
           '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+a.c[0]+','+a.c[1]+'" target="_blank">Cómo llegar</a>'+
           '<a class="pop-maps" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank" style="background:rgba(0,229,197,.1);color:#00E5C5;border-color:rgba(0,229,197,.3)">Ver en Maps</a>'+
@@ -3670,37 +3654,55 @@ var geoLastFail = '';   // por qué falló la última, para poder avisar bien
 async function geocodeAct(dayIdx, actIdx){
   var a = DAYS[dayIdx] && DAYS[dayIdx].acts[actIdx];
   if(!a || a.c) return false;
+  // Sin ubicación pegada no se ubica nada. Antes se adivinaba por el nombre y
+  // el pin acababa donde fuera: "Comida en Rockefeller" cayó en Irvine.
+  if(!(a.g||'').trim()) return false;
   try{
     var r = await fetch('/api/geocode',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name:a.n, city:DAYS[dayIdx].city, mapsUrl:a.g||'' })
+      body: JSON.stringify({ mapsUrl:a.g })
     });
     var j = await r.json().catch(function(){ return {}; });
     if(!r.ok || !j.c){
       // Si los proveedores devolvieron error (no "sin resultados"), es un
-      // problema del servicio, no del nombre del lugar.
+      // problema del servicio, no de la ubicación que pegaron.
       var t = (j.tried||[]).join(' | ');
       if(/ERROR/.test(t)) geoLastFail = 'servicio';
-      else if(!geoLastFail) geoLastFail = 'nombre';
+      else if(!geoLastFail) geoLastFail = 'ubicacion';
       return false;
     }
     a.c = j.c;
-    // El servidor dice de dónde salió: de lo que se pegó, o de adivinar el
-    // nombre. Una dirección pegada cuenta como confirmada aunque la haya
-    // resuelto el mismo buscador que resuelve los nombres.
-    a.cs = (j.from === 'hint') ? 'link' : 'nombre';
+    a.cs = 'link';
     return true;
   }catch(e){ geoLastFail = 'red'; return false; }
 }
 
-// Un pin sacado del nombre puede caer en cualquier lado: de "Rockefeller" hay
-// varios, y el buscador se queda con el primero. Hay que poder distinguirlos
-// de los que el usuario confirmó pegando el link o la dirección.
-// En itinerarios de antes no existe el campo cs, así que se deduce: sin
-// ubicación pegada, el pin sólo pudo salir de adivinar el nombre.
+// Un pin de un itinerario viejo que se sacó del nombre: no tiene ubicación
+// pegada, así que no pudo salir de otro lado. Ya no se generan, pero hay que
+// poder reconocer los que quedaron guardados.
 function actPinGuessed(a){
   if(!a || !a.c) return false;
   return a.cs ? a.cs === 'nombre' : !a.g;
+}
+
+// Los pins que quedaron de cuando se adivinaba por el nombre no cumplen la
+// regla de ahora, y uno de ellos estaba en otra ciudad. Se quitan una sola vez
+// para que el mapa muestre nada más lo que salió de Google Maps.
+async function dropGuessedPins(){
+  if(!isAdmin()) return;
+  var dias = {}, n = 0;
+  DAYS.forEach(function(d,di){
+    (d.acts||[]).forEach(function(a){
+      if(!actPinGuessed(a)) return;
+      delete a.c; delete a.cs;
+      dias[di] = true; n++;
+    });
+  });
+  if(!n) return;
+  renderItin(); renderPlaceMarkers();
+  for(var k in dias){ if(dias.hasOwnProperty(k)) await saveItinDay(parseInt(k,10)); }
+  toast('Quité '+n+' pin'+(n===1?'':'s')+' que había adivinado por el nombre. '+
+        'Pégales el link de Google Maps.','error');
 }
 
 // Recorre las actividades sin coordenada y las va ubicando de una en una,
@@ -3708,14 +3710,22 @@ function actPinGuessed(a){
 async function locateMissingCoords(opts){
   if(geoBusy) return;
   if(!isAdmin()) return;          // solo el admin puede guardar el itinerario
-  var pend = [];
+  var pend = [], sinLink = 0;
   DAYS.forEach(function(d,di){
     (d.acts||[]).forEach(function(a,ai){
-      if(!a.c && a.n) pend.push([di,ai]);
+      if(a.c || !a.n) return;
+      if((a.g||'').trim()) pend.push([di,ai]);
+      else sinLink++;
     });
   });
   if(!pend.length){
-    if(opts && opts.loud) toast('Todas las actividades ya están en el mapa.','success');
+    if(opts && opts.loud){
+      toast(sinLink
+        ? 'A '+sinLink+' actividad'+(sinLink===1?'':'es')+' le'+(sinLink===1?'':'s')+
+          ' falta el link de Google Maps. Toca «Ver cuáles son».'
+        : 'Todas las actividades ya están en el mapa.',
+        sinLink ? 'error' : 'success');
+    }
     return;
   }
   geoBusy = true;
@@ -3737,9 +3747,9 @@ async function locateMissingCoords(opts){
     toast(ok+' actividad'+(ok===1?'':'es')+' ubicada'+(ok===1?'':'s')+' en el mapa.','success');
   } else if(opts && opts.loud){
     toast(
-      geoLastFail==='servicio' ? 'El buscador de lugares no responde ahora. Intenta más tarde o pega el link de Google Maps.' :
+      geoLastFail==='servicio' ? 'El buscador no responde ahora. Intenta más tarde.' :
       geoLastFail==='red'      ? 'Sin conexión con el servidor.' :
-      'No encontré esos lugares por su nombre. Toca «Ver cuáles son» para pegarles el link o la dirección.',
+      'No pude sacar la ubicación de esos links. Revísalos en «Ver cuáles son».',
     'error');
   }
   geoLastFail = '';
@@ -3751,20 +3761,14 @@ async function locateMissingCoords(opts){
 // buscándolas día por día.
 var gfxRows = [];
 
-// Las que no tienen pin van primero: esas ni siquiera salen en el mapa.
 function geoProblemActs(){
   var out = [];
   DAYS.forEach(function(d,di){
     (d.acts||[]).forEach(function(a,ai){
-      if(!a.n) return;
-      if(!a.c) out.push({di:di, ai:ai, tipo:'falta'});
-      else if(actPinGuessed(a)) out.push({di:di, ai:ai, tipo:'dudoso'});
+      if(a.n && !a.c) out.push({di:di, ai:ai});
     });
   });
-  return out.sort(function(x,y){
-    if(x.tipo !== y.tipo) return x.tipo === 'falta' ? -1 : 1;
-    return (x.di - y.di) || (x.ai - y.ai);
-  });
+  return out;
 }
 
 function openGeoFix(){
@@ -3776,12 +3780,8 @@ function openGeoFix(){
     return r;
   });
   if(!gfxRows.length){ toast('Todas las actividades están ubicadas.','success'); return; }
-  var faltan = gfxRows.filter(function(r){ return r.tipo==='falta'; }).length;
-  var dudosos = gfxRows.length - faltan;
   document.getElementById('gfx-sub').textContent =
-    (faltan ? faltan+' sin ubicar' : '') +
-    (faltan && dudosos ? ' · ' : '') +
-    (dudosos ? dudosos+' por verificar' : '');
+    gfxRows.length + (gfxRows.length===1 ? ' sin ubicar' : ' sin ubicar');
   renderGeoFixList();
   document.getElementById('gfx-overlay').classList.add('show');
   document.getElementById('gfx-sheet').classList.add('show');
@@ -3795,19 +3795,12 @@ function closeGeoFix(){
 function renderGeoFixList(){
   document.getElementById('gfx-list').innerHTML = gfxRows.map(function(r,i){
     var d = DAYS[r.di], a = d.acts[r.ai];
-    var falta = r.tipo === 'falta';
-    // Para las dudosas, un link a donde quedó el pin: es la forma rápida de
-    // ver si le atinó o no.
-    var verDonde = (!falta && a.c)
-      ? '<a class="gfx-see" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank">ver dónde quedó ›</a>'
-      : '';
     return '<div class="gfx-row">'+
       '<div class="gfx-top">'+
-        '<span class="gfx-badge '+(falta?'miss':'guess')+'">'+(falta?'SIN PIN':'ADIVINADA')+'</span>'+
+        '<span class="gfx-badge miss">SIN UBICAR</span>'+
         '<span class="gfx-where">#'+globalActNumber(r.di,r.ai)+' · DÍA '+(r.di+1)+' · '+esc(d.date)+(a.t?' · '+esc(a.t):'')+'</span>'+
       '</div>'+
       '<div class="gfx-name">'+esc(a.n)+'</div>'+
-      verDonde+
       '<input class="ied-maps gfx-inp" type="text" value="'+esc(r.g)+'" '+
         'placeholder="Pega el link de Google Maps o la dirección" '+
         'oninput="gfxRows['+i+'].g=this.value">'+
@@ -3837,27 +3830,17 @@ async function saveGeoFix(){
 function renderItin(){
   var unlocked=getUnlockIndex();
   var itinStatus=computeItinStatus();
-  // Aviso de actividades sin pin, y de las que quedaron con un pin adivinado
-  // por el nombre — esas hay que revisarlas porque bien pueden estar en otra
-  // ciudad (solo admin)
-  var sinPin = 0, aRevisar = 0;
+  // Aviso de actividades que todavía no están en el mapa (solo admin)
+  var sinPin = 0;
   DAYS.forEach(function(d){
-    (d.acts||[]).forEach(function(a){
-      if(!a.c && a.n) sinPin++;
-      else if(actPinGuessed(a)) aRevisar++;
-    });
+    (d.acts||[]).forEach(function(a){ if(!a.c && a.n) sinPin++; });
   });
   var geoBar = '';
   if(isAdmin() && sinPin){
     geoBar += '<button class="geo-fix-btn" onclick="locateMissingCoords({loud:true})">'+
       '📍 Ubicar en el mapa · '+sinPin+' pendiente'+(sinPin===1?'':'s')+'</button>';
-  }
-  if(isAdmin() && (sinPin || aRevisar)){
-    var partes = [];
-    if(sinPin) partes.push(sinPin+' sin ubicar');
-    if(aRevisar) partes.push(aRevisar+' por verificar');
     geoBar += '<button class="geo-fix-btn geo-check-btn" onclick="openGeoFix()">'+
-      '❓ Ver cuáles son · '+partes.join(' · ')+'</button>';
+      '❓ Ver cuáles son · '+sinPin+' sin ubicar</button>';
   }
 
   document.getElementById('itin-body').innerHTML = renderResCard() + geoBar + DAYS.map(function(d,i){
@@ -3875,12 +3858,10 @@ function renderItin(){
         else if(ai===itinStatus.curActIdx) status='current';
         else if(ai===itinStatus.curActIdx+1) status='next';
       }
-      // El número es el mismo del pin en el mapa, y su color dice en qué
-      // estado está esa ubicación: ubicada, adivinada o todavía sin pin.
+      // El número es el mismo del pin en el mapa, para poder cruzarlos
       var num = globalActNumber(i, ai);
-      var numCls = !a.c ? 'nopin' : done ? 'done' : actPinGuessed(a) ? 'guess' : '';
-      var numTit = !a.c ? 'Todavía no aparece en el mapa'
-        : actPinGuessed(a) ? 'Pin #'+num+' — lo ubiqué por el nombre, verifícalo'
+      var numCls = !a.c ? 'nopin' : done ? 'done' : '';
+      var numTit = !a.c ? 'Todavía no aparece en el mapa — le falta el link de Google Maps'
         : 'Pin #'+num+' en el mapa';
       var mapsUrl = a.g || ('https://www.google.com/maps/search/?api=1&query='+
         encodeURIComponent(a.n.replace(/^[^\p{L}\p{N}]+/u,'').trim()+', '+d.city.split('→')[0].trim()));
@@ -4514,12 +4495,9 @@ function closeItinEdit(){
 
 function renderIedList(){
   document.getElementById('ied-list').innerHTML = iedActs.map(function(a,i){
-    var guess = actPinGuessed(a);
-    var pinCls = !a.c ? '' : guess ? 'guess' : 'has';
-    var pinTxt = !a.c ? '○' : guess ? '📍?' : '📍';
-    var pinTit = !a.c ? 'Todavía sin pin'
-      : guess ? 'Lo ubiqué por el nombre — verifícalo'
-              : 'Ubicado con lo que pegaste';
+    var pinCls = a.c ? 'has' : '';
+    var pinTxt = a.c ? '📍' : '○';
+    var pinTit = a.c ? 'Ubicado con lo que pegaste' : 'Todavía sin pin';
     return '<div class="ied-row" data-idx="'+i+'">'+
       '<div class="ied-handle" ontouchstart="iedTouchStart(event,'+i+')" onmousedown="iedMouseStart(event,'+i+')">&#8942;&#8942;</div>'+
       '<div class="ied-fields">'+
@@ -4530,8 +4508,8 @@ function renderIedList(){
         '<input class="ied-note" value="'+esc(a.note)+'" placeholder="Nota (opcional)" oninput="iedActs['+i+'].note=this.value">'+
         '<div class="ied-maps-row">'+
           '<span class="ied-pin '+pinCls+'" title="'+pinTit+'">'+pinTxt+'</span>'+
-          '<input class="ied-maps '+(guess?'warn':'')+'" type="text" value="'+esc(a.g||'')+'" '+
-            'placeholder="'+(guess?'¿No es aquí? Pega el link o la dirección':'Link de Google Maps o dirección')+'" '+
+          '<input class="ied-maps '+(a.c?'':'warn')+'" type="text" value="'+esc(a.g||'')+'" '+
+            'placeholder="Link de Google Maps o dirección" '+
             'oninput="iedActs['+i+'].g=this.value">'+
         '</div>'+
       '</div>'+
@@ -5638,7 +5616,9 @@ async function init(){
   loadGroupLocations();
   // Primero se sube lo que estaba local, y ya con todo cargado se ubican en el
   // mapa las actividades que no tengan coordenada.
-  migrateLocalItinerary().then(function(){ locateMissingCoords(); });
+  migrateLocalItinerary()
+    .then(dropGuessedPins)
+    .then(function(){ locateMissingCoords(); });
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
