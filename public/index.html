@@ -1083,29 +1083,79 @@
     }
     .tr-mode.active { background:rgba(0,200,255,.16); color:var(--cyan); }
 
-    /* ── TRADUCTOR: modo conversación (dos partes) ── */
+    /* ── TRADUCTOR: modo conversación (dos tarjetas) ── */
+    /* El orden se maneja con `order` en vez de reordenar el DOM, para poder
+       voltear la tarjeta de arriba sin rearmar nada. */
+    .tr-cv[data-f2f="1"] .tr-side-b { order:1; transform: rotate(180deg); }
+    .tr-cv[data-f2f="1"] .tr-cv-mid { order:2; }
+    .tr-cv[data-f2f="1"] .tr-side-a { order:3; }
+    .tr-cv[data-f2f="0"] .tr-side-a { order:1; }
+    .tr-cv[data-f2f="0"] .tr-cv-mid { order:2; }
+    .tr-cv[data-f2f="0"] .tr-side-b { order:3; }
+    .tr-cv-clear { order:4; }
+
     .tr-side {
       background:rgba(255,255,255,.05); border:1px solid var(--border);
-      border-radius:12px; padding:10px 12px 4px;
+      border-radius:14px; padding:11px 13px 5px;
+      transition: border-color .2s, box-shadow .2s;
     }
-    .tr-side-hd { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px; }
+    /* La tarjeta que está escuchando se prende */
+    .tr-side.listening {
+      border-color:rgba(255,80,80,.5);
+      box-shadow:0 0 0 1px rgba(255,80,80,.25), 0 0 22px rgba(255,80,80,.18);
+    }
+    .tr-side-hd { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:2px; }
     .tr-side-lang {
       font-size:11px; font-weight:700; color:var(--cyan);
       text-transform:uppercase; letter-spacing:1.2px; font-family:'Space Mono',monospace;
     }
-    .tr-side-actions { display:flex; gap:6px; }
+    .tr-side-actions { display:flex; gap:8px; align-items:center; }
     .tr-side-input {
       width:100%; box-sizing:border-box; resize:none; background:none; border:none;
-      color:var(--text); font-size:15.5px; font-family:'Space Grotesk',sans-serif;
+      color:var(--text); font-size:16px; font-family:'Space Grotesk',sans-serif;
       outline:none; line-height:1.4; padding:0 0 8px;
     }
     .tr-side-input::placeholder { color:var(--muted); }
+
+    /* Micrófono grande: es el botón principal de este modo */
+    .tr-mic-btn {
+      width:52px; height:52px; border-radius:50%; flex-shrink:0; padding:0; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      background:linear-gradient(145deg, #00C8FF, #00E5C5); border:none;
+      box-shadow:0 4px 14px rgba(0,200,255,.34);
+      transition: transform .14s var(--ease-spring), box-shadow .2s, background .2s;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .tr-mic-btn svg {
+      width:25px; height:25px; fill:none; stroke:#062230;
+      stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round;
+    }
+    .tr-mic-btn:active { transform: scale(.9); }
+    .tr-mic-btn.rec {
+      background:linear-gradient(145deg, #FF6A50, #FF5050);
+      box-shadow:0 0 0 4px rgba(255,80,80,.18), 0 4px 16px rgba(255,80,80,.45);
+      animation: trMicPulse 1.15s ease-in-out infinite;
+    }
+    .tr-mic-btn.rec svg { stroke:#2A0A06; }
+    @keyframes trMicPulse {
+      0%,100% { box-shadow:0 0 0 4px rgba(255,80,80,.16), 0 4px 16px rgba(255,80,80,.4); }
+      50%     { box-shadow:0 0 0 11px rgba(255,80,80,0),  0 4px 16px rgba(255,80,80,.5); }
+    }
+
     .tr-cv-mid {
-      text-align:center; color:var(--muted); font-size:15px;
+      display:flex; align-items:center; justify-content:center; gap:10px;
+      color:var(--muted); font-size:15px;
       font-family:'Space Mono',monospace; line-height:1;
     }
     .tr-cv-mid .cv-working { color:var(--cyan); }
     .tr-cv-mid .cv-err { color:var(--coral); font-size:11.5px; }
+    .tr-f2f-btn {
+      background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:20px;
+      color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.6px;
+      padding:4px 10px; cursor:pointer; font-family:'Space Mono',monospace;
+      text-transform:uppercase; transition: background .18s, color .18s, border-color .18s;
+    }
+    .tr-f2f-btn.on { background:rgba(0,200,255,.14); color:var(--cyan); border-color:rgba(0,200,255,.32); }
     .tr-btn-ghost {
       background:none; color:var(--muted); border:1px dashed var(--border2);
     }
@@ -1129,10 +1179,13 @@
       width:100%; box-sizing:border-box; resize:none;
       background:rgba(255,255,255,.06); border:1px solid var(--border); border-radius:12px;
       color:var(--text); font-size:15px; font-family:'Space Grotesk',sans-serif;
-      padding:12px 12px 34px; outline:none; line-height:1.4;
+      padding:12px 12px 66px; outline:none; line-height:1.4;
     }
     .tr-input:focus { border-color:rgba(0,200,255,.4); }
-    .tr-box-actions { position:absolute; right:8px; bottom:8px; display:flex; gap:6px; }
+    .tr-box-actions {
+      position:absolute; right:10px; bottom:10px;
+      display:flex; align-items:center; gap:8px;
+    }
     .tr-icon-btn {
       background:rgba(255,255,255,.07); border:1px solid var(--border); border-radius:8px;
       width:28px; height:24px; font-size:12px; cursor:pointer; line-height:1;
@@ -4532,14 +4585,79 @@ async function trTranslateNow(){
   }
 }
 
+// ── VOZ MÁS NATURAL ─────────────────────────────────────────────────────────
+// Por defecto el navegador escoge la primera voz del idioma, que casi siempre
+// es la más robótica. Aquí se busca la mejor disponible: los sistemas traen
+// versiones "Enhanced"/"Premium"/"Neural" que suenan mucho más humanas, y
+// además se prefiere la variante regional correcta (es-MX antes que es-ES).
+var trVoices = [];
+var trVoiceCache = {};
+function trLoadVoices(){
+  if(!window.speechSynthesis) return;
+  var v = speechSynthesis.getVoices();
+  if(v && v.length){ trVoices = v; trVoiceCache = {}; }
+}
+if(window.speechSynthesis){
+  trLoadVoices();
+  // getVoices() suele venir vacío en la primera llamada y llenarse después
+  try{ speechSynthesis.addEventListener('voiceschanged', trLoadVoices); }
+  catch(e){ speechSynthesis.onvoiceschanged = trLoadVoices; }
+}
+
+// De mejor a peor. Lo primero que coincida gana.
+var TR_VOICE_PREFS = {
+  es: [/paulina.*(enhanced|premium)/i, /m[oó]nica.*(enhanced|premium)/i,
+       /(enhanced|premium|neural|natural|siri)/i, /google.*espa/i,
+       /paulina|m[oó]nica|juan|jorge|diego/i],
+  en: [/samantha.*(enhanced|premium)/i, /ava.*(enhanced|premium)/i,
+       /(enhanced|premium|neural|natural|siri)/i, /google\s*(us|uk)?\s*english/i,
+       /samantha|ava|alex|karen|daniel|allison/i],
+};
+
+function trPickVoice(langTag){
+  if(trVoiceCache[langTag] !== undefined) return trVoiceCache[langTag];
+  var chosen = null;
+  if(trVoices.length){
+    var base = langTag.slice(0,2).toLowerCase();
+    var sameLang = trVoices.filter(function(v){
+      return (v.lang||'').slice(0,2).toLowerCase() === base;
+    });
+    // Prioriza la región exacta (es-MX) sobre cualquier otra del idioma
+    var exact = sameLang.filter(function(v){
+      return (v.lang||'').toLowerCase().replace('_','-') === langTag.toLowerCase();
+    });
+    var pool = exact.length ? exact.concat(sameLang) : sameLang;
+    var prefs = TR_VOICE_PREFS[base] || [];
+    for(var i=0;i<prefs.length && !chosen;i++){
+      for(var j=0;j<pool.length;j++){
+        if(prefs[i].test(pool[j].name || '')){ chosen = pool[j]; break; }
+      }
+    }
+    if(!chosen) chosen = pool[0] || null;
+  }
+  trVoiceCache[langTag] = chosen;
+  return chosen;
+}
+
+// Lectura en voz alta compartida por los dos modos
+function trSay(text, langKey){
+  if(!text){ toast('No hay nada que leer.','error'); return; }
+  if(!window.speechSynthesis){ toast('Tu navegador no puede leer en voz alta.','error'); return; }
+  var tag = TR_LANGS[langKey].voice;
+  speechSynthesis.cancel();
+  var u = new SpeechSynthesisUtterance(text);
+  u.lang = tag;
+  var v = trPickVoice(tag);
+  if(v) u.voice = v;
+  // Ritmo y tono naturales: alterarlos es justo lo que suena robótico
+  u.rate = 1;
+  u.pitch = 1;
+  speechSynthesis.speak(u);
+}
+
 function trSpeak(){
   if(!trLastResult){ toast('Primero traduce algo.','error'); return; }
-  if(!window.speechSynthesis){ toast('Tu navegador no puede leer en voz alta.','error'); return; }
-  speechSynthesis.cancel();
-  var u = new SpeechSynthesisUtterance(trLastResult);
-  u.lang = TR_LANGS[trTo].voice;
-  u.rate = 0.95;
-  speechSynthesis.speak(u);
+  trSay(trLastResult, trTo);
 }
 
 function trCopy(){
@@ -4670,7 +4788,11 @@ function trStartMic(opts){
     trRecording = true;
     trMicBtnId = opts.btnId;
     var b = document.getElementById(opts.btnId);
-    if(b) b.classList.add('rec');
+    if(b){
+      b.classList.add('rec');
+      var card = b.closest('.tr-side');
+      if(card) card.classList.add('listening');
+    }
   }catch(e){ toast('No se pudo iniciar el dictado.','error'); }
 }
 
@@ -4689,7 +4811,11 @@ function trStopMic(){
   trRecording = false;
   if(trMicBtnId){
     var b = document.getElementById(trMicBtnId);
-    if(b) b.classList.remove('rec');
+    if(b){
+      b.classList.remove('rec');
+      var card = b.closest('.tr-side');
+      if(card) card.classList.remove('listening');
+    }
     trMicBtnId = null;
   }
 }
@@ -4708,6 +4834,8 @@ function trSetMode(m){
   document.getElementById('tr-body-convo').style.display  = m==='convo'  ? '' : 'none';
   document.getElementById('tr-mode-simple').classList.toggle('active', m==='simple');
   document.getElementById('tr-mode-convo').classList.toggle('active', m==='convo');
+  var box = document.getElementById('tr-body-convo');
+  document.getElementById('tr-f2f-btn').classList.toggle('on', box.getAttribute('data-f2f')==='1');
   trSyncLangs();
 }
 
@@ -4733,7 +4861,7 @@ function trCvInput(side){
   trCvDebounce[side] = setTimeout(function(){ trCvTranslate(side); }, 700);
 }
 
-async function trCvTranslate(side){
+async function trCvTranslate(side, speakIt){
   clearTimeout(trCvDebounce[side]);
   var text = document.getElementById('tr-cv-'+side).value.trim();
   var other = trCvOther(side);
@@ -4750,8 +4878,11 @@ async function trCvTranslate(side){
     var j = await r.json();
     if(mySeq !== trCvSeq[side]) return;
     // Asignar .value no dispara 'input', así que no se cicla de vuelta
-    document.getElementById('tr-cv-'+other).value = j.translated || '';
+    var out = j.translated || '';
+    document.getElementById('tr-cv-'+other).value = out;
     trCvSetStatus('&#8645;');
+    // Si vino de dictado, se lee sola: así la conversación va manos libres
+    if(speakIt && out) trSay(out, trCvLangOf(other));
   }catch(e){
     if(mySeq !== trCvSeq[side]) return;
     trCvSetStatus('sin conexión','cv-err');
@@ -4764,19 +4895,23 @@ function trCvMic(side){
     lang: TR_LANGS[trCvLangOf(side)].voice,
     btnId: 'tr-cv-mic-'+side,
     replace: true,
-    onDone: function(){ trCvTranslate(side); }
+    onDone: function(){ trCvTranslate(side, true); }
   });
+}
+
+// Cara a cara: voltea la tarjeta de arriba para que el otro la lea de frente
+// con el teléfono acostado entre los dos.
+function trToggleF2F(){
+  var box = document.getElementById('tr-body-convo');
+  var on = box.getAttribute('data-f2f') !== '1';
+  box.setAttribute('data-f2f', on ? '1' : '0');
+  document.getElementById('tr-f2f-btn').classList.toggle('on', on);
 }
 
 function trCvSpeak(side){
   var txt = document.getElementById('tr-cv-'+side).value.trim();
   if(!txt){ toast('Ese lado está vacío.','error'); return; }
-  if(!window.speechSynthesis){ toast('Tu navegador no puede leer en voz alta.','error'); return; }
-  speechSynthesis.cancel();
-  var u = new SpeechSynthesisUtterance(txt);
-  u.lang = TR_LANGS[trCvLangOf(side)].voice;
-  u.rate = 0.95;
-  speechSynthesis.speak(u);
+  trSay(txt, trCvLangOf(side));
 }
 
 function trCvClear(){
@@ -5141,34 +5276,44 @@ if('serviceWorker' in navigator){
   </div>
 
   <!-- Modo conversación: dos partes, una por idioma -->
-  <div class="tr-body" id="tr-body-convo" style="display:none">
-    <div class="tr-side">
-      <div class="tr-side-hd">
-        <span class="tr-side-lang" id="tr-cv-lang-a">Español</span>
-        <div class="tr-side-actions">
-          <button class="tr-icon-btn" id="tr-cv-mic-a" onclick="trCvMic('a')" title="Dictar en español">🎤</button>
-          <button class="tr-icon-btn" onclick="trCvSpeak('a')" title="Escuchar">🔊</button>
-        </div>
-      </div>
-      <textarea class="tr-side-input" id="tr-cv-a" rows="3" maxlength="500"
-        placeholder="Habla o escribe en español…" oninput="trCvInput('a')"></textarea>
-    </div>
-
-    <div class="tr-cv-mid"><span id="tr-cv-status">&#8645;</span></div>
-
-    <div class="tr-side">
+  <div class="tr-body tr-cv" id="tr-body-convo" data-f2f="1" style="display:none">
+    <!-- Lado B (el otro). En modo cara a cara va arriba y volteado, para que
+         lo lea de frente con el teléfono acostado entre los dos. -->
+    <div class="tr-side tr-side-b" id="tr-side-b">
       <div class="tr-side-hd">
         <span class="tr-side-lang" id="tr-cv-lang-b">Inglés</span>
         <div class="tr-side-actions">
-          <button class="tr-icon-btn" id="tr-cv-mic-b" onclick="trCvMic('b')" title="Dictar en inglés">🎤</button>
-          <button class="tr-icon-btn" onclick="trCvSpeak('b')" title="Escuchar">🔊</button>
+          <button class="tr-mic-btn" id="tr-cv-mic-b" onclick="trCvMic('b')" title="Dictar en inglés">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3z"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+          </button>
+          <button class="tr-icon-btn tr-big" onclick="trCvSpeak('b')" title="Escuchar">🔊</button>
         </div>
       </div>
       <textarea class="tr-side-input" id="tr-cv-b" rows="3" maxlength="500"
         placeholder="Speak or type in English…" oninput="trCvInput('b')"></textarea>
     </div>
 
-    <button class="tr-btn tr-btn-ghost" onclick="trCvClear()">Limpiar</button>
+    <div class="tr-cv-mid" id="tr-cv-midbar">
+      <span id="tr-cv-status">&#8645;</span>
+      <button class="tr-f2f-btn" id="tr-f2f-btn" onclick="trToggleF2F()" title="Girar la tarjeta de arriba">Cara a cara</button>
+    </div>
+
+    <!-- Lado A (yo), siempre derecho -->
+    <div class="tr-side tr-side-a" id="tr-side-a">
+      <div class="tr-side-hd">
+        <span class="tr-side-lang" id="tr-cv-lang-a">Español</span>
+        <div class="tr-side-actions">
+          <button class="tr-mic-btn" id="tr-cv-mic-a" onclick="trCvMic('a')" title="Dictar en español">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3z"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+          </button>
+          <button class="tr-icon-btn tr-big" onclick="trCvSpeak('a')" title="Escuchar">🔊</button>
+        </div>
+      </div>
+      <textarea class="tr-side-input" id="tr-cv-a" rows="3" maxlength="500"
+        placeholder="Habla o escribe en español…" oninput="trCvInput('a')"></textarea>
+    </div>
+
+    <button class="tr-btn tr-btn-ghost tr-cv-clear" onclick="trCvClear()">Limpiar</button>
   </div>
 
   <div class="tr-body" id="tr-body-simple">
@@ -5183,8 +5328,10 @@ if('serviceWorker' in navigator){
         placeholder="Escribe o dicta lo que quieras traducir…"
         oninput="trOnInput()"></textarea>
       <div class="tr-box-actions">
-        <button class="tr-icon-btn" id="tr-mic" onclick="trToggleMic()" title="Dictar">🎤</button>
         <button class="tr-icon-btn" onclick="trClear()" title="Limpiar">✕</button>
+        <button class="tr-mic-btn" id="tr-mic" onclick="trToggleMic()" title="Dictar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3z"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/></svg>
+        </button>
       </div>
     </div>
 
