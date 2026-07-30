@@ -349,46 +349,6 @@ function parseLocHint(text) {
   return { kind: 'address', value: s };
 }
 
-// Los nombres del itinerario no son nombres de lugar: "Comida en Rockefeller",
-// "Manejar a LA", "🍔 Tour Downtown - Little Tokyo". Se les quita el emoji y el
-// verbo de adelante para dejar algo que un geocodificador sí pueda encontrar.
-const GEO_PREFIXES = new RegExp(
-  '^(?:' +
-  'comida|cena|desayuno|almuerzo|brunch|snack|' +
-  'manejar|conducir|salida|salir|llegada|llegar|traslado|regreso|regresar|ir|' +
-  'tour|visita|visitar|paseo|recorrido|caminar|explorar|' +
-  'check\\s*-?\\s*in|check\\s*-?\\s*out|hospedaje|dormir|descanso|' +
-  'compras|shopping|foto|fotos|atardecer|amanecer|sunset|sunrise|libre|tiempo libre' +
-  // El orden importa: "al" debe intentarse antes que "a", si no "Regreso al
-  // Ferry" queda como "l Ferry". Van de más largo a más corto.
-  ')\\b[\\s:–—-]*(?:hacia|para|del|los|las|por|al|de|en|la|el|a)?[\\s:–—-]*', 'i');
-
-function geoCleanName(name) {
-  let s = String(name || '')
-    // fuera emojis y símbolos de adelante
-    .replace(/^[^\p{L}\p{N}]+/u, '')
-    .trim();
-  const stripped = s.replace(GEO_PREFIXES, '').trim();
-  // Solo se usa la versión recortada si dejó algo con sustancia
-  const out = (stripped.length >= 3) ? stripped : s;
-  // "Tour Downtown - Little Tokyo" -> también probar "Little Tokyo"
-  return out.replace(/\s+/g, ' ').trim();
-}
-
-function geoNameVariants(name) {
-  const base = geoCleanName(name);
-  const out = [base];
-  // Si quedó un artículo suelto al frente ("Visita a la Misión" -> "la Misión"),
-  // se prueba también sin él. No se quita a secas porque hay lugares que sí
-  // empiezan con artículo: La Jolla, Los Ángeles, Las Vegas.
-  const sinArt = base.replace(/^(?:la|el|los|las)\s+/i, '').trim();
-  if (sinArt.length >= 3 && sinArt !== base) out.push(sinArt);
-  // Si trae guion, la parte más específica suele ser la última
-  const parts = base.split(/\s+[-–—]\s+/).map((s) => s.trim()).filter((s) => s.length >= 3);
-  if (parts.length > 1) { out.push(parts[parts.length - 1]); out.push(parts[0]); }
-  return [...new Set(out.filter(Boolean))];
-}
-
 // Dos proveedores: Nominatim bloquea IPs de servidores en la nube, así que
 // Photon (también sobre datos de OpenStreetMap) sirve de respaldo real.
 async function geoNominatim(q) {
@@ -422,69 +382,48 @@ async function geoPhoton(q) {
 const GEO_PROVIDERS = [['nominatim', geoNominatim], ['photon', geoPhoton]];
 
 app.post('/api/geocode', async (req, res) => {
-  const { name, city, mapsUrl } = req.body || {};
-  const cleanName = typeof name === 'string' ? name.trim().slice(0, 160) : '';
-  const cleanCity = typeof city === 'string' ? city.trim().slice(0, 120) : '';
-  if (!cleanName && !mapsUrl) return res.status(400).json({ error: 'missing name' });
+  const { mapsUrl } = req.body || {};
 
-  // Si el usuario puso una ubicación, esa manda: apunta al lugar exacto que
-  // eligió. Buscar el nombre por su cuenta pondría el pin en otro lado.
+  // Sólo se ubica lo que el usuario pegó: link de Maps, dirección o
+  // coordenadas. Adivinar por el nombre de la actividad ponía el pin donde
+  // fuera — "Comida en Rockefeller" acabó en Irvine — así que ya no se hace.
   const hint = parseLocHint(mapsUrl);
-  const mapsFail = [];
+  if (!hint) return res.status(400).json({ error: 'sin ubicación' });
 
-  // `from` dice si la coordenada salió de lo que el usuario pegó ('hint') o de
-  // adivinar el nombre de la actividad ('name'). La app lo usa para marcar los
-  // pins que conviene revisar.
-  if (hint && hint.kind === 'coords') {
-    return res.json({ c: hint.value, source: 'coords', from: 'hint' });
+  if (hint.kind === 'coords') {
+    return res.json({ c: hint.value, source: 'coords' });
   }
 
-  if (hint && hint.kind === 'url') {
+  if (hint.kind === 'url') {
     const key = 'url:' + hint.value;
-    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', from: 'hint', cached: true });
+    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
     const c = await geoThrottle(() => resolveMapsUrl(hint.value), 'maps');
-    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps', from: 'hint' }); }
-    mapsFail.push('el link no soltó coordenadas: ' + hint.value.slice(0, 120));
+    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
+    return res.status(404).json({
+      error: 'not found',
+      tried: ['el link no soltó coordenadas: ' + hint.value.slice(0, 120)],
+    });
   }
 
-  // Una dirección pegada se busca tal cual. El nombre de la actividad describe
-  // qué se va a hacer ("Manejar a LA"), no adónde se llega, así que la
-  // dirección va primero y el nombre queda solo como último recurso.
-  const addr = hint && hint.kind === 'address' ? hint.value : '';
-
-  if (!cleanName && !addr) return res.status(404).json({ error: 'not found', tried: mapsFail });
-
-  // Se le pega la ciudad del día como contexto: "Beverly Hills" solo es
-  // ambiguo, "Beverly Hills, Los Ángeles" no.
-  const cityCtx = cleanCity && cleanCity !== 'Por definir'
-    ? cleanCity.split('→')[0].split('—')[0].trim() : '';
-
-  const queries = [];
-  const seenQ = new Set();
-  const addQ = (q, from) => { if (!seenQ.has(q)) { seenQ.add(q); queries.push({ q, from }); } };
-  if (addr) {
-    // Una dirección ya viene completa: no se le pega la ciudad del día encima.
-    addQ(addr, 'hint');
-    if (!/(?:^|[\s,])(?:usa|united states|ee\.?\s?uu\.?|california|ca)(?:[\s,]|$)/i.test(addr)) {
-      addQ(addr + ', California, USA', 'hint');
-    }
-  }
-  for (const variant of geoNameVariants(cleanName)) {
-    if (cityCtx) addQ(variant + ', ' + cityCtx + ', California, USA', 'name');
-    addQ(variant + ', California, USA', 'name');
+  // Dirección: se busca tal cual. Se le agrega el estado y el país sólo si no
+  // los trae ya.
+  const addr = hint.value;
+  const queries = [addr];
+  if (!/(?:^|[\s,])(?:usa|united states|ee\.?\s?uu\.?|california|ca)(?:[\s,]|$)/i.test(addr)) {
+    queries.push(addr + ', California, USA');
   }
 
   // Se guarda el motivo real del fallo: sin esto, un 404 no distingue entre
-  // "no existe el lugar" y "el proveedor nos está bloqueando".
-  const tried = mapsFail.slice();
+  // "no existe la dirección" y "el proveedor nos está bloqueando".
+  const tried = [];
   for (const [pname, pfn] of GEO_PROVIDERS) {
     if (geoIsDown(pname)) { tried.push(pname + ' omitido (falló hace poco)'); continue; }
-    for (const { q, from } of queries) {
+    for (const q of queries) {
       const key = 'q:' + pname + ':' + q.toLowerCase();
-      if (geoCache[key]) return res.json({ c: geoCache[key], source: pname, from, cached: true });
+      if (geoCache[key]) return res.json({ c: geoCache[key], source: pname, cached: true });
       try {
         const c = await geoThrottle(() => pfn(q), pname);
-        if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: pname, from, q }); }
+        if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: pname, q }); }
         tried.push(pname + ' sin resultados: ' + q);
       } catch (e) {
         tried.push(pname + ' ERROR: ' + (e && e.message ? e.message : e));
