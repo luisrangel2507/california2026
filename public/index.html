@@ -360,6 +360,8 @@
     .day-m { font-size: 8px; text-transform: uppercase; letter-spacing: 1px; opacity: .7; }
     .day-inf { flex: 1; min-width: 0; }
     .day-city { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    /* Subrayado punteado para que se note que el título se puede editar */
+    .day-city.editable { text-decoration: underline dotted rgba(0,200,255,.5); text-underline-offset: 3px; }
     .day-wd { font-size: 10px; color: var(--muted); margin-top: 1px; letter-spacing: .3px; }
     .day-em { font-size: 16px; flex-shrink: 0; }
     .day-wx {
@@ -1273,6 +1275,12 @@
     }
     .tr-btn:active { transform: scale(.97); }
     .tr-btn-primary { background:rgba(0,200,255,.14); color:var(--cyan); border:1px solid rgba(0,200,255,.32); }
+    .tr-voice-row {
+      width:100%; text-align:left; background:none; border:none; cursor:pointer;
+      color:var(--muted); font-size:10.5px; font-family:'Space Mono',monospace;
+      line-height:1.5; padding:2px 0 0;
+    }
+    .tr-voice-row .vr-hint { color:var(--gold); }
 
     /* ── FRASES ÚTILES ── */
     .phrases-body { flex:1; overflow-y:auto; padding:8px 18px 24px; }
@@ -1312,6 +1320,11 @@
       display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
       font-family:'Space Mono',monospace; flex-shrink:0; margin-top:1px;
     }
+    .me-version {
+      margin-top:14px; padding-top:10px; border-top:1px solid var(--border);
+      font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; line-height:1.6;
+    }
+    .me-version .mv-old { color:var(--gold); }
     .me-admin-sec {
       margin-top:8px; padding-top:12px; border-top:1px solid var(--border);
     }
@@ -2306,8 +2319,31 @@ async function openMyProfile(){
   }
 
   updateShareLocBtn();
+  showAppVersion();
   document.getElementById('me-overlay').classList.add('show');
   document.getElementById('me-sheet').classList.add('show');
+}
+
+// Muestra qué versión tiene REALMENTE este teléfono contra la del servidor.
+// Varias veces hemos perseguido "no me aparece el cambio" que en realidad era
+// el service worker sirviendo una copia vieja; así se ve de inmediato.
+async function showAppVersion(){
+  var el = document.getElementById('me-version');
+  if(!el) return;
+  var parse = function(t){ var m = String(t).match(/av26-v(\d+)/); return m ? parseInt(m[1],10) : null; };
+  var mine = null, live = null;
+  try{
+    // La copia que este teléfono está usando (puede venir del caché)
+    mine = parse(await (await fetch('/sw.js')).text());
+    // La del servidor, saltándose el caché a propósito
+    live = parse(await (await fetch('/sw.js?bust='+Date.now(),{cache:'reload'})).text());
+  }catch(e){}
+  if(mine === null){ el.textContent = 'Versión: no disponible'; return; }
+  var txt = 'Versión en este teléfono: v'+mine;
+  if(live !== null && live > mine){
+    txt += '<br><span class="mv-old">Hay una más nueva (v'+live+'). Cierra la app por completo y vuelve a abrirla.</span>';
+  }
+  el.innerHTML = txt;
 }
 
 function closeMyProfile(){
@@ -3626,7 +3662,11 @@ function renderItin(){
       '<div class="day-n" style="color:'+clr+(isLocked?';opacity:.5':'')+'">'+d.date.split(' ')[0]+'</div>'+
       '<div class="day-m" style="color:'+clr+(isLocked?';opacity:.5':'')+'">'+d.date.split(' ')[1]+'</div>'+
       '</div>'+
-      '<div class="day-inf"><div class="day-city">'+esc(d.city)+'</div><div class="day-wd">'+d.wd+'</div></div>'+
+      // El título completo es tocable para el admin, no solo el lapicito
+      '<div class="day-inf"'+(admin && !isLocked ? ' onclick="event.stopPropagation();openItinEdit('+i+')"' : '')+'>'+
+        '<div class="day-city'+(admin && !isLocked ? ' editable' : '')+'">'+esc(d.city)+'</div>'+
+        '<div class="day-wd">'+d.wd+'</div>'+
+      '</div>'+
       (admin && !isLocked
         ? '<button class="day-edit" onclick="event.stopPropagation();openItinEdit('+i+')" title="Editar título y actividades">✎</button>'
         : '')+
@@ -4747,6 +4787,7 @@ function trSyncLangs(){
     var b = document.getElementById(id);
     if(b) b.style.display = supported ? '' : 'none';
   });
+  if(typeof trUpdateVoiceRow === 'function') trUpdateVoiceRow();
 }
 
 function trSwap(){
@@ -4820,7 +4861,11 @@ var trVoiceCache = {};
 function trLoadVoices(){
   if(!window.speechSynthesis) return;
   var v = speechSynthesis.getVoices();
-  if(v && v.length){ trVoices = v; trVoiceCache = {}; }
+  if(v && v.length){
+    trVoices = v; trVoiceCache = {};
+    // Las voces llegan tarde, así que hay que refrescar la línea que las muestra
+    if(typeof trUpdateVoiceRow === 'function') trUpdateVoiceRow();
+  }
 }
 if(window.speechSynthesis){
   trLoadVoices();
@@ -4830,35 +4875,50 @@ if(window.speechSynthesis){
 }
 
 // De mejor a peor. Lo primero que coincida gana.
-var TR_VOICE_PREFS = {
-  es: [/paulina.*(enhanced|premium)/i, /m[oó]nica.*(enhanced|premium)/i,
-       /(enhanced|premium|neural|natural|siri)/i, /google.*espa/i,
-       /paulina|m[oó]nica|juan|jorge|diego/i],
-  en: [/samantha.*(enhanced|premium)/i, /ava.*(enhanced|premium)/i,
-       /(enhanced|premium|neural|natural|siri)/i, /google\s*(us|uk)?\s*english/i,
-       /samantha|ava|alex|karen|daniel|allison/i],
+// Nombres de voces que suenan bien cuando están instaladas
+var TR_GOOD_NAMES = {
+  es: /paulina|m[oó]nica|marisol|isabela|juan|jorge|diego|luciana/i,
+  en: /samantha|ava|allison|susan|nicky|evan|zoe|alex|karen|daniel|serena/i,
 };
+
+// Se puntúa cada voz en vez de usar niveles fijos: así se combina la calidad
+// del nombre, si es de red y si la región coincide, y gana la mejor de verdad.
+function trScoreVoice(v, langTag){
+  var n = v.name || '';
+  var s = 0;
+  if(/siri/i.test(n))                          s += 100;  // las más naturales en iPhone
+  if(/premium|enhanced|neural|natural/i.test(n)) s += 90;
+  if(/google/i.test(n))                        s += 30;   // en Android son de red y suenan bien
+  var base = langTag.slice(0,2).toLowerCase();
+  if(TR_GOOD_NAMES[base] && TR_GOOD_NAMES[base].test(n)) s += 45;
+  // Las de red suelen ser mejores que las que vienen embebidas
+  if(v.localService === false)                 s += 25;
+  // Misma región (es-MX vs es-ES) para que el acento no se sienta raro
+  if((v.lang||'').toLowerCase().replace('_','-') === langTag.toLowerCase()) s += 20;
+  if(/compact|eloquence|fred|albert|zarvox|bells/i.test(n)) s -= 60;  // las robóticas viejas
+  if(v.default)                                s += 5;
+  return s;
+}
+
+// ¿La voz elegida es de las buenas o es una básica? Sirve para avisarle al
+// usuario que puede descargar una mejor desde los ajustes del sistema.
+function trVoiceIsGood(v){
+  return !!v && /siri|premium|enhanced|neural|natural|google/i.test(v.name||'');
+}
 
 function trPickVoice(langTag){
   if(trVoiceCache[langTag] !== undefined) return trVoiceCache[langTag];
   var chosen = null;
   if(trVoices.length){
     var base = langTag.slice(0,2).toLowerCase();
-    var sameLang = trVoices.filter(function(v){
+    var pool = trVoices.filter(function(v){
       return (v.lang||'').slice(0,2).toLowerCase() === base;
     });
-    // Prioriza la región exacta (es-MX) sobre cualquier otra del idioma
-    var exact = sameLang.filter(function(v){
-      return (v.lang||'').toLowerCase().replace('_','-') === langTag.toLowerCase();
+    var best = -Infinity;
+    pool.forEach(function(v){
+      var s = trScoreVoice(v, langTag);
+      if(s > best){ best = s; chosen = v; }
     });
-    var pool = exact.length ? exact.concat(sameLang) : sameLang;
-    var prefs = TR_VOICE_PREFS[base] || [];
-    for(var i=0;i<prefs.length && !chosen;i++){
-      for(var j=0;j<pool.length;j++){
-        if(prefs[i].test(pool[j].name || '')){ chosen = pool[j]; break; }
-      }
-    }
-    if(!chosen) chosen = pool[0] || null;
   }
   trVoiceCache[langTag] = chosen;
   return chosen;
@@ -4883,6 +4943,33 @@ function trSay(text, langKey){
 function trSpeak(){
   if(!trLastResult){ toast('Primero traduce algo.','error'); return; }
   trSay(trLastResult, trTo);
+}
+
+// Muestra qué voz se está usando. Si es una básica, avisa cómo bajar una mejor:
+// en iPhone las voces buenas (Siri/Enhanced) NO vienen instaladas de fábrica,
+// así que sin esto no hay manera de saber por qué suena robótico.
+var TR_VOICE_SAMPLE = {
+  es:'Hola, así voy a sonar cuando traduzca.',
+  en:'Hi, this is how I will sound when I translate.',
+};
+function trUpdateVoiceRow(){
+  var row = document.getElementById('tr-voice-row');
+  if(!row) return;
+  if(!window.speechSynthesis){ row.textContent = ''; return; }
+  var v = trPickVoice(TR_LANGS[trTo].voice);
+  if(!v){
+    row.innerHTML = '🔊 Voz del sistema · toca para probar';
+    return;
+  }
+  var txt = '🔊 Voz: '+esc(v.name)+' · toca para probar';
+  if(!trVoiceIsGood(v)){
+    txt += '<br><span class="vr-hint">Suena robótico? Baja una voz mejor en '+
+           'Ajustes → Accesibilidad → Contenido leído → Voces</span>';
+  }
+  row.innerHTML = txt;
+}
+function trTestVoice(){
+  trSay(TR_VOICE_SAMPLE[trTo] || TR_VOICE_SAMPLE.es, trTo);
 }
 
 function trCopy(){
@@ -5470,6 +5557,7 @@ if('serviceWorker' in navigator){
       <div class="ef-lbl" style="margin-top:6px">Contactos de emergencia — todos (admin)</div>
       <div id="me-admin-contacts"></div>
     </div>
+    <div class="me-version" id="me-version"></div>
   </div>
   <div class="bs-footer">
     <button class="bs-logout-btn" onclick="logoutMe()">Cerrar sesión</button>
@@ -5618,6 +5706,7 @@ if('serviceWorker' in navigator){
       <button class="tr-icon-btn tr-big" id="tr-speak" onclick="trSpeak()" title="Escuchar">🔊</button>
       <button class="tr-icon-btn tr-big" onclick="trCopy()" title="Copiar">📋</button>
     </div>
+    <button class="tr-voice-row" id="tr-voice-row" onclick="trTestVoice()"></button>
   </div>
 </div>
 
