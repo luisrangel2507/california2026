@@ -369,6 +369,14 @@
     }
     .day-wx .wx-ic { font-size: 13px; }
     .day-wx.wx-hist { opacity: .7; }
+    .geo-fix-btn {
+      width:100%; padding:11px; border-radius:12px; cursor:pointer;
+      background:rgba(245,166,35,.1); border:1px solid rgba(245,166,35,.3);
+      color:var(--gold); font-size:12.5px; font-weight:700;
+      font-family:'Space Grotesk',sans-serif; letter-spacing:.3px;
+      transition: transform .12s var(--ease), background .15s;
+    }
+    .geo-fix-btn:active { transform: scale(.98); background:rgba(245,166,35,.18); }
     .day-edit {
       background:rgba(0,200,255,.1); border:1px solid rgba(0,200,255,.28);
       color:var(--cyan); border-radius:8px; width:30px; height:26px;
@@ -3165,11 +3173,18 @@ function saveActModal(){
   if(g) act.g = g;
   var day = _addActDay;
   DAYS[day].acts.push(act);
+  var idx = DAYS[day].acts.length - 1;
   document.getElementById('act-modal-overlay').classList.remove('show');
   _addActDay = null;
   renderItin();
   renderDash(); renderOps();
-  saveItinDay(day);
+  // Se guarda de inmediato y luego se busca su ubicación para el mapa
+  saveItinDay(day).then(async function(){
+    if(await geocodeAct(day, idx)){
+      renderPlaceMarkers(); renderItin();
+      await saveItinDay(day);
+    }
+  });
 }
 
 function deleteAct(dayIdx, actIdx){
@@ -3447,6 +3462,9 @@ function applyItinStore(store){
 }
 
 async function loadItinerary(){
+  // Si se están ubicando actividades, no se refresca: traer la copia del
+  // servidor pisaría las coordenadas recién resueltas que aún no se guardan.
+  if(typeof geoBusy !== 'undefined' && geoBusy) return;
   try{
     var r = await fetch('/api/itinerary',{cache:'no-store'});
     if(!r.ok) return;
@@ -3496,10 +3514,75 @@ async function migrateLocalItinerary(){
   }
 }
 
+// ── UBICAR ACTIVIDADES EN EL MAPA ───────────────────────────────────────────
+// Las actividades que se agregan desde la app no traen coordenadas, así que el
+// mapa las saltaba. Aquí se resuelven contra el servidor y el pin aparece en
+// cuanto cada una se ubica, sin esperar a que terminen todas.
+var geoBusy = false;
+
+async function geocodeAct(dayIdx, actIdx){
+  var a = DAYS[dayIdx] && DAYS[dayIdx].acts[actIdx];
+  if(!a || a.c) return false;
+  try{
+    var r = await fetch('/api/geocode',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name:a.n, city:DAYS[dayIdx].city, mapsUrl:a.g||'' })
+    });
+    if(!r.ok) return false;
+    var j = await r.json();
+    if(!j.c) return false;
+    a.c = j.c;
+    return true;
+  }catch(e){ return false; }
+}
+
+// Recorre las actividades sin coordenada y las va ubicando de una en una,
+// redibujando el mapa cada vez para que los pins vayan apareciendo.
+async function locateMissingCoords(opts){
+  if(geoBusy) return;
+  if(!isAdmin()) return;          // solo el admin puede guardar el itinerario
+  var pend = [];
+  DAYS.forEach(function(d,di){
+    (d.acts||[]).forEach(function(a,ai){
+      if(!a.c && a.n) pend.push([di,ai]);
+    });
+  });
+  if(!pend.length){
+    if(opts && opts.loud) toast('Todas las actividades ya están en el mapa.','success');
+    return;
+  }
+  geoBusy = true;
+  if(opts && opts.loud) toast('Ubicando '+pend.length+' actividad'+(pend.length===1?'':'es')+' en el mapa…');
+  var ok = 0, touched = {};
+  for(var i=0;i<pend.length;i++){
+    var di = pend[i][0], ai = pend[i][1];
+    if(await geocodeAct(di, ai)){
+      ok++; touched[di] = true;
+      // Se redibuja de inmediato: así se ven aparecer uno por uno
+      renderPlaceMarkers();
+      renderItin();
+    }
+  }
+  // Se guarda una sola vez por día, no por actividad
+  for(var k in touched){ if(touched.hasOwnProperty(k)) await saveItinDay(parseInt(k,10)); }
+  geoBusy = false;
+  if(ok) toast(ok+' actividad'+(ok===1?'':'es')+' ubicada'+(ok===1?'':'s')+' en el mapa.','success');
+  else if(opts && opts.loud) toast('No se pudo ubicar ninguna. Prueba pegando el link de Google Maps.','error');
+}
+
 function renderItin(){
   var unlocked=getUnlockIndex();
   var itinStatus=computeItinStatus();
-  document.getElementById('itin-body').innerHTML = renderResCard() + DAYS.map(function(d,i){
+  // Aviso de actividades que aún no tienen pin en el mapa (solo admin)
+  var sinPin = 0;
+  DAYS.forEach(function(d){ (d.acts||[]).forEach(function(a){ if(!a.c && a.n) sinPin++; }); });
+  var geoBar = (isAdmin() && sinPin)
+    ? '<button class="geo-fix-btn" onclick="locateMissingCoords({loud:true})">'+
+        '📍 Ubicar en el mapa · '+sinPin+' pendiente'+(sinPin===1?'':'s')+
+      '</button>'
+    : '';
+
+  document.getElementById('itin-body').innerHTML = renderResCard() + geoBar + DAYS.map(function(d,i){
     var clr=DC[i];
     var isLocked=i>unlocked;
     var admin=isAdmin();
@@ -5184,7 +5267,9 @@ async function init(){
   seedReservations().then(loadReservations).then(renderItin);
   loadCarLoc();
   loadGroupLocations();
-  migrateLocalItinerary();
+  // Primero se sube lo que estaba local, y ya con todo cargado se ubican en el
+  // mapa las actividades que no tengan coordenada.
+  migrateLocalItinerary().then(function(){ locateMissingCoords(); });
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
