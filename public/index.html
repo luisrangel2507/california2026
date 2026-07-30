@@ -236,6 +236,11 @@
     .leaflet-popup-content { margin: 10px 14px !important; font-family: 'Space Grotesk', sans-serif; }
     .pop-name { font-size: 13px; font-weight: 700; color: #16233A; }
     .pop-day { font-size: 10px; color: #6B7A94; margin-top: 3px; font-family:'Space Mono',monospace; letter-spacing:.5px; }
+    .pop-warn {
+      font-size: 10.5px; line-height: 1.35; color: #9A6410; margin-top: 6px;
+      background: rgba(224,146,26,.12); border: 1px solid rgba(224,146,26,.3);
+      border-radius: 6px; padding: 5px 7px;
+    }
     .pop-dist { font-size: 10px; color: #00A968; margin-top: 4px; }
     .pop-actions { display: flex; gap: 6px; margin-top: 8px; }
     .pop-maps {
@@ -379,6 +384,8 @@
       transition: transform .12s var(--ease), background .15s;
     }
     .geo-fix-btn:active { transform: scale(.98); background:rgba(245,166,35,.18); }
+    .geo-fix-btn + .geo-fix-btn { margin-top:8px; }
+    .geo-check-btn { background:rgba(245,166,35,.06); font-weight:600; }
     .day-edit {
       background:rgba(0,200,255,.1); border:1px solid rgba(0,200,255,.28);
       color:var(--cyan); border-radius:8px; width:30px; height:26px;
@@ -1030,8 +1037,9 @@
       font-family:'Space Grotesk',sans-serif; padding:5px 9px; width:100%; outline:none;
     }
     .ied-maps-row { display:flex; align-items:center; gap:6px; }
-    .ied-pin { font-size:11px; flex-shrink:0; width:16px; text-align:center; color:var(--muted); }
+    .ied-pin { font-size:11px; flex-shrink:0; width:22px; text-align:center; color:var(--muted); }
     .ied-pin.has { color:var(--green); }
+    .ied-pin.guess { color:#F5A623; }
     .ied-maps {
       flex:1; min-width:0; background:rgba(0,200,255,.05);
       border:1px solid rgba(0,200,255,.15); border-radius:7px;
@@ -1039,6 +1047,8 @@
       padding:5px 9px; outline:none;
     }
     .ied-maps::placeholder { color:var(--muted); font-family:'Space Grotesk',sans-serif; font-size:11px; }
+    .ied-maps.warn { background:rgba(245,166,35,.07); border-color:rgba(245,166,35,.3); }
+    .ied-maps.warn::placeholder { color:#F5A623; }
     .ied-time:focus,.ied-name:focus,.ied-note:focus,.ied-maps:focus { border-color:rgba(0,200,255,.4); }
     .ied-del {
       background:none; border:none; color:rgba(255,255,255,.2); font-size:20px;
@@ -2609,12 +2619,15 @@ function renderPlaceMarkers(){
       routePts.push(a.c);
       var done = !!actDone[di+'-'+ai];
       var num = globalActNumber(di, ai);
-      var clr = done ? '#00C77E' : '#7C8DA6';
+      // Ámbar = la app adivinó el lugar por el nombre; puede estar mal puesto
+      var guess = actPinGuessed(a);
+      var clr = done ? '#00C77E' : guess ? '#E0921A' : '#7C8DA6';
       var icon = L.divIcon({
         className:'',
         html:'<div style="position:relative;width:32px;height:32px">' +
           '<div style="position:absolute;inset:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:'+clr+';border:2px solid #fff;box-shadow:0 3px 8px rgba(20,30,50,.35)"></div>' +
           '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;font-family:\'Space Mono\',monospace;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.3)">'+num+'</div>' +
+          (guess ? '<div style="position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;background:#fff;color:#E0921A;font-size:10px;font-weight:700;line-height:14px;text-align:center;box-shadow:0 1px 3px rgba(20,30,50,.4)">?</div>' : '') +
           '</div>',
         iconSize:[32,32],
         iconAnchor:[16,32],
@@ -2624,6 +2637,7 @@ function renderPlaceMarkers(){
         '<div class="pop-name">'+esc(a.n)+'</div>'+
         '<div class="pop-day">DÍA '+(di+1)+' · Actividad #'+num+' · '+esc(day.date)+(a.t?' · '+esc(a.t):'')+(done?' · ✓ hecho':'')+'</div>'+
         (a.note?'<div class="pop-day">'+esc(a.note)+'</div>':'')+
+        (guess?'<div class="pop-warn">Lo ubiqué por el nombre — si no es aquí, edita la actividad y pega el link o la dirección.</div>':'')+
         '<div class="pop-actions">'+
           '<a class="pop-maps" href="https://www.google.com/maps/dir/?api=1&destination='+a.c[0]+','+a.c[1]+'" target="_blank">Cómo llegar</a>'+
           '<a class="pop-maps" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank" style="background:rgba(0,229,197,.1);color:#00E5C5;border-color:rgba(0,229,197,.3)">Ver en Maps</a>'+
@@ -3620,8 +3634,22 @@ async function geocodeAct(dayIdx, actIdx){
       return false;
     }
     a.c = j.c;
+    // El servidor dice de dónde salió: de lo que se pegó, o de adivinar el
+    // nombre. Una dirección pegada cuenta como confirmada aunque la haya
+    // resuelto el mismo buscador que resuelve los nombres.
+    a.cs = (j.from === 'hint') ? 'link' : 'nombre';
     return true;
   }catch(e){ geoLastFail = 'red'; return false; }
+}
+
+// Un pin sacado del nombre puede caer en cualquier lado: de "Rockefeller" hay
+// varios, y el buscador se queda con el primero. Hay que poder distinguirlos
+// de los que el usuario confirmó pegando el link o la dirección.
+// En itinerarios de antes no existe el campo cs, así que se deduce: sin
+// ubicación pegada, el pin sólo pudo salir de adivinar el nombre.
+function actPinGuessed(a){
+  if(!a || !a.c) return false;
+  return a.cs ? a.cs === 'nombre' : !a.g;
 }
 
 // Recorre las actividades sin coordenada y las va ubicando de una en una,
@@ -3669,14 +3697,26 @@ async function locateMissingCoords(opts){
 function renderItin(){
   var unlocked=getUnlockIndex();
   var itinStatus=computeItinStatus();
-  // Aviso de actividades que aún no tienen pin en el mapa (solo admin)
-  var sinPin = 0;
-  DAYS.forEach(function(d){ (d.acts||[]).forEach(function(a){ if(!a.c && a.n) sinPin++; }); });
-  var geoBar = (isAdmin() && sinPin)
-    ? '<button class="geo-fix-btn" onclick="locateMissingCoords({loud:true})">'+
-        '📍 Ubicar en el mapa · '+sinPin+' pendiente'+(sinPin===1?'':'s')+
-      '</button>'
-    : '';
+  // Aviso de actividades sin pin, y de las que quedaron con un pin adivinado
+  // por el nombre — esas hay que revisarlas porque bien pueden estar en otra
+  // ciudad (solo admin)
+  var sinPin = 0, aRevisar = 0, primerDudoso = -1;
+  DAYS.forEach(function(d,di){
+    (d.acts||[]).forEach(function(a){
+      if(!a.c && a.n) sinPin++;
+      else if(actPinGuessed(a)){ aRevisar++; if(primerDudoso<0) primerDudoso = di; }
+    });
+  });
+  var geoBar = '';
+  if(isAdmin() && sinPin){
+    geoBar += '<button class="geo-fix-btn" onclick="locateMissingCoords({loud:true})">'+
+      '📍 Ubicar en el mapa · '+sinPin+' pendiente'+(sinPin===1?'':'s')+'</button>';
+  }
+  if(isAdmin() && aRevisar){
+    geoBar += '<button class="geo-fix-btn geo-check-btn" onclick="openItinEdit('+primerDudoso+')">'+
+      '❓ '+aRevisar+' pin'+(aRevisar===1?'':'s')+' que ubiqué por el nombre · revísalo'+(aRevisar===1?'':'s')+
+      '</button>';
+  }
 
   document.getElementById('itin-body').innerHTML = renderResCard() + geoBar + DAYS.map(function(d,i){
     var clr=DC[i];
@@ -4299,6 +4339,7 @@ function openItinEdit(dayIdx){
   iedActs = DAYS[dayIdx].acts.map(function(a){
     var o = {t:a.t||'', n:a.n||'', note:a.note||''};
     if(a.c) o.c = a.c;
+    if(a.cs) o.cs = a.cs;
     if(a.g) o.g = a.g;
     // Se recuerda el link con el que venía: la lista se puede reordenar
     // arrastrando, así que comparar por posición al guardar sería incorrecto.
@@ -4321,6 +4362,12 @@ function closeItinEdit(){
 
 function renderIedList(){
   document.getElementById('ied-list').innerHTML = iedActs.map(function(a,i){
+    var guess = actPinGuessed(a);
+    var pinCls = !a.c ? '' : guess ? 'guess' : 'has';
+    var pinTxt = !a.c ? '○' : guess ? '📍?' : '📍';
+    var pinTit = !a.c ? 'Todavía sin pin'
+      : guess ? 'Lo ubiqué por el nombre — verifícalo'
+              : 'Ubicado con lo que pegaste';
     return '<div class="ied-row" data-idx="'+i+'">'+
       '<div class="ied-handle" ontouchstart="iedTouchStart(event,'+i+')" onmousedown="iedMouseStart(event,'+i+')">&#8942;&#8942;</div>'+
       '<div class="ied-fields">'+
@@ -4330,9 +4377,10 @@ function renderIedList(){
         '</div>'+
         '<input class="ied-note" value="'+esc(a.note)+'" placeholder="Nota (opcional)" oninput="iedActs['+i+'].note=this.value">'+
         '<div class="ied-maps-row">'+
-          '<span class="ied-pin '+(a.c?'has':'')+'" title="'+(a.c?'Ya tiene pin en el mapa':'Todavía sin pin')+'">'+(a.c?'📍':'○')+'</span>'+
-          '<input class="ied-maps" type="text" value="'+esc(a.g||'')+'" '+
-            'placeholder="Link de Google Maps o dirección" oninput="iedActs['+i+'].g=this.value">'+
+          '<span class="ied-pin '+pinCls+'" title="'+pinTit+'">'+pinTxt+'</span>'+
+          '<input class="ied-maps '+(guess?'warn':'')+'" type="text" value="'+esc(a.g||'')+'" '+
+            'placeholder="'+(guess?'¿No es aquí? Pega el link o la dirección':'Link de Google Maps o dirección')+'" '+
+            'oninput="iedActs['+i+'].g=this.value">'+
         '</div>'+
       '</div>'+
       '<button class="ied-del" onclick="iedDel('+i+')">&#215;</button>'+
@@ -4363,7 +4411,7 @@ async function saveItinEdit(){
     if(link) o.g = link;
     // La coordenada solo se conserva si el link no cambió. Si pegaron uno
     // nuevo, la vieja apuntaría al lugar anterior.
-    if(a.c && link === (a._g0||'')) o.c = a.c;
+    if(a.c && link === (a._g0||'')){ o.c = a.c; if(a.cs) o.cs = a.cs; }
     return o;
   });
 
