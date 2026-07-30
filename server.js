@@ -390,9 +390,6 @@ function addressFromMapsUrl(url) {
     // Si ya son coordenadas, de eso se encarga coordsFromMapsUrl
     if (/^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(t)) continue;
     if (t.length < 4) continue;
-    // Google la devuelve en el idioma de la petición: "EE. UU." no lo entienden
-    // los buscadores, "USA" sí.
-    t = t.replace(/,?\s*EE\.?\s*UU\.?\s*$/i, ', USA');
     return t.slice(0, 200);
   }
   return null;
@@ -522,10 +519,46 @@ async function geoPhoton(q) {
 
 const GEO_PROVIDERS = [['nominatim', geoNominatim], ['photon', geoPhoton]];
 
+// Google devuelve la dirección del lugar tal cual la muestra, y así entera los
+// buscadores no siempre la encuentran: trae el nombre del negocio adelante
+// ("Las Americas Premium Outlets, 4211 Camino De La Plaza…"), el número de
+// local ("6255 Sunset Blvd #150") y el país en español. Se prueban versiones
+// cada vez más limpias, de la más completa a la más pelona.
+function direccionVariantes(addr) {
+  const out = [];
+  const push = (t) => {
+    const s = String(t || '').replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ')
+      .replace(/^[\s,]+|[\s,]+$/g, '').trim();
+    if (s.length >= 5 && !out.includes(s)) out.push(s);
+  };
+
+  const base = String(addr || '').trim()
+    // El país viene en el idioma que se pidió; los buscadores quieren USA
+    .replace(/,?\s*(?:Estados\s+Unidos(?:\s+de\s+Am[eé]rica)?|EE\.?\s*UU\.?|United\s+States(?:\s+of\s+America)?)\s*$/i,
+             ', USA');
+  push(base);
+
+  // La dirección de verdad empieza donde aparece el número de la calle; lo de
+  // antes es el nombre del lugar.
+  const partes = base.split(',').map((p) => p.trim()).filter(Boolean);
+  const iNum = partes.findIndex((p) => /^\d/.test(p));
+  if (iNum > 0) push(partes.slice(iNum).join(', '));
+
+  // El número de local no lo conocen los buscadores
+  const sinLocal = (t) => t.replace(/\s*(?:#|Ste\.?|Suite|Unit|Apt\.?|Local)\s*[\w-]+/ig, '');
+  out.slice().forEach((v) => push(sinLocal(v)));
+
+  // Y por último sin código postal
+  out.slice().forEach((v) => push(v.replace(/\s+\d{5}(?:-\d{4})?(?=,|$)/g, '')));
+
+  return out.slice(0, 6);
+}
+
 // Busca una dirección con los dos proveedores. Se usa tanto para lo que pega
 // el usuario a mano como para la dirección que deja el link de Maps.
 async function buscarDireccion(addr, tried) {
-  const queries = [addr];
+  const queries = direccionVariantes(addr);
+  if (!queries.length) queries.push(addr);
   if (!/(?:^|[\s,])(?:usa|united states|california|ca)(?:[\s,.]|$)/i.test(addr)) {
     queries.push(addr + ', California, USA');
   }
