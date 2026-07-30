@@ -1106,6 +1106,9 @@
       background:rgba(0,200,255,.05); border:1px solid rgba(0,200,255,.14);
     }
     .gfx-tip-ej { font-family:'Space Mono',monospace; color:var(--cyan); font-size:11px; }
+    /* Los motivos de error son largos: que no se corten */
+    .toast { max-height:none; }
+    .toast span:last-child { word-break:break-word; }
     .ied-time:focus,.ied-name:focus,.ied-note:focus,.ied-maps:focus { border-color:rgba(0,200,255,.4); }
     .ied-del {
       background:none; border:none; color:rgba(255,255,255,.2); font-size:20px;
@@ -3763,9 +3766,15 @@ async function locateMissingCoords(opts){
   if(ok){
     toast(ok+' actividad'+(ok===1?'':'es')+' ubicada'+(ok===1?'':'s')+' en el mapa.','success');
   } else if(opts && opts.loud){
+    // El motivo real, no un mensaje genérico: sin esto lo único que se ve es
+    // "no pude" y no hay por dónde empezar a arreglarlo.
+    var motivo = '';
+    DAYS.forEach(function(d){ (d.acts||[]).forEach(function(a){
+      if(!motivo && a._why) motivo = a._why;
+    }); });
     toast(
-      geoLastFail==='servicio' ? 'El buscador no responde ahora. Intenta más tarde.' :
-      geoLastFail==='red'      ? 'Sin conexión con el servidor.' :
+      geoLastFail==='red' ? 'Sin conexión con el servidor.' :
+      motivo ? 'No salió: '+motivo :
       'No pude sacar la ubicación de esos links. Revísalos en «Ver cuáles son».',
     'error');
   }
