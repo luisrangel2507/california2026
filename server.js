@@ -340,40 +340,52 @@ function coordsFromMapsHtml(html) {
 // abrir la app de Maps, no con la ficha web — y ahí no hay coordenadas por
 // ningún lado. Con un navegador de escritorio la redirección sí lleva a la
 // ficha completa. Se intentan los dos, empezando por el de escritorio.
+// La cookie de consentimiento se manda a mano, y eso es un arma de dos filos:
+// si Google la considera inválida o vieja, ella misma dispara la pantalla de
+// consentimiento que se quería evitar. Por eso el primer intento va limpio.
+const CONSENT_COOKIE = 'CONSENT=YES+cb; SOCS=CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2Vydm' +
+  'VyXzIwMjQwNzA5LjA3X3AxGgJlbiADGgYIgLD_tQY';
+
+const UA_PREVIEW = 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)';
+const UA_ESCRITORIO = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const UA_CELULAR = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
+  'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
 const MAPS_UAS = [
   // La vista previa que Google sirve a los rastreadores de los chats — es lo
   // que usan WhatsApp e iMessage para pintar la tarjetita del link. Página
   // chica, hecha para leerse por máquinas, y con la miniatura del mapa que
   // trae center=lat,lng. Es la respuesta más confiable desde un servidor.
-  ['vista previa', 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'],
-  ['escritorio', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
-    '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'],
-  ['celular', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
-    'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'],
+  ['vista previa', UA_PREVIEW, false],
+  ['vista previa con cookie', UA_PREVIEW, true],
+  ['escritorio', UA_ESCRITORIO, false],
+  ['escritorio con cookie', UA_ESCRITORIO, true],
+  ['celular', UA_CELULAR, true],
 ];
 
-function mapsHeaders(ua) {
-  return {
+function mapsHeaders(ua, conCookie) {
+  const h = {
     'User-Agent': ua,
-    // En inglés y con la cookie de consentimiento ya puesta: en español y sin
-    // ella, Google mete la pantalla de "acepta las cookies" antes del mapa.
+    // En inglés: en español Google mete más seguido la pantalla de cookies.
     'Accept-Language': 'en-US,en;q=0.9,es;q=0.8',
     'Accept': 'text/html,application/xhtml+xml',
-    'Cookie': 'CONSENT=YES+cb; SOCS=CAISNQgQEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwNzA5LjA3X3AxGgJlbiADGgYIgLD_tQY',
   };
+  if (conCookie) h.Cookie = CONSENT_COOKIE;
+  return h;
 }
 
 // Un solo recorrido de la cadena de redirecciones con un User-Agent dado. La
 // coordenada puede aparecer en cualquier paso: en una redirección intermedia,
 // en la URL final o dentro del HTML.
-async function seguirCadena(url, ua, note) {
+async function seguirCadena(url, ua, note, conCookie) {
   let actual = url;
   for (let salto = 0; salto < 6; salto++) {
     let r;
     try {
       r = await fetch(actual, {
         redirect: 'manual',
-        headers: mapsHeaders(ua),
+        headers: mapsHeaders(ua, conCookie),
         signal: AbortSignal.timeout(12000),
       });
     } catch (e) {
@@ -422,9 +434,9 @@ async function resolveMapsUrl(url, diag) {
     if (diag) diag.push('no es un link');
     return null;
   }
-  for (const [nombre, ua] of MAPS_UAS) {
+  for (const [nombre, ua, conCookie] of MAPS_UAS) {
     const pasos = [];
-    const c = await seguirCadena(url, ua, (m) => pasos.push(m));
+    const c = await seguirCadena(url, ua, (m) => pasos.push(m), conCookie);
     if (c) return c;
     if (diag) diag.push('como ' + nombre + ': ' + (pasos[0] || 'sin resultado'));
   }
