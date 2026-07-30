@@ -248,18 +248,31 @@ function persistGeo() {
 }
 
 const GEO_UA = 'AltaVibra-California2026/1.0 (viaje privado; contacto via app)';
+// El límite de 1 req/seg es de Nominatim; Photon no lo impone, así que cada
+// proveedor lleva su propio ritmo. Antes todo iba a 1.1s y ubicar seis
+// actividades tardaba una eternidad.
+const GEO_GAP = { nominatim: 1100, photon: 150, maps: 300 };
 let geoQueue = Promise.resolve();
-let geoLastCall = 0;
-// Encola para respetar el límite de 1 req/seg de Nominatim
-function geoThrottle(fn) {
+const geoLastCall = {};
+function geoThrottle(fn, who) {
+  const key = who || 'nominatim';
   const run = async () => {
-    const wait = Math.max(0, 1100 - (Date.now() - geoLastCall));
+    const gap = GEO_GAP[key] || 1100;
+    const wait = Math.max(0, gap - (Date.now() - (geoLastCall[key] || 0)));
     if (wait) await new Promise((r) => setTimeout(r, wait));
-    geoLastCall = Date.now();
+    geoLastCall[key] = Date.now();
     return fn();
   };
   geoQueue = geoQueue.then(run, run);
   return geoQueue;
+}
+
+// Si un proveedor nos está bloqueando, no tiene caso volver a pegarle con cada
+// actividad: se apaga un rato y se sigue con el otro.
+const geoDown = {};
+const GEO_DOWN_MS = 10 * 60 * 1000;
+function geoIsDown(name) {
+  return geoDown[name] && (Date.now() - geoDown[name]) < GEO_DOWN_MS;
 }
 
 function coordsFromMapsUrl(url) {
@@ -295,20 +308,77 @@ async function resolveMapsUrl(url) {
   } catch (e) { return null; }
 }
 
-async function geocodeName(q) {
+// Los nombres del itinerario no son nombres de lugar: "Comida en Rockefeller",
+// "Manejar a LA", "🍔 Tour Downtown - Little Tokyo". Se les quita el emoji y el
+// verbo de adelante para dejar algo que un geocodificador sí pueda encontrar.
+const GEO_PREFIXES = new RegExp(
+  '^(?:' +
+  'comida|cena|desayuno|almuerzo|brunch|snack|' +
+  'manejar|conducir|salida|salir|llegada|llegar|traslado|regreso|regresar|ir|' +
+  'tour|visita|visitar|paseo|recorrido|caminar|explorar|' +
+  'check\\s*-?\\s*in|check\\s*-?\\s*out|hospedaje|dormir|descanso|' +
+  'compras|shopping|foto|fotos|atardecer|amanecer|sunset|sunrise|libre|tiempo libre' +
+  // El orden importa: "al" debe intentarse antes que "a", si no "Regreso al
+  // Ferry" queda como "l Ferry". Van de más largo a más corto.
+  ')\\b[\\s:–—-]*(?:hacia|para|del|los|las|por|al|de|en|la|el|a)?[\\s:–—-]*', 'i');
+
+function geoCleanName(name) {
+  let s = String(name || '')
+    // fuera emojis y símbolos de adelante
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .trim();
+  const stripped = s.replace(GEO_PREFIXES, '').trim();
+  // Solo se usa la versión recortada si dejó algo con sustancia
+  const out = (stripped.length >= 3) ? stripped : s;
+  // "Tour Downtown - Little Tokyo" -> también probar "Little Tokyo"
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+function geoNameVariants(name) {
+  const base = geoCleanName(name);
+  const out = [base];
+  // Si quedó un artículo suelto al frente ("Visita a la Misión" -> "la Misión"),
+  // se prueba también sin él. No se quita a secas porque hay lugares que sí
+  // empiezan con artículo: La Jolla, Los Ángeles, Las Vegas.
+  const sinArt = base.replace(/^(?:la|el|los|las)\s+/i, '').trim();
+  if (sinArt.length >= 3 && sinArt !== base) out.push(sinArt);
+  // Si trae guion, la parte más específica suele ser la última
+  const parts = base.split(/\s+[-–—]\s+/).map((s) => s.trim()).filter((s) => s.length >= 3);
+  if (parts.length > 1) { out.push(parts[parts.length - 1]); out.push(parts[0]); }
+  return [...new Set(out.filter(Boolean))];
+}
+
+// Dos proveedores: Nominatim bloquea IPs de servidores en la nube, así que
+// Photon (también sobre datos de OpenStreetMap) sirve de respaldo real.
+async function geoNominatim(q) {
   const url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=' +
     encodeURIComponent(q);
   const r = await fetch(url, {
     headers: { 'User-Agent': GEO_UA, 'Accept-Language': 'es,en' },
     signal: AbortSignal.timeout(9000),
   });
-  if (!r.ok) return null;
+  if (!r.ok) throw new Error('nominatim HTTP ' + r.status);
   const j = await r.json();
   if (!Array.isArray(j) || !j.length) return null;
   const lat = parseFloat(j[0].lat), lon = parseFloat(j[0].lon);
-  if (!isFinite(lat) || !isFinite(lon)) return null;
-  return [lat, lon];
+  return (isFinite(lat) && isFinite(lon)) ? [lat, lon] : null;
 }
+
+async function geoPhoton(q) {
+  const url = 'https://photon.komoot.io/api/?limit=1&lang=es&q=' + encodeURIComponent(q);
+  const r = await fetch(url, {
+    headers: { 'User-Agent': GEO_UA },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!r.ok) throw new Error('photon HTTP ' + r.status);
+  const j = await r.json();
+  const f = j && j.features && j.features[0];
+  if (!f || !f.geometry || !Array.isArray(f.geometry.coordinates)) return null;
+  const [lon, lat] = f.geometry.coordinates;   // GeoJSON viene [lon, lat]
+  return (isFinite(lat) && isFinite(lon)) ? [lat, lon] : null;
+}
+
+const GEO_PROVIDERS = [['nominatim', geoNominatim], ['photon', geoPhoton]];
 
 app.post('/api/geocode', async (req, res) => {
   const { name, city, mapsUrl } = req.body || {};
@@ -320,7 +390,7 @@ app.post('/api/geocode', async (req, res) => {
   if (typeof mapsUrl === 'string' && /^https?:\/\//.test(mapsUrl)) {
     const key = 'url:' + mapsUrl;
     if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
-    const c = await geoThrottle(() => resolveMapsUrl(mapsUrl));
+    const c = await geoThrottle(() => resolveMapsUrl(mapsUrl), 'maps');
     if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
   }
 
@@ -330,19 +400,51 @@ app.post('/api/geocode', async (req, res) => {
   // ambiguo, "Beverly Hills, Los Ángeles" no.
   const cityCtx = cleanCity && cleanCity !== 'Por definir'
     ? cleanCity.split('→')[0].split('—')[0].trim() : '';
-  const queries = [];
-  if (cityCtx) queries.push(cleanName + ', ' + cityCtx + ', California, USA');
-  queries.push(cleanName + ', California, USA');
 
-  for (const q of queries) {
-    const key = 'q:' + q.toLowerCase();
-    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'nominatim', cached: true });
-    try {
-      const c = await geoThrottle(() => geocodeName(q));
-      if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'nominatim', q }); }
-    } catch (e) { /* se intenta la siguiente variante */ }
+  const queries = [];
+  for (const variant of geoNameVariants(cleanName)) {
+    if (cityCtx) queries.push(variant + ', ' + cityCtx + ', California, USA');
+    queries.push(variant + ', California, USA');
   }
-  res.status(404).json({ error: 'not found' });
+
+  // Se guarda el motivo real del fallo: sin esto, un 404 no distingue entre
+  // "no existe el lugar" y "el proveedor nos está bloqueando".
+  const tried = [];
+  for (const [pname, pfn] of GEO_PROVIDERS) {
+    if (geoIsDown(pname)) { tried.push(pname + ' omitido (falló hace poco)'); continue; }
+    for (const q of [...new Set(queries)]) {
+      const key = 'q:' + pname + ':' + q.toLowerCase();
+      if (geoCache[key]) return res.json({ c: geoCache[key], source: pname, cached: true });
+      try {
+        const c = await geoThrottle(() => pfn(q), pname);
+        if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: pname, q }); }
+        tried.push(pname + ' sin resultados: ' + q);
+      } catch (e) {
+        tried.push(pname + ' ERROR: ' + (e && e.message ? e.message : e));
+        geoDown[pname] = Date.now();   // se apaga un rato
+        break;
+      }
+    }
+  }
+  res.status(404).json({ error: 'not found', tried });
+});
+
+// Diagnóstico: dice si los proveedores responden desde este servidor. Nominatim
+// bloquea IPs de nube, y sin esto no hay forma de distinguir eso de "el lugar
+// no existe" — que fue justo lo que nos tuvo adivinando.
+app.get('/api/geocode-check', async (req, res) => {
+  const q = (req.query.q || 'Beverly Hills, California, USA').toString().slice(0, 160);
+  const out = { q, providers: {} };
+  for (const [pname, pfn] of GEO_PROVIDERS) {
+    const t0 = Date.now();
+    try {
+      const c = await geoThrottle(() => pfn(q), pname);
+      out.providers[pname] = { ok: !!c, c: c || null, ms: Date.now() - t0 };
+    } catch (e) {
+      out.providers[pname] = { ok: false, error: String(e && e.message || e), ms: Date.now() - t0 };
+    }
+  }
+  res.json(out);
 });
 
 // ── Itinerario compartido (título del día + actividades) ───────────────────
