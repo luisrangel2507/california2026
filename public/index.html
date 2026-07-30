@@ -1049,6 +1049,28 @@
     .ied-maps::placeholder { color:var(--muted); font-family:'Space Grotesk',sans-serif; font-size:11px; }
     .ied-maps.warn { background:rgba(245,166,35,.07); border-color:rgba(245,166,35,.3); }
     .ied-maps.warn::placeholder { color:#F5A623; }
+    /* Lista de ubicaciones por corregir */
+    .gfx-row {
+      padding:12px 16px; border-bottom:1px solid rgba(255,255,255,.06);
+      display:flex; flex-direction:column; gap:6px;
+    }
+    .gfx-row:last-child { border-bottom:none; }
+    .gfx-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .gfx-badge {
+      font-size:9px; font-weight:700; letter-spacing:.7px; padding:3px 7px;
+      border-radius:5px; font-family:'Space Mono',monospace; flex-shrink:0;
+    }
+    .gfx-badge.miss  { background:rgba(255,90,110,.14); color:#FF7A88; border:1px solid rgba(255,90,110,.3); }
+    .gfx-badge.guess { background:rgba(245,166,35,.14); color:#F5A623; border:1px solid rgba(245,166,35,.3); }
+    .gfx-where {
+      font-size:9.5px; color:var(--muted); font-family:'Space Mono',monospace; letter-spacing:.5px;
+    }
+    .gfx-name { font-size:14px; font-weight:600; color:var(--txt); line-height:1.25; }
+    .gfx-see {
+      font-size:10.5px; color:var(--cyan); text-decoration:none;
+      font-family:'Space Grotesk',sans-serif; align-self:flex-start;
+    }
+    .gfx-inp { width:100%; font-size:11px; padding:8px 10px; }
     .ied-time:focus,.ied-name:focus,.ied-note:focus,.ied-maps:focus { border-color:rgba(0,200,255,.4); }
     .ied-del {
       background:none; border:none; color:rgba(255,255,255,.2); font-size:20px;
@@ -3688,10 +3710,99 @@ async function locateMissingCoords(opts){
     toast(
       geoLastFail==='servicio' ? 'El buscador de lugares no responde ahora. Intenta más tarde o pega el link de Google Maps.' :
       geoLastFail==='red'      ? 'Sin conexión con el servidor.' :
-      'No encontré esos lugares. Edita la actividad y pega el link de Google Maps o la dirección.',
+      'No encontré esos lugares por su nombre. Toca «Ver cuáles son» para pegarles el link o la dirección.',
     'error');
   }
   geoLastFail = '';
+}
+
+// ── UBICACIONES POR CORREGIR ───────────────────────────────────────────────
+// Saber que hay "2 pendientes" no sirve de nada si no dice cuáles son. Aquí
+// se listan por nombre, con su día y su hora, y se corrigen sin tener que ir
+// buscándolas día por día.
+var gfxRows = [];
+
+// Las que no tienen pin van primero: esas ni siquiera salen en el mapa.
+function geoProblemActs(){
+  var out = [];
+  DAYS.forEach(function(d,di){
+    (d.acts||[]).forEach(function(a,ai){
+      if(!a.n) return;
+      if(!a.c) out.push({di:di, ai:ai, tipo:'falta'});
+      else if(actPinGuessed(a)) out.push({di:di, ai:ai, tipo:'dudoso'});
+    });
+  });
+  return out.sort(function(x,y){
+    if(x.tipo !== y.tipo) return x.tipo === 'falta' ? -1 : 1;
+    return (x.di - y.di) || (x.ai - y.ai);
+  });
+}
+
+function openGeoFix(){
+  if(!isAdmin()) return;
+  gfxRows = geoProblemActs().map(function(r){
+    var a = DAYS[r.di].acts[r.ai];
+    r.g = a.g || '';
+    r._g0 = a.g || '';
+    return r;
+  });
+  if(!gfxRows.length){ toast('Todas las actividades están ubicadas.','success'); return; }
+  var faltan = gfxRows.filter(function(r){ return r.tipo==='falta'; }).length;
+  var dudosos = gfxRows.length - faltan;
+  document.getElementById('gfx-sub').textContent =
+    (faltan ? faltan+' sin ubicar' : '') +
+    (faltan && dudosos ? ' · ' : '') +
+    (dudosos ? dudosos+' por verificar' : '');
+  renderGeoFixList();
+  document.getElementById('gfx-overlay').classList.add('show');
+  document.getElementById('gfx-sheet').classList.add('show');
+}
+
+function closeGeoFix(){
+  document.getElementById('gfx-overlay').classList.remove('show');
+  document.getElementById('gfx-sheet').classList.remove('show');
+}
+
+function renderGeoFixList(){
+  document.getElementById('gfx-list').innerHTML = gfxRows.map(function(r,i){
+    var d = DAYS[r.di], a = d.acts[r.ai];
+    var falta = r.tipo === 'falta';
+    // Para las dudosas, un link a donde quedó el pin: es la forma rápida de
+    // ver si le atinó o no.
+    var verDonde = (!falta && a.c)
+      ? '<a class="gfx-see" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank">ver dónde quedó ›</a>'
+      : '';
+    return '<div class="gfx-row">'+
+      '<div class="gfx-top">'+
+        '<span class="gfx-badge '+(falta?'miss':'guess')+'">'+(falta?'SIN PIN':'ADIVINADA')+'</span>'+
+        '<span class="gfx-where">DÍA '+(r.di+1)+' · '+esc(d.date)+(a.t?' · '+esc(a.t):'')+'</span>'+
+      '</div>'+
+      '<div class="gfx-name">'+esc(a.n)+'</div>'+
+      verDonde+
+      '<input class="ied-maps gfx-inp" type="text" value="'+esc(r.g)+'" '+
+        'placeholder="Pega el link de Google Maps o la dirección" '+
+        'oninput="gfxRows['+i+'].g=this.value">'+
+      '</div>';
+  }).join('');
+}
+
+async function saveGeoFix(){
+  var dias = {};
+  gfxRows.forEach(function(r){
+    var link = (r.g||'').trim();
+    if(link === (r._g0||'')) return;      // no lo tocaron
+    var a = DAYS[r.di].acts[r.ai];
+    if(link) a.g = link; else delete a.g;
+    // Se tira lo que había: la coordenada vieja apunta al lugar anterior
+    delete a.c; delete a.cs;
+    dias[r.di] = true;
+  });
+  closeGeoFix();
+  var cambiados = Object.keys(dias);
+  if(!cambiados.length){ toast('No cambiaste ninguna ubicación.'); return; }
+  renderItin(); renderPlaceMarkers();
+  for(var i=0;i<cambiados.length;i++) await saveItinDay(parseInt(cambiados[i],10));
+  locateMissingCoords({loud:true});
 }
 
 function renderItin(){
@@ -3700,11 +3811,11 @@ function renderItin(){
   // Aviso de actividades sin pin, y de las que quedaron con un pin adivinado
   // por el nombre — esas hay que revisarlas porque bien pueden estar en otra
   // ciudad (solo admin)
-  var sinPin = 0, aRevisar = 0, primerDudoso = -1;
-  DAYS.forEach(function(d,di){
+  var sinPin = 0, aRevisar = 0;
+  DAYS.forEach(function(d){
     (d.acts||[]).forEach(function(a){
       if(!a.c && a.n) sinPin++;
-      else if(actPinGuessed(a)){ aRevisar++; if(primerDudoso<0) primerDudoso = di; }
+      else if(actPinGuessed(a)) aRevisar++;
     });
   });
   var geoBar = '';
@@ -3712,10 +3823,12 @@ function renderItin(){
     geoBar += '<button class="geo-fix-btn" onclick="locateMissingCoords({loud:true})">'+
       '📍 Ubicar en el mapa · '+sinPin+' pendiente'+(sinPin===1?'':'s')+'</button>';
   }
-  if(isAdmin() && aRevisar){
-    geoBar += '<button class="geo-fix-btn geo-check-btn" onclick="openItinEdit('+primerDudoso+')">'+
-      '❓ '+aRevisar+' pin'+(aRevisar===1?'':'s')+' que ubiqué por el nombre · revísalo'+(aRevisar===1?'':'s')+
-      '</button>';
+  if(isAdmin() && (sinPin || aRevisar)){
+    var partes = [];
+    if(sinPin) partes.push(sinPin+' sin ubicar');
+    if(aRevisar) partes.push(aRevisar+' por verificar');
+    geoBar += '<button class="geo-fix-btn geo-check-btn" onclick="openGeoFix()">'+
+      '❓ Ver cuáles son · '+partes.join(' · ')+'</button>';
   }
 
   document.getElementById('itin-body').innerHTML = renderResCard() + geoBar + DAYS.map(function(d,i){
@@ -5651,6 +5764,23 @@ if('serviceWorker' in navigator){
   <div class="bs-footer">
     <button class="bs-add-btn" onclick="iedAddAct()">+ Agregar</button>
     <button class="bs-save-btn" onclick="saveItinEdit()">Guardar</button>
+  </div>
+</div>
+
+<!-- UBICACIONES POR CORREGIR -->
+<div class="bs-overlay" id="gfx-overlay" onclick="closeGeoFix()"></div>
+<div class="bottom-sheet" id="gfx-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Ubicaciones por corregir</div>
+      <div class="bs-sub" id="gfx-sub"></div>
+    </div>
+    <button class="bs-close" onclick="closeGeoFix()">&#10005;</button>
+  </div>
+  <div class="ied-list" id="gfx-list"></div>
+  <div class="bs-footer">
+    <button class="bs-save-btn" onclick="saveGeoFix()">Guardar y ubicar</button>
   </div>
 </div>
 
