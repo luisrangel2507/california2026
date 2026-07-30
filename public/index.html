@@ -1083,6 +1083,12 @@
       border-radius:5px; font-family:'Space Mono',monospace; flex-shrink:0;
     }
     .gfx-badge.miss  { background:rgba(255,90,110,.14); color:#FF7A88; border:1px solid rgba(255,90,110,.3); }
+    .gfx-badge.done  { background:rgba(0,229,152,.12); color:#00E598; border:1px solid rgba(0,229,152,.28); }
+    .gfx-row.ok .gfx-name { color:var(--muted); font-weight:500; }
+    .gfx-see {
+      font-size:10.5px; color:var(--cyan); text-decoration:none;
+      font-family:'Space Grotesk',sans-serif; align-self:flex-start;
+    }
     .gfx-where {
       font-size:9.5px; color:var(--muted); font-family:'Space Mono',monospace; letter-spacing:.5px;
     }
@@ -3832,13 +3838,16 @@ async function locateMissingCoords(opts){
 var gfxRows = [];
 
 function geoProblemActs(){
-  var out = [];
+  var faltan = [], puestas = [];
   DAYS.forEach(function(d,di){
     (d.acts||[]).forEach(function(a,ai){
-      if(a.n && !a.c) out.push({di:di, ai:ai});
+      if(!a.n) return;
+      (a.c ? puestas : faltan).push({di:di, ai:ai});
     });
   });
-  return out;
+  // Las que faltan van arriba, pero las ya ubicadas también se listan: si un
+  // pin quedó en el lugar equivocado, éste es el único lugar para corregirlo.
+  return faltan.concat(puestas);
 }
 
 function openGeoFix(){
@@ -3849,9 +3858,11 @@ function openGeoFix(){
     r._g0 = a.g || '';
     return r;
   });
-  if(!gfxRows.length){ toast('Todas las actividades están ubicadas.','success'); return; }
-  document.getElementById('gfx-sub').textContent =
-    gfxRows.length + (gfxRows.length===1 ? ' sin ubicar' : ' sin ubicar');
+  if(!gfxRows.length){ toast('Todavía no hay actividades.'); return; }
+  var faltan = gfxRows.filter(function(r){ return !DAYS[r.di].acts[r.ai].c; }).length;
+  document.getElementById('gfx-sub').textContent = faltan
+    ? faltan + (faltan===1 ? ' sin ubicar' : ' sin ubicar')
+    : 'todas en el mapa · toca una para corregirla';
   renderGeoFixList();
   document.getElementById('gfx-overlay').classList.add('show');
   document.getElementById('gfx-sheet').classList.add('show');
@@ -3900,16 +3911,23 @@ async function pinPickAt(lat, lon){
 function renderGeoFixList(){
   document.getElementById('gfx-list').innerHTML = gfxRows.map(function(r,i){
     var d = DAYS[r.di], a = d.acts[r.ai];
+    var puesta = !!a.c;
     var porque = a._why ? '<div class="gfx-why">'+esc(a._why)+'</div>' : '';
-    return '<div class="gfx-row">'+
+    // De las ya ubicadas, el link a donde quedó: es la forma rápida de ver si
+    // el pin cayó donde debía.
+    var verDonde = puesta
+      ? '<a class="gfx-see" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank">ver dónde quedó ›</a>'
+      : '';
+    return '<div class="gfx-row'+(puesta?' ok':'')+'">'+
       '<div class="gfx-top">'+
-        '<span class="gfx-badge miss">SIN UBICAR</span>'+
+        '<span class="gfx-badge '+(puesta?'done':'miss')+'">'+(puesta?'EN EL MAPA':'SIN UBICAR')+'</span>'+
         '<span class="gfx-where">#'+globalActNumber(r.di,r.ai)+' · DÍA '+(r.di+1)+' · '+esc(d.date)+(a.t?' · '+esc(a.t):'')+'</span>'+
       '</div>'+
       '<div class="gfx-name">'+esc(a.n)+'</div>'+
       porque+
+      verDonde+
       '<button class="gfx-pick" onclick="startPinPick('+r.di+','+r.ai+')">'+
-        '📍 Ponerlo a mano en el mapa</button>'+
+        '📍 '+(puesta?'Está mal — moverlo a mano':'Ponerlo a mano en el mapa')+'</button>'+
       '<input class="ied-maps gfx-inp" type="text" value="'+esc(r.g)+'" '+
         'placeholder="Pega el link de Google Maps o la dirección" '+
         'oninput="gfxRows['+i+'].g=this.value">'+
@@ -3954,6 +3972,11 @@ function renderItin(){
       '📍 Ubicar en el mapa · '+sinPin+' pendiente'+(sinPin===1?'':'s')+'</button>';
     geoBar += '<button class="geo-fix-btn geo-check-btn" onclick="openGeoFix()">'+
       '❓ Ver cuáles son · '+sinPin+' sin ubicar</button>';
+  } else if(isAdmin() && DAYS.some(function(d){ return (d.acts||[]).some(function(a){ return a.c; }); })){
+    // Sin pendientes sigue haciendo falta una entrada: un pin puede haber
+    // quedado en el lugar equivocado y hay que poder corregirlo.
+    geoBar += '<button class="geo-fix-btn geo-check-btn" onclick="openGeoFix()">'+
+      '📍 Revisar o corregir las ubicaciones</button>';
   }
 
   document.getElementById('itin-body').innerHTML = renderResCard() + geoBar + DAYS.map(function(d,i){
@@ -5931,10 +5954,9 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeGeoFix()">&#10005;</button>
   </div>
   <div class="gfx-tip">
-    ¿Un link no jala? En Google Maps deja apretado el lugar hasta que salga el
-    pin rojo: arriba aparecen las coordenadas (<span class="gfx-tip-ej">34.0522, -118.2437</span>).
-    Cópialas y pégalas aquí — se ubican al instante, en el teléfono mismo.
-    También jala el link largo del navegador (el que trae <span class="gfx-tip-ej">@34.05,-118.24</span>).
+    Lo más seguro: en Google Maps deja apretado el lugar hasta que salga el pin
+    rojo, copia las coordenadas de arriba (<span class="gfx-tip-ej">34.0522, -118.2437</span>)
+    y pégalas aquí — se ubican al instante. O ponlo tú mismo tocando el mapa.
   </div>
   <div class="ied-list" id="gfx-list"></div>
   <div class="bs-footer">

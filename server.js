@@ -275,47 +275,67 @@ function geoIsDown(name) {
   return geoDown[name] && (Date.now() - geoDown[name]) < GEO_DOWN_MS;
 }
 
+// Patrones que apuntan al LUGAR, no a la vista. Se usan sobre URLs, que son
+// cortas y donde cada número tiene un significado fijo.
+const URL_PATS = [
+  // !3d/!4d es la coordenada exacta del lugar; va primero porque @... es
+  // el centro de la vista, que puede estar desplazado.
+  /!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+  /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+  /[?&](?:q|query|daddr|destination|saddr)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i,
+  /[?&](?:ll|sll|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i,
+  /[?&]markers=[^&"'\s]*?(-?\d+\.\d+)(?:,|%2C)(-?\d+\.\d+)/i,
+  /\/maps\/(?:search|dir|place)\/(-?\d+\.\d+),\s*(-?\d+\.\d+)/,
+  /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+];
+
+function validarCoord(lat, lon) {
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  if (lat === 0 && lon === 0) return null;
+  return [lat, lon];
+}
+
 function coordsFromMapsUrl(text) {
   if (!text) return null;
-  // Algunos formatos traen la longitud primero (GeoJSON, los arreglos internos
-  // de Google), por eso cada patrón dice en qué orden vienen.
-  const pats = [
-    // !3d/!4d es la coordenada exacta del lugar; va primero porque @... es
-    // el centro de la vista, que puede estar desplazado.
-    [/!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, false],
-    [/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, false],
-    // En los og:image de las vistas previas la coma viene codificada (%2C)
-    [/[?&](?:q|query|daddr|destination|saddr)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i, false],
-    [/[?&](?:ll|sll|center)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i, false],
-    [/[?&]markers=[^&"'\s]*?(-?\d+\.\d+)(?:,|%2C)(-?\d+\.\d+)/i, false],
-    [/\/maps\/(?:search|dir|place)\/(-?\d+\.\d+),\s*(-?\d+\.\d+)/, false],
-    [/@(-?\d+\.\d+),(-?\d+\.\d+)/, false],
-    // En el HTML de Google las coordenadas vienen dentro de arreglos
-    [/"center"\s*:\s*\{\s*"lat"\s*:\s*(-?\d+\.\d+)\s*,\s*"lng"\s*:\s*(-?\d+\.\d+)/, false],
-    [/"latitude"\s*:\s*(-?\d+\.\d+)\s*,\s*"longitude"\s*:\s*(-?\d+\.\d+)/, false],
-    [/\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/, false],
-    // La página de Maps arranca con APP_INITIALIZATION_STATE=[[[zoom,lng,lat]
-    [/APP_INITIALIZATION_STATE\s*=\s*\[\[\[[-\d.]+,(-?\d+\.\d+),(-?\d+\.\d+)\]/, true],
-    // Y las tarjetas de compartir traen la miniatura del mapa con center=lat,lng
-    [/staticmap[^"']*?[?&]center=(-?\d+\.\d+)(?:,|%2C)(-?\d+\.\d+)/i, false],
-  ];
   const txt = String(text).replace(/&amp;/g, '&');
-  for (const [p, swap] of pats) {
+  for (const p of URL_PATS) {
     const m = txt.match(p);
     if (!m) continue;
-    let lat = parseFloat(m[1]), lon = parseFloat(m[2]);
-    if (swap) { const t = lat; lat = lon; lon = t; }
-    // Descarta 0,0 y valores fuera de rango
-    if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0)) {
-      return [lat, lon];
-    }
+    const c = validarCoord(parseFloat(m[1]), parseFloat(m[2]));
+    if (c) return c;
   }
   return null;
 }
 
-// Google le sirve una página distinta (o de consentimiento) a los clientes que
-// no parecen navegador, y ahí no vienen las coordenadas. Por eso aquí sí se usa
-// un User-Agent de navegador, a diferencia de las llamadas a los buscadores.
+// Sacar coordenadas del HTML es lo que puso "Little Tokyo" cerca de Sacramento:
+// una página de Maps trae cientos de números y patrones sueltos como
+// [null,null,x,y], @lat,lng o APP_INITIALIZATION_STATE (que es el centro por
+// omisión de la sesión, no el lugar) enganchan con cualquier cosa. Un pin en el
+// lugar equivocado es peor que no tener pin, así que aquí sólo se aceptan dos
+// cosas, las dos amarradas al lugar:
+//   1. la miniatura del mapa de la vista previa (og:image), que es del lugar
+//   2. una URL de Maps incrustada que traiga !3d!4d, la coordenada exacta
+function coordsFromMapsHtml(html) {
+  if (!html) return null;
+  const txt = String(html).replace(/&amp;/g, '&');
+
+  const mini = txt.match(/staticmap[^"'\s]*?[?&](?:center|markers)=[^"'\s]*/i);
+  if (mini) {
+    const c = coordsFromMapsUrl(mini[0]);
+    if (c) return c;
+  }
+
+  const exacta = txt.match(/!8m2!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
+    || txt.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (exacta) {
+    const c = validarCoord(parseFloat(exacta[1]), parseFloat(exacta[2]));
+    if (c) return c;
+  }
+
+  return null;
+}
+
 // A un navegador de celular, maps.app.goo.gl le contesta con una página para
 // abrir la app de Maps, no con la ficha web — y ahí no hay coordenadas por
 // ningún lado. Con un navegador de escritorio la redirección sí lleva a la
@@ -371,7 +391,7 @@ async function seguirCadena(url, ua, note) {
     if (!r.ok) { note('Google respondió ' + r.status); return null; }
 
     const html = await r.text().catch(() => '');
-    const c = coordsFromMapsUrl(html);
+    const c = coordsFromMapsHtml(html);
     if (c) return c;
 
     // A veces la redirección viene dentro de la página, no en la cabecera
