@@ -544,6 +544,16 @@ function direccionVariantes(addr) {
   const iNum = partes.findIndex((p) => /^\d/.test(p));
   if (iNum > 0) push(partes.slice(iNum).join(', '));
 
+  // A veces el nombre no trae número de calle detrás porque no es una calle:
+  // es un parque, una carretera, una zona natural ("Kings Canyon National
+  // Park, CA-180, Hume, CA 93628" — y de paso Google lo tradujo mal, a "Kins
+  // Cañon Parque Natural", que ningún buscador reconoce). Ahí el truco del
+  // número no dispara nunca. Se prueba también quitando uno y dos pedazos del
+  // frente: la ruta y la ciudad casi siempre sí las conoce el buscador, aunque
+  // el nombre del lugar esté mal traducido o no lo tenga.
+  if (partes.length > 2) push(partes.slice(1).join(', '));
+  if (partes.length > 3) push(partes.slice(2).join(', '));
+
   // El número de local no lo conocen los buscadores
   const sinLocal = (t) => t.replace(/\s*(?:#|Ste\.?|Suite|Unit|Apt\.?|Local)\s*[\w-]+/ig, '');
   out.slice().forEach((v) => push(sinLocal(v)));
