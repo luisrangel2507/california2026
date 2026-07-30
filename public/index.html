@@ -410,6 +410,24 @@
     .act.st-current { border-left: 3px solid #00C8FF; background: rgba(0,200,255,.07); padding-left: 10px; }
     .act.st-next { border-left: 3px solid #F5A623; background: rgba(245,166,35,.06); padding-left: 10px; }
     .act.st-past:not(.done) { border-left: 3px solid #00E598; background: rgba(0,229,152,.05); padding-left: 10px; }
+    /* Sin ubicación: el renglón entero en naranja — que falte el pin importa
+       más que si ya pasó la hora. Se nombran los estados uno por uno porque
+       .act.st-past:not(.done) pesa más que .act.no-pin a secas y se llevaba
+       el borde. */
+    .act.no-pin,
+    .act.st-past.no-pin,
+    .act.st-current.no-pin,
+    .act.st-next.no-pin {
+      background: rgba(245,166,35,.14); border-left: 3px solid #F5A623; padding-left: 10px;
+    }
+    .act.no-pin .act-n { color: #FFC46B; }
+    .act.no-pin .act-t { color: rgba(245,166,35,.75); }
+    .act-tag {
+      font-family: 'Space Mono', monospace; font-size: 8.5px; font-weight: 700;
+      letter-spacing: .6px; color: #F5A623; background: rgba(245,166,35,.16);
+      border: 1px solid rgba(245,166,35,.35); border-radius: 4px;
+      padding: 1px 5px; margin-left: 6px; white-space: nowrap; vertical-align: 1.5px;
+    }
     .act-t { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted); min-width: 36px; padding-top: 3px; flex-shrink: 0; }
     .act-dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
     /* El mismo número que lleva el pin en el mapa, para poder cruzarlos */
@@ -3870,10 +3888,14 @@ function renderItin(){
       var delBtn = admin
         ? '<button class="act-del" onclick="deleteAct('+i+','+ai+')">×</button>'
         : '';
-      return '<div class="act'+(done?' done':'')+' st-'+status+'" id="act-'+key+'">'+
+      // El renglón completo en naranja cuando la actividad no está en el mapa:
+      // así se ve cuál falta desde el itinerario, sin ir a buscarla.
+      var faltaPin = !a.c && a.n;
+      var tag = faltaPin ? '<span class="act-tag">SIN UBICAR</span>' : '';
+      return '<div class="act'+(done?' done':'')+' st-'+status+(faltaPin?' no-pin':'')+'" id="act-'+key+'">'+
         '<div class="act-t">'+esc(a.t)+'</div>'+
         '<div class="act-num '+numCls+'" title="'+numTit+'">'+num+'</div>'+
-        '<div class="act-body"><div class="act-n">'+esc(a.n)+'</div>'+
+        '<div class="act-body"><div class="act-n">'+esc(a.n)+tag+'</div>'+
         (a.note?'<div class="act-note">'+esc(a.note)+'</div>':'')+
         '</div>'+
         mapsBtn+
@@ -5717,8 +5739,28 @@ trBgVideo.play();
 
 // ── SERVICE WORKER ─────────────────────────────────────────────────────────
 if('serviceWorker' in navigator){
+  // Si al cargar ya había un service worker mandando, entonces esta página vino
+  // del caché. Cuando entra uno nuevo (hace skipWaiting + claim) hay que
+  // recargar: si no, el teléfono se queda mostrando la versión vieja hasta que
+  // a alguien se le ocurra cerrar la app por completo — que es justo lo que nos
+  // ha tenido persiguiendo "no me aparece el cambio".
+  var habiaSW = !!navigator.serviceWorker.controller;
+  var recargando = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if(!habiaSW || recargando) return;   // primera instalación: no hay nada viejo que tirar
+    recargando = true;
+    window.location.reload();
+  });
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('/sw.js?v=4').catch(function(){});
+    navigator.serviceWorker.register('/sw.js').then(function(reg){
+      // Se pregunta al servidor al abrir y cada media hora, por si la app se
+      // quedó abierta en segundo plano durante el viaje.
+      reg.update();
+      setInterval(function(){ reg.update(); }, 30*60*1000);
+      document.addEventListener('visibilitychange', function(){
+        if(document.visibilityState === 'visible') reg.update();
+      });
+    }).catch(function(){});
   });
 }
 </script>
