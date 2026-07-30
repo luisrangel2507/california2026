@@ -1093,6 +1093,30 @@
       border-radius:6px; padding:5px 7px;
     }
     .gfx-inp { width:100%; font-size:11px; padding:8px 10px; }
+    .gfx-pick {
+      align-self:flex-start; background:rgba(0,229,197,.09);
+      border:1px solid rgba(0,229,197,.3); border-radius:8px; color:#00E5C5;
+      font-family:'Space Grotesk',sans-serif; font-size:11.5px; font-weight:600;
+      padding:6px 11px; cursor:pointer;
+    }
+    .gfx-pick:active { background:rgba(0,229,197,.2); }
+    /* Barra de "toca el mapa" */
+    #pinpick-bar {
+      position:absolute; left:10px; right:10px; top:10px; z-index:1200;
+      display:none; align-items:center; gap:10px; padding:11px 13px;
+      border-radius:13px; background:rgba(8,14,26,.94);
+      border:1px solid rgba(0,229,197,.4); box-shadow:0 8px 26px rgba(0,0,0,.5);
+      backdrop-filter:blur(10px);
+    }
+    #pinpick-bar.show { display:flex; }
+    .pp-txt { flex:1; min-width:0; font-size:12px; line-height:1.35; color:var(--txt); }
+    .pp-txt b { color:#00E5C5; display:block; font-size:12.5px; }
+    .pp-cancel {
+      flex-shrink:0; background:none; border:1px solid rgba(255,255,255,.18);
+      border-radius:8px; color:var(--muted); font-size:11px; padding:6px 10px;
+      font-family:'Space Grotesk',sans-serif; cursor:pointer;
+    }
+    .leaflet-container.picking { cursor:crosshair; }
     .gfx-tip {
       margin:0 16px 4px; padding:9px 11px; border-radius:9px; font-size:11.5px;
       line-height:1.4; color:var(--muted);
@@ -1918,6 +1942,10 @@
 <!-- MAP -->
 <div id="view-map" class="view">
   <div id="map"></div>
+  <div id="pinpick-bar">
+    <div class="pp-txt"><b id="pinpick-name"></b>Toca en el mapa dónde va.</div>
+    <button class="pp-cancel" onclick="cancelPinPick()">Cancelar</button>
+  </div>
   <div class="ops-map-chip" id="ops-map-chip" style="display:none">
     <div class="ops-chip-dot"></div>
     <div class="ops-chip-txt" id="ops-chip-txt">—</div>
@@ -2570,6 +2598,11 @@ function initMap(){
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
     attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd'
   }).addTo(mapObj);
+
+  // Tocar el mapa mientras se está poniendo un pin a mano
+  mapObj.on('click', function(e){
+    if(pinPick) pinPickAt(e.latlng.lat, e.latlng.lng);
+  });
 
   renderPlaceMarkers();
   updateMapDlStatus();
@@ -3829,6 +3862,41 @@ function closeGeoFix(){
   document.getElementById('gfx-sheet').classList.remove('show');
 }
 
+// Poner el pin a mano sobre el mapa. Es el único camino que no depende de que
+// Google nos deje leer sus páginas: el usuario toca dónde va y ya.
+var pinPick = null;   // {di, ai} mientras se está escogiendo
+
+function startPinPick(di, ai){
+  var a = DAYS[di] && DAYS[di].acts[ai];
+  if(!a) return;
+  pinPick = {di:di, ai:ai};
+  closeGeoFix();
+  go('map', document.querySelectorAll('.nav-tab')[1]);
+  document.getElementById('pinpick-bar').classList.add('show');
+  document.getElementById('pinpick-name').textContent = a.n;
+  if(mapObj) mapObj.getContainer && mapObj.getContainer().classList.add('picking');
+}
+
+function cancelPinPick(){
+  pinPick = null;
+  document.getElementById('pinpick-bar').classList.remove('show');
+  if(mapObj && mapObj.getContainer) mapObj.getContainer().classList.remove('picking');
+}
+
+async function pinPickAt(lat, lon){
+  if(!pinPick) return;
+  var di = pinPick.di, ai = pinPick.ai;
+  var a = DAYS[di] && DAYS[di].acts[ai];
+  cancelPinPick();
+  if(!a) return;
+  a.c = [lat, lon];
+  a.cs = 'link';           // la puso una persona: cuenta como confirmada
+  delete a._why;
+  renderPlaceMarkers(); renderItin();
+  await saveItinDay(di);
+  toast('«'+a.n+'» quedó en el mapa.','success');
+}
+
 function renderGeoFixList(){
   document.getElementById('gfx-list').innerHTML = gfxRows.map(function(r,i){
     var d = DAYS[r.di], a = d.acts[r.ai];
@@ -3840,6 +3908,8 @@ function renderGeoFixList(){
       '</div>'+
       '<div class="gfx-name">'+esc(a.n)+'</div>'+
       porque+
+      '<button class="gfx-pick" onclick="startPinPick('+r.di+','+r.ai+')">'+
+        '📍 Ponerlo a mano en el mapa</button>'+
       '<input class="ied-maps gfx-inp" type="text" value="'+esc(r.g)+'" '+
         'placeholder="Pega el link de Google Maps o la dirección" '+
         'oninput="gfxRows['+i+'].g=this.value">'+
@@ -3851,7 +3921,7 @@ async function saveGeoFix(){
   var dias = {};
   gfxRows.forEach(function(r){
     var link = (r.g||'').trim();
-    if(link === (r._g0||'')) return;      // no lo tocaron
+    if(link === (r._g0||'')) return;      // ese no lo tocaron
     var a = DAYS[r.di].acts[r.ai];
     if(link) a.g = link; else delete a.g;
     // Se tira lo que había: la coordenada vieja apunta al lugar anterior
@@ -3860,9 +3930,13 @@ async function saveGeoFix(){
   });
   closeGeoFix();
   var cambiados = Object.keys(dias);
-  if(!cambiados.length){ toast('No cambiaste ninguna ubicación.'); return; }
   renderItin(); renderPlaceMarkers();
   for(var i=0;i<cambiados.length;i++) await saveItinDay(parseInt(cambiados[i],10));
+  // Se reintenta siempre, aunque no se haya cambiado ningún link: el caso
+  // normal es que los links ya estuvieran puestos y lo que falló fue
+  // ubicarlos. Antes, si no cambiabas nada, el botón no hacía absolutamente
+  // nada y sólo decía "no cambiaste ninguna ubicación".
+  gfxRows.forEach(function(r){ delete DAYS[r.di].acts[r.ai]._why; });
   locateMissingCoords({loud:true});
 }
 
