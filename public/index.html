@@ -5083,6 +5083,7 @@ var trDebounce = null;
 var trSeq = 0;          // ignora respuestas que llegan fuera de orden
 var trRecognition = null;
 var trRecording = false;
+var trStopRequested = false;   // true sólo cuando el usuario le dio click al botón
 
 function openTranslate(){
   trSyncLangs();
@@ -5389,18 +5390,22 @@ function trStartMic(opts){
     // lo que dijo el otro, no un borrador propio al que haya que sumarle.
     var base = (opts.replace || !input.value) ? '' : input.value.trim()+' ';
     if(opts.replace) input.value = '';
-    trRecognition = new SR();
-    trRecognition.lang = opts.lang;
-    trRecognition.interimResults = true;
-    trRecognition.continuous = false;
+    var rec = new SR();
+    trRecognition = rec;
+    rec.lang = opts.lang;
+    rec.interimResults = true;
+    // continuous:true — que no se corte solo en cada pausa natural al hablar;
+    // que siga escuchando hasta que se le dé click al botón (trStopMic).
+    rec.continuous = true;
     // Capa 1: donde exista, que el motor deduzca los signos de la entonación
     // y las pausas reales en vez de que haya que dictarlos.
-    if('unspokenPunctuation' in trRecognition){
-      try{ trRecognition.unspokenPunctuation = true; }catch(e){}
+    if('unspokenPunctuation' in rec){
+      try{ rec.unspokenPunctuation = true; }catch(e){}
     }
 
+    trStopRequested = false;
     var spoken = '';
-    trRecognition.onresult = function(ev){
+    rec.onresult = function(ev){
       var txt = '';
       for(var i=0;i<ev.results.length;i++) txt += ev.results[i][0].transcript;
       spoken = txt.trim();
@@ -5408,12 +5413,23 @@ function trStartMic(opts){
       // para que el texto no brinque en cada palabra.
       input.value = (base + spoken).slice(0,500);
     };
-    trRecognition.onerror = function(ev){
+    rec.onerror = function(ev){
+      // "no-speech" es sólo un rato de silencio, no un error: con
+      // continuous:true algunos navegadores lo avisan así antes de seguir
+      // escuchando solos. Cortar aquí sería justo el "se corta" que no se
+      // quiere. Los errores de verdad sí deben parar todo.
+      if(ev && ev.error==='no-speech') return;
       trStopMic();
       if(ev && ev.error==='not-allowed') toast('Permiso de micrófono denegado.','error');
-      else toast('No se pudo escuchar. Intenta de nuevo.','error');
+      else if(ev && ev.error!=='aborted') toast('No se pudo escuchar. Intenta de nuevo.','error');
     };
-    trRecognition.onend = function(){
+    rec.onend = function(){
+      // El motor terminó él solo (algunos navegadores lo hacen tras un rato
+      // de silencio incluso con continuous:true) y el usuario no pidió
+      // parar: se reinicia sin que se note, sin perder lo que ya se dictó.
+      if(!trStopRequested && trRecording){
+        try{ rec.start(); return; }catch(e){}
+      }
       if(spoken){
         input.value = (base + trPunctuate(spoken, opts.lang)).slice(0,500);
       }
@@ -5421,7 +5437,7 @@ function trStartMic(opts){
       if(input.value.trim() && opts.onDone) opts.onDone();
     };
 
-    trRecognition.start();
+    rec.start();
     trRecording = true;
     trMicBtnId = opts.btnId;
     var b = document.getElementById(opts.btnId);
@@ -5441,9 +5457,16 @@ function trToggleMic(){
 }
 
 function trStopMic(){
-  if(trRecognition){
-    try{ trRecognition.stop(); }catch(e){}
-    trRecognition = null;
+  trStopRequested = true;
+  // Se limpia la referencia ANTES de llamar a stop(): si eso dispara onend()
+  // de forma reentrante (llama otra vez a trStopMic mientras esta llamada
+  // sigue en curso), tiene que encontrar trRecognition ya en null y no volver
+  // a llamar stop() sobre el mismo objeto — si no, se hacen llamadas en
+  // cascada entre sí.
+  var rec = trRecognition;
+  trRecognition = null;
+  if(rec){
+    try{ rec.stop(); }catch(e){}
   }
   trRecording = false;
   if(trMicBtnId){
