@@ -3595,13 +3595,22 @@ async function loadItinerary(){
   }catch(e){ /* sin conexión: se queda con lo que ya tenía cargado */ }
 }
 
-async function saveItinDay(dayIdx){
+// includeCity sólo debe ir true cuando de verdad se editó el título del día
+// (saveItinEdit). Los demás guardados —agregar o borrar una actividad, ubicar
+// un pin— sólo tocan acts; si además mandaran el city que hay en memoria en
+// ese momento, un refresco de los 15s que se cruzara justo a media edición
+// podía dejar DAYS[dayIdx].city con el valor viejo del servidor, y ese
+// guardado —que no tenía nada que ver con el título— lo persistía de vuelta,
+// borrando el título real que sí estaba guardado.
+async function saveItinDay(dayIdx, includeCity){
   if(!DAYS[dayIdx]) return;
   var who = meIndex!==null ? persons[parseInt(meIndex)] : '';
   try{
+    var body = { idx:dayIdx, acts:DAYS[dayIdx].acts, who:who };
+    if(includeCity) body.city = DAYS[dayIdx].city;
     var r = await fetch('/api/itinerary',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ idx:dayIdx, city:DAYS[dayIdx].city, acts:DAYS[dayIdx].acts, who:who })
+      body: JSON.stringify(body)
     });
     if(!r.ok){
       toast(r.status===403 ? 'Solo el admin puede editar el itinerario.' : 'No se pudo guardar.','error');
@@ -4607,7 +4616,7 @@ async function saveItinEdit(){
   renderDash(); renderOps();
   renderItin();
   renderPlaceMarkers();
-  await saveItinDay(day);
+  await saveItinDay(day, true);   // aquí sí: es el único lugar que edita el título
 
   // Se resuelven las que quedaron sin coordenada (las de link nuevo incluidas)
   var faltan = nuevos.some(function(a){ return !a.c && a.n; });
