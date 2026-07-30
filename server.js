@@ -432,15 +432,18 @@ app.post('/api/geocode', async (req, res) => {
   const hint = parseLocHint(mapsUrl);
   const mapsFail = [];
 
+  // `from` dice si la coordenada salió de lo que el usuario pegó ('hint') o de
+  // adivinar el nombre de la actividad ('name'). La app lo usa para marcar los
+  // pins que conviene revisar.
   if (hint && hint.kind === 'coords') {
-    return res.json({ c: hint.value, source: 'coords' });
+    return res.json({ c: hint.value, source: 'coords', from: 'hint' });
   }
 
   if (hint && hint.kind === 'url') {
     const key = 'url:' + hint.value;
-    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', cached: true });
+    if (geoCache[key]) return res.json({ c: geoCache[key], source: 'maps', from: 'hint', cached: true });
     const c = await geoThrottle(() => resolveMapsUrl(hint.value), 'maps');
-    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps' }); }
+    if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: 'maps', from: 'hint' }); }
     mapsFail.push('el link no soltó coordenadas: ' + hint.value.slice(0, 120));
   }
 
@@ -457,16 +460,18 @@ app.post('/api/geocode', async (req, res) => {
     ? cleanCity.split('→')[0].split('—')[0].trim() : '';
 
   const queries = [];
+  const seenQ = new Set();
+  const addQ = (q, from) => { if (!seenQ.has(q)) { seenQ.add(q); queries.push({ q, from }); } };
   if (addr) {
     // Una dirección ya viene completa: no se le pega la ciudad del día encima.
-    queries.push(addr);
+    addQ(addr, 'hint');
     if (!/(?:^|[\s,])(?:usa|united states|ee\.?\s?uu\.?|california|ca)(?:[\s,]|$)/i.test(addr)) {
-      queries.push(addr + ', California, USA');
+      addQ(addr + ', California, USA', 'hint');
     }
   }
   for (const variant of geoNameVariants(cleanName)) {
-    if (cityCtx) queries.push(variant + ', ' + cityCtx + ', California, USA');
-    queries.push(variant + ', California, USA');
+    if (cityCtx) addQ(variant + ', ' + cityCtx + ', California, USA', 'name');
+    addQ(variant + ', California, USA', 'name');
   }
 
   // Se guarda el motivo real del fallo: sin esto, un 404 no distingue entre
@@ -474,12 +479,12 @@ app.post('/api/geocode', async (req, res) => {
   const tried = mapsFail.slice();
   for (const [pname, pfn] of GEO_PROVIDERS) {
     if (geoIsDown(pname)) { tried.push(pname + ' omitido (falló hace poco)'); continue; }
-    for (const q of [...new Set(queries)]) {
+    for (const { q, from } of queries) {
       const key = 'q:' + pname + ':' + q.toLowerCase();
-      if (geoCache[key]) return res.json({ c: geoCache[key], source: pname, cached: true });
+      if (geoCache[key]) return res.json({ c: geoCache[key], source: pname, from, cached: true });
       try {
         const c = await geoThrottle(() => pfn(q), pname);
-        if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: pname, q }); }
+        if (c) { geoCache[key] = c; persistGeo(); return res.json({ c, source: pname, from, q }); }
         tried.push(pname + ' sin resultados: ' + q);
       } catch (e) {
         tried.push(pname + ' ERROR: ' + (e && e.message ? e.message : e));
@@ -545,6 +550,9 @@ app.post('/api/itinerary', (req, res) => {
       if (Array.isArray(a.c) && a.c.length === 2 &&
           typeof a.c[0] === 'number' && typeof a.c[1] === 'number') {
         out.c = [a.c[0], a.c[1]];
+        // De dónde salió: 'link' la pegó el usuario, 'nombre' la adivinó el
+        // buscador y bien puede haber caído en otro lado.
+        if (a.cs === 'link' || a.cs === 'nombre') out.cs = a.cs;
       }
       return out;
     });
