@@ -37,10 +37,27 @@ webpush.setVapidDetails(
   VAPID_PRIVATE_KEY
 );
 
-// ── Almacenamiento simple de suscripciones (archivo JSON) ──────────────────
-const DATA_DIR = path.join(__dirname, 'data');
+// ── Almacenamiento simple de archivos JSON ─────────────────────────────────
+// DATA_DIR puede venir de una variable de entorno para poder apuntarlo a un
+// disco de verdad (un Volume de Railway montado en, por ejemplo, /data).
+// Sin eso, __dirname/data vive dentro del contenedor: cada redeploy empieza
+// con un disco en blanco y se pierde todo — itinerario, gastos, fotos,
+// reservaciones. Ya pasó una vez. El aviso es tan ruidoso a propósito porque
+// es fácil no notarlo hasta que ya se perdió algo.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+if (!process.env.DATA_DIR) {
+  console.warn(
+    '\n⚠️  DATA_DIR no está configurada — usando ' + DATA_DIR + ', dentro del propio contenedor.\n' +
+    '   Sin un Volume de Railway montado ahí, CADA redeploy borra todo lo guardado\n' +
+    '   (itinerario, gastos, fotos, reservaciones). Para arreglarlo de raíz:\n' +
+    '   1. Railway → este servicio → pestaña "Volumes" → "+ New Volume"\n' +
+    '   2. Mount path: /data\n' +
+    '   3. Pestaña "Variables" → agregar DATA_DIR=/data\n' +
+    '   4. Redeploy una última vez para que quede montado\n'
+  );
+}
 const SUBS_FILE = path.join(DATA_DIR, 'subscriptions.json');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 function loadSubs() {
   try { return JSON.parse(fs.readFileSync(SUBS_FILE, 'utf8')); }
