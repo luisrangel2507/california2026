@@ -1108,6 +1108,27 @@
     .gfx-tip-ej { font-family:'Space Mono',monospace; color:var(--cyan); font-size:11px; }
     /* Los motivos de error son largos: que no se corten */
     .toast { max-height:none; }
+    /* Aviso de restaurar el itinerario desde el respaldo local */
+    .itin-restore-bar {
+      position:fixed; left:10px; right:10px; top:8px; z-index:20002;
+      display:none; align-items:center; gap:10px; padding:12px 13px;
+      border-radius:13px; background:rgba(8,14,26,.97);
+      border:1px solid rgba(245,166,35,.5); box-shadow:0 8px 26px rgba(0,0,0,.5);
+      backdrop-filter:blur(10px);
+    }
+    .itin-restore-bar.show { display:flex; }
+    .irb-txt { flex:1; min-width:0; font-size:11.5px; line-height:1.4; color:var(--txt); }
+    .irb-txt b { color:#F5A623; display:block; font-size:12.5px; margin-bottom:2px; }
+    .irb-btn {
+      flex-shrink:0; background:rgba(245,166,35,.14); border:1px solid rgba(245,166,35,.4);
+      border-radius:8px; color:#F5A623; font-size:11.5px; font-weight:700; padding:8px 13px;
+      font-family:'Space Grotesk',sans-serif; cursor:pointer;
+    }
+    .irb-btn:active { background:rgba(245,166,35,.26); }
+    .irb-x {
+      flex-shrink:0; background:none; border:none; color:var(--muted); font-size:16px;
+      cursor:pointer; padding:2px 4px; line-height:1;
+    }
     .toast span:last-child { word-break:break-word; }
     .ied-time:focus,.ied-name:focus,.ied-note:focus,.ied-maps:focus { border-color:rgba(0,200,255,.4); }
     .ied-del {
@@ -1409,6 +1430,15 @@
     }
     .me-wipe-btn:active { transform: scale(.98); background:rgba(255,80,80,.2); }
     .me-wipe-note { font-size:9.5px; color:var(--muted); margin-top:5px; line-height:1.5; }
+    .me-backup-row { display:flex; gap:8px; }
+    .me-backup-btn {
+      flex:1; padding:10px 8px; border-radius:10px; cursor:pointer;
+      background:rgba(0,200,255,.08); border:1px solid rgba(0,200,255,.25);
+      color:var(--cyan); font-size:11.5px; font-weight:700;
+      font-family:'Space Grotesk',sans-serif;
+      transition: transform .12s var(--ease), background .15s;
+    }
+    .me-backup-btn:active { transform: scale(.98); background:rgba(0,200,255,.18); }
     .me-version {
       margin-top:14px; padding-top:10px; border-top:1px solid var(--border);
       font-size:10px; color:var(--muted); font-family:'Space Mono',monospace; line-height:1.6;
@@ -1918,6 +1948,16 @@
     <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.1" fill="currentColor" stroke="none"/></svg>
     <span>Suerte</span>
   </div>
+</div>
+
+<!-- Aviso de restaurar el itinerario desde el respaldo de este teléfono -->
+<div id="itin-restore-bar" class="itin-restore-bar">
+  <div class="irb-txt">
+    <b>El itinerario del servidor está vacío</b>
+    Este teléfono tiene un respaldo de hace <span id="irb-cuando"></span>. ¿Lo restauro?
+  </div>
+  <button class="irb-btn" onclick="restoreItinBackup()">Restaurar</button>
+  <button class="irb-x" onclick="dismissItinRestoreBar()">&#10005;</button>
 </div>
 
 <!-- DASHBOARD -->
@@ -3600,6 +3640,66 @@ function applyItinStore(store){
     if(typeof e.city === 'string' && e.city) DAYS[i].city = e.city;
     if(Array.isArray(e.acts)) DAYS[i].acts = e.acts;
   });
+  saveItinBackup(store);
+  maybeOfferItinRestore(store);
+}
+
+// ── RESPALDO LOCAL DEL ITINERARIO ───────────────────────────────────────────
+// El servidor vive en un disco que Railway puede borrar en cada redeploy si
+// no tiene un Volume montado — ya pasó una vez y se perdió todo. Este
+// teléfono no puede evitar que el servidor se borre, pero si guarda su
+// propia copia de la última vez que vio el itinerario con contenido de
+// verdad, puede ofrecer restaurarla si un día el servidor aparece vacío.
+var ITIN_BACKUP_KEY = 'ca26_itin_backup';
+var itinRestoreOffered = false;
+
+function itinHasContent(store){
+  return Object.keys(store||{}).some(function(k){
+    var e = store[k];
+    return e && ((e.city && e.city !== 'Por definir') || (Array.isArray(e.acts) && e.acts.length));
+  });
+}
+
+function saveItinBackup(store){
+  // No se sobreescribe un respaldo bueno con uno vacío: si el servidor ya se
+  // borró, guardar ese vacío encima taparía la única copia que queda.
+  if(!itinHasContent(store)) return;
+  try{ localStorage.setItem(ITIN_BACKUP_KEY, JSON.stringify({ ts:Date.now(), store:store })); }catch(e){}
+}
+
+function loadItinBackup(){
+  try{ return JSON.parse(localStorage.getItem(ITIN_BACKUP_KEY) || 'null'); }catch(e){ return null; }
+}
+
+function maybeOfferItinRestore(store){
+  if(itinRestoreOffered) return;
+  if(!isAdmin()) return;                // solo quien puede guardar el itinerario
+  if(itinHasContent(store)) return;      // el servidor sí tiene algo: no hace falta nada
+  var backup = loadItinBackup();
+  if(!backup || !itinHasContent(backup.store)) return;
+  itinRestoreOffered = true;
+  var mins = Math.round((Date.now()-backup.ts)/60000);
+  var cuando = mins<1 ? 'un momento' : mins<60 ? mins+' min' : Math.round(mins/60)+' h';
+  document.getElementById('irb-cuando').textContent = cuando;
+  document.getElementById('itin-restore-bar').classList.add('show');
+}
+
+function dismissItinRestoreBar(){
+  document.getElementById('itin-restore-bar').classList.remove('show');
+}
+
+async function restoreItinBackup(){
+  dismissItinRestoreBar();
+  if(!isAdmin()){ toast('Solo el admin puede restaurar el itinerario.','error'); return; }
+  var backup = loadItinBackup();
+  if(!backup || !itinHasContent(backup.store)){ toast('No hay respaldo que restaurar.','error'); return; }
+  applyItinStore(backup.store);
+  renderItin(); renderDash(); renderOps(); renderPlaceMarkers();
+  var dias = Object.keys(backup.store).map(function(k){ return parseInt(k,10); })
+    .filter(function(i){ return DAYS[i]; });
+  var ok = 0;
+  for(var i=0;i<dias.length;i++){ if(await saveItinDay(dias[i], true)) ok++; }
+  toast('Itinerario restaurado desde este teléfono y guardado en el servidor.','success');
 }
 
 async function loadItinerary(){
@@ -3634,6 +3734,13 @@ async function saveItinDay(dayIdx, includeCity){
       toast(r.status===403 ? 'Solo el admin puede editar el itinerario.' : 'No se pudo guardar.','error');
       return false;
     }
+    // Se refresca el respaldo local con este día tal como quedó, sin esperar
+    // al refresco periódico de 15s — si la sesión se cierra justo después de
+    // editar, el respaldo no se queda atrás.
+    var backup = loadItinBackup();
+    var merged = (backup && backup.store) ? backup.store : {};
+    merged[dayIdx] = { city:DAYS[dayIdx].city, acts:DAYS[dayIdx].acts };
+    saveItinBackup(merged);
     return true;
   }catch(e){ toast('No se pudo guardar — revisa tu conexión.','error'); return false; }
 }
@@ -3658,11 +3765,53 @@ async function wipeItinerary(){
   ITIN_OVERRIDE = {};
   localStorage.removeItem('ca26_itin');
   localStorage.setItem('ca26_itin_migrated','1');
+  // Se borra también el respaldo: si no, la próxima carga vería el servidor
+  // vacío (a propósito, por este borrado) y ofrecería "restaurar" lo que
+  // justo se acaba de querer borrar.
+  localStorage.removeItem(ITIN_BACKUP_KEY);
   DAYS.forEach(function(d){ d.acts = []; d.city = 'Por definir'; });
 
   closeMyProfile();
   renderItin(); renderDash(); renderOps(); renderPlaceMarkers();
   toast('Itinerario borrado. Ya puedes cargar el nuevo.','success');
+}
+
+// Un respaldo de verdad, portátil: un archivo que se puede guardar donde sea,
+// no sólo el localStorage de este teléfono.
+function downloadItinBackup(){
+  var store = {};
+  DAYS.forEach(function(d,i){ store[i] = { city:d.city, acts:d.acts }; });
+  var blob = new Blob([JSON.stringify({ ts:Date.now(), store:store }, null, 2)], {type:'application/json'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'itinerario-california2026-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  toast('Respaldo descargado.','success');
+}
+
+async function restoreItinFromFile(input){
+  var file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  if(!isAdmin()){ toast('Solo el admin puede restaurar el itinerario.','error'); return; }
+  try{
+    var data = JSON.parse(await file.text());
+    // Acepta el archivo con o sin el envoltorio {ts,store} que genera la
+    // descarga: así también sirve un itinStore crudo si alguien lo copió
+    // directo del servidor.
+    var store = data && data.store ? data.store : data;
+    if(!store || !itinHasContent(store)){ toast('Ese archivo no tiene ninguna actividad.','error'); return; }
+    if(!confirm('Esto reemplaza el itinerario actual con el del archivo. ¿Continuar?')) return;
+    dismissItinRestoreBar();
+    applyItinStore(store);
+    renderItin(); renderDash(); renderOps(); renderPlaceMarkers();
+    var dias = Object.keys(store).map(function(k){ return parseInt(k,10); }).filter(function(i){ return DAYS[i]; });
+    for(var i=0;i<dias.length;i++){ await saveItinDay(dias[i], true); }
+    closeMyProfile();
+    toast('Itinerario restaurado desde el archivo y guardado en el servidor.','success');
+  }catch(e){ toast('No se pudo leer ese archivo.','error'); }
 }
 
 async function migrateLocalItinerary(){
@@ -5965,6 +6114,14 @@ if('serviceWorker' in navigator){
       <div id="me-admin-contacts"></div>
       <button class="me-wipe-btn" onclick="wipeItinerary()">Borrar todo el itinerario</button>
       <div class="me-wipe-note">Deja los 9 días en blanco para empezar de cero. Los gastos, fotos y reservaciones no se tocan.</div>
+
+      <div class="ef-lbl" style="margin-top:14px">Respaldo del itinerario</div>
+      <div class="me-backup-row">
+        <button class="me-backup-btn" onclick="downloadItinBackup()">⬇️ Descargar respaldo</button>
+        <button class="me-backup-btn" onclick="document.getElementById('me-restore-file').click()">⬆️ Restaurar de un archivo</button>
+      </div>
+      <input type="file" id="me-restore-file" accept="application/json" style="display:none" onchange="restoreItinFromFile(this)">
+      <div class="me-wipe-note">El servidor puede perder el itinerario si Railway lo redespliega sin un disco permanente. Descarga un respaldo de vez en cuando — es un archivo que puedes guardar donde quieras y restaurar aquí mismo si algún día el itinerario aparece vacío.</div>
     </div>
     <div class="me-version" id="me-version"></div>
   </div>
