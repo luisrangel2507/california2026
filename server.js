@@ -174,6 +174,40 @@ app.delete('/api/expenses/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Pagos entre personas para liquidar deudas del viaje ────────────────────
+// No son gastos del viaje (no cuentan para el total gastado) — solo ajustan
+// los saldos cuando alguien ya le pagó a quien adelantó el dinero.
+const SETTLE_FILE = path.join(DATA_DIR, 'settlements.json');
+let settleStore = [];
+try { settleStore = JSON.parse(fs.readFileSync(SETTLE_FILE, 'utf8')); } catch (e) {}
+function persistSettle() {
+  try { fs.writeFileSync(SETTLE_FILE, JSON.stringify(settleStore)); } catch (e) {}
+}
+
+app.get('/api/settlements', (req, res) => res.json(settleStore));
+
+app.post('/api/settlements', (req, res) => {
+  const { from, to, amt } = req.body;
+  if (typeof from !== 'number' || typeof to !== 'number' || typeof amt !== 'number' || amt <= 0) {
+    return res.status(400).json({ error: 'missing fields' });
+  }
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const settlement = { id, from, to, amt, ts: Date.now() };
+  settleStore.push(settlement);
+  persistSettle();
+  res.json({ ok: true, settlement });
+});
+
+app.delete('/api/settlements/:id', (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  const idx = settleStore.findIndex((s) => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  settleStore.splice(idx, 1);
+  persistSettle();
+  res.json({ ok: true });
+});
+
 // ── Perfiles (fecha de nacimiento, dirección, contacto de emergencia) ─────
 // Compartido entre todos para que el admin pueda ver los contactos de
 // emergencia de cada quien en caso de necesitarlos durante el viaje.

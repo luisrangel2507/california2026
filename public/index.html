@@ -685,10 +685,23 @@
     .ex-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; margin-top: 2px; }
     /* balance section */
     .bal-hdr { padding: 8px 13px 4px; border-top: 1px solid var(--border); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-family:'Space Mono',monospace; }
-    .bal-row { display: flex; align-items: center; gap: 8px; padding: 8px 13px; border-top: 1px solid rgba(255,255,255,.04); font-size: 13px; }
+    .bal-row-wrap { border-top: 1px solid rgba(255,255,255,.04); }
+    .bal-row { display: flex; align-items: center; gap: 8px; padding: 8px 13px 4px; font-size: 13px; }
     .bal-av { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
     .bal-arrow { color: var(--muted); font-size: 14px; }
     .bal-amt { font-family:'Space Mono',monospace; font-size: 13px; font-weight: 700; color: var(--gold); margin-left: auto; }
+    .bal-pay-btn {
+      display:block; width:calc(100% - 26px); margin:2px 13px 9px; padding:7px;
+      background: rgba(0,229,152,.08); border:1px solid rgba(0,229,152,.25); border-radius:8px;
+      color: var(--green); font-size:11.5px; font-weight:700; cursor:pointer;
+      font-family:'Space Grotesk',sans-serif; transition: background .15s;
+    }
+    .bal-pay-btn:active { background: rgba(0,229,152,.18); }
+    .bal-hist-row {
+      display:flex; align-items:center; justify-content:space-between; gap:8px;
+      padding:7px 13px; border-top:1px solid rgba(255,255,255,.04);
+    }
+    .bal-hist-txt { font-size:11.5px; color:var(--muted); font-family:'Space Mono',monospace; }
 
     /* ── RECUERDOS ── */
     /* ── ÁLBUM RECUERDOS ── */
@@ -2642,6 +2655,7 @@ if(persons.indexOf('Graham')!==-1){
 }
 document.documentElement.style.setProperty('--person-cols', persons.length);
 let expenses = []; // compartido entre todos via /api/expenses
+let settlements = []; // pagos entre personas para liquidar deudas, via /api/settlements
 let notified = new Set(JSON.parse(localStorage.getItem('ca26_notif') || '[]'));
 let photos = {};
 let pickCtx = null;
@@ -4405,6 +4419,35 @@ async function loadExpenses(){
   catch(e){ expenses=expenses||[]; }
 }
 
+async function loadSettlements(){
+  try{ var r=await fetch('/api/settlements',{cache:'no-store'}); settlements=await r.json(); }
+  catch(e){ settlements=settlements||[]; }
+}
+
+async function markPaid(from,to,amt){
+  try{
+    var r=await fetch('/api/settlements',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:from,to:to,amt:amt})});
+    if(!r.ok){ toast('No se pudo registrar el pago.','error'); return; }
+    var data=await r.json();
+    settlements.push(data.settlement);
+  }catch(e){ toast('No se pudo registrar el pago — revisa tu conexión.','error'); return; }
+  toast(persons[from]+' → '+persons[to]+' · $'+amt.toFixed(2)+' registrado ✓');
+  renderExps();
+  renderDash(); renderOps();
+}
+
+async function delSettle(id){
+  if(!isAdmin()) return;
+  var who=persons[parseInt(meIndex)];
+  try{
+    var r=await fetch('/api/settlements/'+encodeURIComponent(id),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
+    if(!r.ok){ toast('No se pudo deshacer el pago.','error'); return; }
+  }catch(e){ toast('No se pudo deshacer el pago — revisa tu conexión.','error'); return; }
+  settlements=settlements.filter(function(s){return String(s.id)!==String(id);});
+  renderExps();
+  renderDash(); renderOps();
+}
+
 async function saveExp(){
   var desc=document.getElementById('ef-desc').value.trim();
   var amt=parseFloat(document.getElementById('ef-amt').value);
@@ -4451,6 +4494,13 @@ function computeNets(){
     net[e.who]+=e.amt;
     // each person in split owes their share
     split.forEach(function(pi){ net[pi]-=share; });
+  });
+  // Pagos ya registrados entre personas también ajustan el saldo — si Erick
+  // le pagó a Eduardo, esa deuda ya no debe seguir apareciendo.
+  settlements.forEach(function(s){
+    if(net[s.from]===undefined || net[s.to]===undefined) return;
+    net[s.from]+=s.amt;
+    net[s.to]-=s.amt;
   });
   return net;
 }
@@ -4541,21 +4591,35 @@ function renderBals(){
 
   var dh=debts.length
     ? debts.map(function(d){
-        return '<div class="bal-row">'+
-          '<div class="bal-av" style="background:'+PC[d.f]+'25;color:'+PC[d.f]+';border:1px solid '+PC[d.f]+'40">'+
-            (persons[d.f]||'?').charAt(0).toUpperCase()+'</div>'+
-          '<span style="color:var(--muted);font-size:12px">'+esc(persons[d.f])+'</span>'+
-          '<span class="bal-arrow">→</span>'+
-          '<span style="color:var(--muted);font-size:12px">'+esc(persons[d.t])+'</span>'+
-          '<div class="bal-av" style="background:'+PC[d.t]+'25;color:'+PC[d.t]+';border:1px solid '+PC[d.t]+'40">'+
-            (persons[d.t]||'?').charAt(0).toUpperCase()+'</div>'+
-          '<div class="bal-amt">$'+d.a.toFixed(2)+'</div>'+
-          '</div>';
+        return '<div class="bal-row-wrap">'+
+          '<div class="bal-row">'+
+            '<div class="bal-av" style="background:'+PC[d.f]+'25;color:'+PC[d.f]+';border:1px solid '+PC[d.f]+'40">'+
+              (persons[d.f]||'?').charAt(0).toUpperCase()+'</div>'+
+            '<span style="color:var(--muted);font-size:12px">'+esc(persons[d.f])+'</span>'+
+            '<span class="bal-arrow">→</span>'+
+            '<span style="color:var(--muted);font-size:12px">'+esc(persons[d.t])+'</span>'+
+            '<div class="bal-av" style="background:'+PC[d.t]+'25;color:'+PC[d.t]+';border:1px solid '+PC[d.t]+'40">'+
+              (persons[d.t]||'?').charAt(0).toUpperCase()+'</div>'+
+            '<div class="bal-amt">$'+d.a.toFixed(2)+'</div>'+
+          '</div>'+
+          '<button class="bal-pay-btn" onclick="markPaid('+d.f+','+d.t+','+d.a.toFixed(2)+')">✓ Marcar como pagado</button>'+
+        '</div>';
       }).join('')
     : '<div class="bal-row" style="justify-content:center;color:var(--green);font-size:13px">✓ Todo está liquidado</div>';
 
+  var admin=isAdmin();
+  var hist=settlements.length
+    ? '<div class="bal-hdr">Pagos registrados</div>'+
+      settlements.slice().reverse().map(function(s){
+        return '<div class="bal-hist-row">'+
+          '<span class="bal-hist-txt">✓ '+esc(persons[s.from]||'?')+' → '+esc(persons[s.to]||'?')+' · $'+s.amt.toLocaleString('es-MX',{minimumFractionDigits:2})+'</span>'+
+          (admin?'<button class="ex-del" onclick="delSettle('+esc(JSON.stringify(s.id))+')" title="Deshacer">×</button>':'')+
+        '</div>';
+      }).join('')
+    : '';
+
   document.getElementById('balances').innerHTML=
-    '<div class="bal-hdr">Liquidar — total gastado: $'+total.toLocaleString('es-MX',{minimumFractionDigits:2})+' MXN</div>'+dh;
+    '<div class="bal-hdr">Liquidar — total gastado: $'+total.toLocaleString('es-MX',{minimumFractionDigits:2})+' MXN</div>'+dh+hist;
 }
 
 // ── PHOTOS (compartidas via servidor) ──────────────────────────────────────
@@ -6049,6 +6113,7 @@ async function init(){
   // El itinerario del servidor manda sobre la copia local
   await loadItinerary();
   await loadExpenses();
+  await loadSettlements();
   updateHeroProfile();
   renderDash(); renderOps();
   initMap();
@@ -6068,6 +6133,7 @@ async function init(){
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
     await loadExpenses();
+    await loadSettlements();
     renderExps();
     renderDash(); renderOps();
     await loadReservations();
