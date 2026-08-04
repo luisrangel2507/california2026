@@ -4493,6 +4493,8 @@ async function saveExp(){
 
 async function delExp(id){
   if(!isAdmin()) return;
+  var exp=expenses.find(function(e){return String(e.id)===String(id);});
+  if(!confirm('¿Seguro que quieres borrar'+(exp?' "'+exp.desc+'"':' este gasto')+'?')) return;
   var who=persons[parseInt(meIndex)];
   try{
     var r=await fetch('/api/expenses/'+encodeURIComponent(id),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
