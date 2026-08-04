@@ -165,6 +165,8 @@ app.post('/api/expenses', (req, res) => {
 });
 
 app.delete('/api/expenses/:id', (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
   const idx = expStore.findIndex((e) => e.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   expStore.splice(idx, 1);

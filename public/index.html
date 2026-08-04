@@ -4417,7 +4417,12 @@ async function saveExp(){
 }
 
 async function delExp(id){
-  try{ await fetch('/api/expenses/'+encodeURIComponent(id),{method:'DELETE'}); }catch(e){}
+  if(!isAdmin()) return;
+  var who=persons[parseInt(meIndex)];
+  try{
+    var r=await fetch('/api/expenses/'+encodeURIComponent(id),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
+    if(!r.ok){ toast('No se pudo eliminar el gasto.','error'); return; }
+  }catch(e){ toast('No se pudo eliminar el gasto — revisa tu conexión.','error'); return; }
   expenses=expenses.filter(function(e){return String(e.id)!==String(id);});
   renderExps();
   renderDash(); renderOps();
@@ -4458,6 +4463,7 @@ function renderPersonSummary(){
 
 function renderExps(){
   renderPersonSummary();
+  var admin=isAdmin();
   var total=expenses.reduce(function(s,e){return s+e.amt;},0);
   var lbl=document.getElementById('gastos-total-lbl');
   if(lbl) lbl.textContent=expenses.length
@@ -4491,7 +4497,7 @@ function renderExps(){
       '<div class="ex-right">'+
         '<div class="ex-am">$'+e.amt.toLocaleString('es-MX',{minimumFractionDigits:2})+'</div>'+
         '<div class="ex-pp">$'+share.toFixed(2)+' c/u</div>'+
-        '<button class="ex-del" onclick="delExp('+esc(JSON.stringify(e.id))+')" title="Eliminar">×</button>'+
+        (admin?'<button class="ex-del" onclick="delExp('+esc(JSON.stringify(e.id))+')" title="Eliminar">×</button>':'')+
       '</div>'+
       '</div>';
   }).join('');
