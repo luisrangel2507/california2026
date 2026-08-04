@@ -4222,16 +4222,28 @@ function renderItin(){
       (isLocked?'':'<div class="day-body"><div class="day-body-in">'+acts+addBtn+'</div></div>')+
       '</div>';
   }).join('');
-  // Auto-open the current trip day (or Day 1 before/after the trip)
-  var defaultOpen = (itinStatus.todayIdx>=0 && itinStatus.todayIdx<DAYS.length) ? itinStatus.todayIdx : 0;
-  if(document.getElementById('dc'+defaultOpen)){
-    document.getElementById('dc'+defaultOpen).classList.add('open');
+  // Qué días están abiertos se recuerda entre renders — este cuerpo se
+  // reconstruye desde cero cada 15s con el refresco periódico, y antes eso
+  // cerraba de golpe cualquier día que el usuario hubiera abierto a mano.
+  // Solo la primera vez se abre el día de hoy por default.
+  if(itinOpenDays===null){
+    itinOpenDays={};
+    var defaultOpen=(itinStatus.todayIdx>=0 && itinStatus.todayIdx<DAYS.length) ? itinStatus.todayIdx : 0;
+    itinOpenDays[defaultOpen]=true;
   }
+  Object.keys(itinOpenDays).forEach(function(k){
+    var el=document.getElementById('dc'+k);
+    if(itinOpenDays[k] && el) el.classList.add('open');
+  });
 }
 
+var itinOpenDays=null;
 function toggleDay(i){
   if(i>getUnlockIndex()) return;
-  document.getElementById('dc'+i).classList.toggle('open');
+  var el=document.getElementById('dc'+i);
+  el.classList.toggle('open');
+  if(!itinOpenDays) itinOpenDays={};
+  itinOpenDays[i]=el.classList.contains('open');
 }
 
 // ── CONVERSOR USD ⇄ MXN (Frankfurter, sin API key) ──────────────────────────
