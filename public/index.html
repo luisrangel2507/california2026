@@ -612,9 +612,16 @@
       margin: 12px 13px 0; padding: 13px 15px;
       background: var(--glass); border: 1px solid var(--border); border-radius: 14px;
     }
-    .fx-hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .fx-hd { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
+    .fx-card.open .fx-hd { margin-bottom:10px; }
     .fx-lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:1.2px; }
+    .fx-hd-right { display:flex; align-items:center; gap:6px; }
     .fx-rate { font-family:'Space Mono',monospace; font-size:12.5px; font-weight:700; color:var(--gold); }
+    .fx-chev { font-size:13px; color:var(--muted); transition:transform .2s var(--ease); line-height:1; }
+    .fx-card.open .fx-chev { transform:rotate(180deg); }
+    .fx-body { display:grid; grid-template-rows:0fr; transition:grid-template-rows .22s var(--ease), margin .22s var(--ease); min-height:0; }
+    .fx-body-inner { overflow:hidden; min-height:0; }
+    .fx-card.open .fx-body { grid-template-rows:1fr; }
     .fx-conv { display:flex; align-items:center; gap:8px; }
     .fx-in-wrap {
       flex: 1; min-width: 0; display:flex; align-items:center; gap:6px;
@@ -2080,27 +2087,34 @@
       </div>
     </div>
 
-    <!-- Conversor de moneda USD ⇄ MXN -->
-    <div class="fx-card">
-      <div class="fx-hd">
+    <!-- Conversor de moneda USD ⇄ MXN (desplegable) -->
+    <div class="fx-card" id="fx-card">
+      <div class="fx-hd" onclick="toggleFx()">
         <span class="fx-lbl">💱 Dólar hoy</span>
-        <span class="fx-rate" id="fx-rate">—</span>
-      </div>
-      <div class="fx-conv">
-        <div class="fx-in-wrap">
-          <span class="fx-cur">USD</span>
-          <input type="number" id="fx-usd" placeholder="0" inputmode="decimal"
-            oninput="fxRecalc('usd')" onkeyup="fxRecalc('usd')" onchange="fxRecalc('usd')">
-        </div>
-        <span class="fx-eq">=</span>
-        <div class="fx-in-wrap">
-          <span class="fx-cur">MXN</span>
-          <input type="number" id="fx-mxn" placeholder="0" inputmode="decimal"
-            oninput="fxRecalc('mxn')" onkeyup="fxRecalc('mxn')" onchange="fxRecalc('mxn')">
+        <div class="fx-hd-right">
+          <span class="fx-rate" id="fx-rate">—</span>
+          <span class="fx-chev" id="fx-chev">⌄</span>
         </div>
       </div>
-      <button class="fx-btn" onclick="fxConvert()">Convertir</button>
-      <div class="fx-updated" id="fx-updated"></div>
+      <div class="fx-body" id="fx-body">
+        <div class="fx-body-inner">
+          <div class="fx-conv">
+            <div class="fx-in-wrap">
+              <span class="fx-cur">USD</span>
+              <input type="number" id="fx-usd" placeholder="0" inputmode="decimal"
+                oninput="fxRecalc('usd')" onkeyup="fxRecalc('usd')" onchange="fxRecalc('usd')">
+            </div>
+            <span class="fx-eq">=</span>
+            <div class="fx-in-wrap">
+              <span class="fx-cur">MXN</span>
+              <input type="number" id="fx-mxn" placeholder="0" inputmode="decimal"
+                oninput="fxRecalc('mxn')" onkeyup="fxRecalc('mxn')" onchange="fxRecalc('mxn')">
+            </div>
+          </div>
+          <button class="fx-btn" onclick="fxConvert()">Convertir</button>
+          <div class="fx-updated" id="fx-updated"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Person summary cards — always visible at top -->
@@ -4223,7 +4237,16 @@ function toggleDay(i){
 // ── CONVERSOR USD ⇄ MXN (Frankfurter, sin API key) ──────────────────────────
 var FX = JSON.parse(localStorage.getItem('ca26_fx') || '{}'); // {rate, ts}
 
+function toggleFx(){
+  var card=document.getElementById('fx-card');
+  var open=!card.classList.contains('open');
+  card.classList.toggle('open', open);
+  localStorage.setItem('ca26_fx_open', open?'1':'0');
+}
+
 async function loadFx(){
+  var card=document.getElementById('fx-card');
+  if(card) card.classList.toggle('open', localStorage.getItem('ca26_fx_open')==='1');
   if(!FX.rate || (Date.now()-FX.ts) > 6*60*60*1000){
     var rate = await fxTry('https://api.frankfurter.dev/v1/latest?base=USD&symbols=MXN', function(j){ return j.rates && j.rates.MXN; });
     if(!rate){
