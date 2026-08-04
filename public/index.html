@@ -787,6 +787,18 @@
     }
     .mem-empty-icon { font-size:40px; margin-bottom:10px; opacity:.4; }
 
+    /* ── BOTÓN ÁLBUM DEL VIAJE ── */
+    .alb-summary-btn {
+      width:100%; margin-top:6px; padding:15px;
+      border-radius:16px; border:1px solid rgba(245,166,35,.35);
+      background:linear-gradient(135deg, rgba(245,166,35,.14), rgba(0,200,255,.1));
+      color:var(--text); font-size:14px; font-weight:700;
+      font-family:'Space Grotesk',sans-serif; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; gap:8px;
+    }
+    .alb-summary-btn:active { transform: scale(.98); }
+    .album-body { padding:14px 18px 28px; overflow-y:auto; flex:1; }
+
     /* ── OVERLAY ── */
     .ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.95); z-index: 9999; align-items: center; justify-content: center; }
     .ov.show { display: flex; }
@@ -4548,7 +4560,58 @@ async function renderPhotos(){
     });
     html+='</div>';
   });
+  if(totalPhotos>0){
+    html+='<button class="alb-summary-btn" onclick="openPhotoAlbum()">📖 Ver álbum del viaje</button>';
+  }
   bodyEl.innerHTML=html;
+}
+
+function openPhotoAlbum(){
+  var totalPhotos=0;
+  Object.keys(memStore).forEach(function(k){ totalPhotos+=(memStore[k]||[]).length; });
+  document.getElementById('album-sub').textContent =
+    totalPhotos+' foto'+(totalPhotos!==1?'s':'')+' · Alta Vibra · California 2026';
+
+  var html='';
+  DAYS.forEach(function(day,di){
+    var clr=DC[di]||'#00C8FF';
+    var cityShort=day.city.split('→')[0].trim();
+    var dayHTML='';
+    (day.acts||[]).forEach(function(act,ai){
+      var key='d'+di+'-a'+ai;
+      var ps=memStore[key]||[];
+      if(!ps.length) return;
+      var kj=esc(JSON.stringify(key));
+      var imgs=ps.map(function(p,idx){
+        return '<div class="alb-img-wrap"><img class="alb-img" src="'+p.photo+'" onclick="memOpenOv('+kj+','+idx+')" loading="lazy"></div>';
+      }).join('');
+      dayHTML+='<div class="alb-card">'+
+        '<div class="alb-card-hd">'+
+          '<div class="alb-card-name">'+(act.t?'<span class="alb-card-time">'+esc(act.t)+'</span>&nbsp;':'')+esc(act.n)+'</div>'+
+          '<div class="alb-card-count">'+ps.length+' foto'+(ps.length>1?'s':'')+'</div>'+
+        '</div>'+
+        '<div class="alb-grid">'+imgs+'</div>'+
+      '</div>';
+    });
+    if(!dayHTML) return;
+    html+='<div class="alb-chapter">'+
+      '<div class="alb-chapter-hd">'+
+        '<div class="alb-chapter-line"></div>'+
+        '<div class="alb-chapter-pill" style="background:'+clr+'">DÍA '+(di+1)+'</div>'+
+        '<div class="alb-chapter-city">'+esc(cityShort)+'</div>'+
+        '<div class="alb-chapter-line"></div>'+
+      '</div>'+dayHTML+
+    '</div>';
+  });
+  document.getElementById('album-body').innerHTML =
+    html || '<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.</div>';
+  document.getElementById('album-overlay').classList.add('show');
+  document.getElementById('album-sheet').classList.add('show');
+}
+
+function closeAlbum(){
+  document.getElementById('album-overlay').classList.remove('show');
+  document.getElementById('album-sheet').classList.remove('show');
 }
 
 async function memAddPhoto(ev,actKey){
@@ -6286,6 +6349,20 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeRecap()">&#10005;</button>
   </div>
   <div class="recap-body" id="recap-body"></div>
+</div>
+
+<!-- ÁLBUM DEL VIAJE BOTTOM SHEET -->
+<div class="bs-overlay" id="album-overlay" onclick="closeAlbum()"></div>
+<div class="bottom-sheet bs-full" id="album-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Álbum del viaje</div>
+      <div class="bs-sub" id="album-sub">Alta Vibra · California 2026</div>
+    </div>
+    <button class="bs-close" onclick="closeAlbum()">&#10005;</button>
+  </div>
+  <div class="album-body" id="album-body"></div>
 </div>
 
 <!-- COMPARTIR APP BOTTOM SHEET -->
