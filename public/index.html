@@ -22,7 +22,7 @@
 
   <title>Alta Vibra — California 2026</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Fraunces:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -797,7 +797,86 @@
       display:flex; align-items:center; justify-content:center; gap:8px;
     }
     .alb-summary-btn:active { transform: scale(.98); }
-    .album-body { padding:14px 18px 28px; overflow-y:auto; flex:1; }
+    .album-body { padding:0 0 40px; overflow-y:auto; flex:1; }
+
+    /* ── ÁLBUM: portada tipo storybook ── */
+    .stbk-cover {
+      position:relative; height:56vh; min-height:320px;
+      display:flex; align-items:center; justify-content:center;
+      overflow:hidden; margin-bottom:26px;
+    }
+    .stbk-cover-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+    .stbk-cover-overlay {
+      position:absolute; inset:0;
+      background:linear-gradient(180deg, rgba(8,9,15,.25) 0%, rgba(8,9,15,.55) 60%, var(--bg) 100%);
+    }
+    .stbk-cover-content { position:relative; z-index:1; text-align:center; padding:0 24px; }
+    .stbk-cover-logo {
+      width:210px; max-width:68vw; margin-bottom:2px;
+      filter:drop-shadow(0 0 18px rgba(245,166,35,.55)) drop-shadow(0 0 10px rgba(0,200,255,.4));
+    }
+    .stbk-cover-sub {
+      font-family:'Fraunces',serif; font-style:italic; font-weight:500;
+      font-size:15px; letter-spacing:2.5px; text-transform:uppercase;
+      color:rgba(255,255,255,.88);
+    }
+    .stbk-cover-stats {
+      margin-top:16px; font-family:'Space Mono',monospace; font-size:10px;
+      letter-spacing:1.8px; text-transform:uppercase; color:rgba(255,255,255,.5);
+    }
+
+    /* ── ÁLBUM: portada de cada día ── */
+    .stbk-chapter { margin-bottom:34px; padding:0 12px; }
+    .stbk-chapter-hero {
+      position:relative; height:168px; border-radius:18px; overflow:hidden;
+      background-size:cover; background-position:center;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      margin-bottom:14px;
+    }
+    .stbk-chapter-hero-overlay {
+      position:absolute; inset:0;
+      background:linear-gradient(180deg, rgba(8,9,15,.15), rgba(8,9,15,.8));
+    }
+    .stbk-chapter-num {
+      position:relative; z-index:1; font-family:'Fraunces',serif; font-weight:600;
+      font-size:36px; color:#fff; letter-spacing:.5px; line-height:1;
+    }
+    .stbk-chapter-city {
+      position:relative; z-index:1; margin-top:4px;
+      font-family:'Space Mono',monospace; font-size:11px; letter-spacing:3px;
+      text-transform:uppercase; color:rgba(255,255,255,.8);
+    }
+
+    /* ── ÁLBUM: mosaico de fotos ── */
+    .stbk-mosaic { display:grid; grid-template-columns:repeat(2,1fr); gap:4px; }
+    .stbk-item {
+      position:relative; overflow:hidden; border-radius:8px; cursor:pointer;
+      aspect-ratio:1; background:var(--panel);
+    }
+    .stbk-item img { width:100%; height:100%; object-fit:cover; display:block; }
+    .stbk-item:active img { opacity:.85; }
+    .stbk-item.wide { grid-column:span 2; aspect-ratio:16/10; }
+    .stbk-item.diamond {
+      clip-path:polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%);
+      border-radius:0;
+    }
+    .stbk-cap {
+      position:absolute; left:0; right:0; bottom:0; padding:16px 9px 6px;
+      background:linear-gradient(0deg, rgba(0,0,0,.72), transparent);
+      font-size:9px; color:rgba(255,255,255,.9); font-family:'Space Mono',monospace;
+      letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .stbk-item.diamond .stbk-cap { display:none; }
+
+    /* ── ÁLBUM: cierre ── */
+    .stbk-end {
+      text-align:center; padding:44px 20px 10px; color:rgba(255,255,255,.4);
+    }
+    .stbk-end-line { width:40px; height:1px; background:rgba(255,255,255,.2); margin:0 auto 14px; }
+    .stbk-end-txt {
+      font-family:'Fraunces',serif; font-style:italic; font-size:14px;
+      letter-spacing:1px; color:rgba(255,255,255,.6);
+    }
 
     /* ── OVERLAY ── */
     .ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.95); z-index: 9999; align-items: center; justify-content: center; }
@@ -4567,44 +4646,76 @@ async function renderPhotos(){
 }
 
 function openPhotoAlbum(){
-  var totalPhotos=0;
-  Object.keys(memStore).forEach(function(k){ totalPhotos+=(memStore[k]||[]).length; });
-  document.getElementById('album-sub').textContent =
-    totalPhotos+' foto'+(totalPhotos!==1?'s':'')+' · Alta Vibra · California 2026';
-
-  var html='';
-  DAYS.forEach(function(day,di){
-    var clr=DC[di]||'#00C8FF';
-    var cityShort=day.city.split('→')[0].trim();
-    var dayHTML='';
+  var totalPhotos=0, daysConFotos=0;
+  var perDay=DAYS.map(function(day,di){
+    var items=[];
     (day.acts||[]).forEach(function(act,ai){
       var key='d'+di+'-a'+ai;
       var ps=memStore[key]||[];
-      if(!ps.length) return;
-      var kj=esc(JSON.stringify(key));
-      var imgs=ps.map(function(p,idx){
-        return '<div class="alb-img-wrap"><img class="alb-img" src="'+p.photo+'" onclick="memOpenOv('+kj+','+idx+')" loading="lazy"></div>';
-      }).join('');
-      dayHTML+='<div class="alb-card">'+
-        '<div class="alb-card-hd">'+
-          '<div class="alb-card-name">'+(act.t?'<span class="alb-card-time">'+esc(act.t)+'</span>&nbsp;':'')+esc(act.n)+'</div>'+
-          '<div class="alb-card-count">'+ps.length+' foto'+(ps.length>1?'s':'')+'</div>'+
-        '</div>'+
-        '<div class="alb-grid">'+imgs+'</div>'+
+      ps.forEach(function(p,idx){
+        items.push({key:key, idx:idx, photo:p.photo, t:act.t, n:act.n});
+      });
+    });
+    if(items.length) daysConFotos++;
+    totalPhotos+=items.length;
+    return items;
+  });
+
+  document.getElementById('album-sub').textContent =
+    totalPhotos+' foto'+(totalPhotos!==1?'s':'')+' · '+daysConFotos+' día'+(daysConFotos!==1?'s':'');
+
+  if(!totalPhotos){
+    document.getElementById('album-body').innerHTML =
+      '<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.</div>';
+    document.getElementById('album-overlay').classList.add('show');
+    document.getElementById('album-sheet').classList.add('show');
+    return;
+  }
+
+  var html=
+    '<div class="stbk-cover">'+
+      '<img class="stbk-cover-bg" src="/trip-bg.jpg">'+
+      '<div class="stbk-cover-overlay"></div>'+
+      '<div class="stbk-cover-content">'+
+        '<img class="stbk-cover-logo" src="/logo-altavibra.png">'+
+        '<div class="stbk-cover-sub">California 2026</div>'+
+        '<div class="stbk-cover-stats">'+daysConFotos+' día'+(daysConFotos!==1?'s':'')+' · '+totalPhotos+' foto'+(totalPhotos!==1?'s':'')+'</div>'+
+      '</div>'+
+    '</div>';
+
+  DAYS.forEach(function(day,di){
+    var items=perDay[di];
+    if(!items.length) return;
+    var cityShort=day.city.split('→')[0].trim();
+    var hero=items[0], grid=items.slice(1);
+
+    var mosaic='';
+    grid.forEach(function(it,i){
+      var cls='stbk-item';
+      if(i%5===4) cls+=' wide';
+      else if(i%5===2) cls+=' diamond';
+      var kj=esc(JSON.stringify(it.key));
+      var cap=(it.t?esc(it.t)+' · ':'')+esc(it.n);
+      mosaic+='<div class="'+cls+'" onclick="memOpenOv('+kj+','+it.idx+')">'+
+        '<img src="'+it.photo+'" loading="lazy">'+
+        '<div class="stbk-cap">'+cap+'</div>'+
       '</div>';
     });
-    if(!dayHTML) return;
-    html+='<div class="alb-chapter">'+
-      '<div class="alb-chapter-hd">'+
-        '<div class="alb-chapter-line"></div>'+
-        '<div class="alb-chapter-pill" style="background:'+clr+'">DÍA '+(di+1)+'</div>'+
-        '<div class="alb-chapter-city">'+esc(cityShort)+'</div>'+
-        '<div class="alb-chapter-line"></div>'+
-      '</div>'+dayHTML+
+
+    var heroKj=esc(JSON.stringify(hero.key));
+    html+='<div class="stbk-chapter">'+
+      '<div class="stbk-chapter-hero" style="background-image:url('+hero.photo+')" onclick="memOpenOv('+heroKj+','+hero.idx+')">'+
+        '<div class="stbk-chapter-hero-overlay"></div>'+
+        '<div class="stbk-chapter-num">DÍA '+String(di+1).padStart(2,'0')+'</div>'+
+        '<div class="stbk-chapter-city">'+esc(cityShort)+'</div>'+
+      '</div>'+
+      (mosaic?'<div class="stbk-mosaic">'+mosaic+'</div>':'')+
     '</div>';
   });
-  document.getElementById('album-body').innerHTML =
-    html || '<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.</div>';
+
+  html+='<div class="stbk-end"><div class="stbk-end-line"></div><div class="stbk-end-txt">— fin del álbum —</div></div>';
+
+  document.getElementById('album-body').innerHTML = html;
   document.getElementById('album-overlay').classList.add('show');
   document.getElementById('album-sheet').classList.add('show');
 }
