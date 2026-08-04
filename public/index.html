@@ -797,85 +797,55 @@
       display:flex; align-items:center; justify-content:center; gap:8px;
     }
     .alb-summary-btn:active { transform: scale(.98); }
-    .album-body { padding:0 0 40px; overflow-y:auto; flex:1; }
+    #album-sheet.bs-full { padding-top:0; }
+    .album-body { padding:0; overflow-y:auto; flex:1; }
 
-    /* ── ÁLBUM: portada tipo storybook ── */
-    .stbk-cover {
-      position:relative; height:56vh; min-height:320px;
+    /* ── ÁLBUM: estilo "Recuerdos" de Apple Fotos — barra flotante + muro de fotos a sangre ── */
+    .ap-header {
+      position:sticky; top:0; z-index:5;
+      display:flex; align-items:center; gap:10px;
+      padding: calc(env(safe-area-inset-top,0px) + 10px) 14px 14px;
+      background:linear-gradient(180deg, rgba(8,9,15,.8) 0%, rgba(8,9,15,.5) 65%, transparent 100%);
+      -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
+    }
+    .ap-back, .ap-play {
+      width:34px; height:34px; border-radius:50%; flex-shrink:0;
+      background:rgba(255,255,255,.16); border:none; color:#fff;
       display:flex; align-items:center; justify-content:center;
-      overflow:hidden; margin-bottom:26px;
+      cursor:pointer; padding:0;
     }
-    .stbk-cover-bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-    .stbk-cover-overlay {
-      position:absolute; inset:0;
-      background:linear-gradient(180deg, rgba(8,9,15,.25) 0%, rgba(8,9,15,.55) 60%, var(--bg) 100%);
+    .ap-back { font-size:20px; }
+    .ap-play { font-size:13px; }
+    .ap-title-wrap { flex:1; min-width:0; }
+    .ap-title {
+      font-size:17px; font-weight:700; color:#fff; line-height:1.2;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
-    .stbk-cover-content { position:relative; z-index:1; text-align:center; padding:0 24px; }
-    .stbk-cover-logo {
-      width:210px; max-width:68vw; margin-bottom:2px;
-      filter:drop-shadow(0 0 18px rgba(245,166,35,.55)) drop-shadow(0 0 10px rgba(0,200,255,.4));
-    }
-    .stbk-cover-sub {
-      font-family:'Fraunces',serif; font-style:italic; font-weight:500;
-      font-size:15px; letter-spacing:2.5px; text-transform:uppercase;
-      color:rgba(255,255,255,.88);
-    }
-    .stbk-cover-stats {
-      margin-top:16px; font-family:'Space Mono',monospace; font-size:10px;
-      letter-spacing:1.8px; text-transform:uppercase; color:rgba(255,255,255,.5);
-    }
+    .ap-sub { font-size:11.5px; color:rgba(255,255,255,.62); margin-top:1px; }
 
-    /* ── ÁLBUM: portada de cada día ── */
-    .stbk-chapter { margin-bottom:34px; padding:0 12px; }
-    .stbk-chapter-hero {
-      position:relative; height:168px; border-radius:18px; overflow:hidden;
-      background-size:cover; background-position:center;
-      display:flex; flex-direction:column; align-items:center; justify-content:center;
-      margin-bottom:14px;
+    .ap-daylabel {
+      padding:16px 14px 8px;
+      font-size:12.5px; font-weight:700; color:var(--text);
+      display:flex; align-items:baseline; gap:6px;
     }
-    .stbk-chapter-hero-overlay {
-      position:absolute; inset:0;
-      background:linear-gradient(180deg, rgba(8,9,15,.15), rgba(8,9,15,.8));
-    }
-    .stbk-chapter-num {
-      position:relative; z-index:1; font-family:'Fraunces',serif; font-weight:600;
-      font-size:36px; color:#fff; letter-spacing:.5px; line-height:1;
-    }
-    .stbk-chapter-city {
-      position:relative; z-index:1; margin-top:4px;
-      font-family:'Space Mono',monospace; font-size:11px; letter-spacing:3px;
-      text-transform:uppercase; color:rgba(255,255,255,.8);
-    }
+    .ap-daylabel span { font-weight:400; color:var(--muted); font-size:11.5px; }
 
-    /* ── ÁLBUM: mosaico de fotos ── */
-    .stbk-mosaic { display:grid; grid-template-columns:repeat(2,1fr); gap:4px; }
-    .stbk-item {
-      position:relative; overflow:hidden; border-radius:8px; cursor:pointer;
-      aspect-ratio:1; background:var(--panel);
+    .ap-grid {
+      display:grid; grid-template-columns:repeat(3, 1fr);
+      grid-auto-rows:33vw; grid-auto-flow:dense; gap:2px;
     }
-    .stbk-item img { width:100%; height:100%; object-fit:cover; display:block; }
-    .stbk-item:active img { opacity:.85; }
-    .stbk-item.wide { grid-column:span 2; aspect-ratio:16/10; }
-    .stbk-item.diamond {
-      clip-path:polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%);
-      border-radius:0;
+    .ap-tile {
+      position:relative; overflow:hidden; cursor:pointer; background:var(--panel);
     }
-    .stbk-cap {
-      position:absolute; left:0; right:0; bottom:0; padding:16px 9px 6px;
-      background:linear-gradient(0deg, rgba(0,0,0,.72), transparent);
-      font-size:9px; color:rgba(255,255,255,.9); font-family:'Space Mono',monospace;
-      letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    }
-    .stbk-item.diamond .stbk-cap { display:none; }
+    .ap-tile img { width:100%; height:100%; object-fit:cover; display:block; }
+    .ap-tile:active img { opacity:.8; }
+    .ap-tile.big  { grid-column:span 2; grid-row:span 2; }
+    .ap-tile.wide { grid-column:span 2; }
+    .ap-tile.tall { grid-row:span 2; }
 
-    /* ── ÁLBUM: cierre ── */
-    .stbk-end {
-      text-align:center; padding:44px 20px 10px; color:rgba(255,255,255,.4);
-    }
-    .stbk-end-line { width:40px; height:1px; background:rgba(255,255,255,.2); margin:0 auto 14px; }
-    .stbk-end-txt {
-      font-family:'Fraunces',serif; font-style:italic; font-size:14px;
-      letter-spacing:1px; color:rgba(255,255,255,.6);
+    .ap-end {
+      text-align:center; padding:34px 20px 6px; color:rgba(255,255,255,.35);
+      font-size:12px; letter-spacing:.5px;
     }
 
     /* ── OVERLAY ── */
@@ -4645,79 +4615,86 @@ async function renderPhotos(){
   bodyEl.innerHTML=html;
 }
 
-function openPhotoAlbum(){
-  var totalPhotos=0, daysConFotos=0;
+function collectAlbumPhotos(){
+  var flat=[], totalPhotos=0, daysConFotos=0;
   var perDay=DAYS.map(function(day,di){
     var items=[];
     (day.acts||[]).forEach(function(act,ai){
       var key='d'+di+'-a'+ai;
       var ps=memStore[key]||[];
       ps.forEach(function(p,idx){
-        items.push({key:key, idx:idx, photo:p.photo, t:act.t, n:act.n});
+        var it={key:key, idx:idx, photo:p.photo, t:act.t, n:act.n};
+        items.push(it); flat.push(it);
       });
     });
     if(items.length) daysConFotos++;
     totalPhotos+=items.length;
     return items;
   });
+  return {perDay:perDay, flat:flat, totalPhotos:totalPhotos, daysConFotos:daysConFotos};
+}
 
-  document.getElementById('album-sub').textContent =
-    totalPhotos+' foto'+(totalPhotos!==1?'s':'')+' · '+daysConFotos+' día'+(daysConFotos!==1?'s':'');
+function openPhotoAlbum(){
+  var data=collectAlbumPhotos();
 
-  if(!totalPhotos){
+  var header=
+    '<div class="ap-header">'+
+      '<button class="ap-back" onclick="closeAlbum()">‹</button>'+
+      '<div class="ap-title-wrap">'+
+        '<div class="ap-title">Alta Vibra</div>'+
+        '<div class="ap-sub">California 2026 · '+data.totalPhotos+' foto'+(data.totalPhotos!==1?'s':'')+'</div>'+
+      '</div>'+
+      (data.totalPhotos?'<button class="ap-play" onclick="playAlbumSlideshow()">▶</button>':'')+
+    '</div>';
+
+  if(!data.totalPhotos){
     document.getElementById('album-body').innerHTML =
-      '<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.</div>';
+      header+'<div class="mem-empty"><div class="mem-empty-icon">🌅</div>Sin fotos aún.</div>';
     document.getElementById('album-overlay').classList.add('show');
     document.getElementById('album-sheet').classList.add('show');
     return;
   }
 
-  var html=
-    '<div class="stbk-cover">'+
-      '<img class="stbk-cover-bg" src="/trip-bg.jpg">'+
-      '<div class="stbk-cover-overlay"></div>'+
-      '<div class="stbk-cover-content">'+
-        '<img class="stbk-cover-logo" src="/logo-altavibra.png">'+
-        '<div class="stbk-cover-sub">California 2026</div>'+
-        '<div class="stbk-cover-stats">'+daysConFotos+' día'+(daysConFotos!==1?'s':'')+' · '+totalPhotos+' foto'+(totalPhotos!==1?'s':'')+'</div>'+
-      '</div>'+
-    '</div>';
-
+  var html=header;
   DAYS.forEach(function(day,di){
-    var items=perDay[di];
+    var items=data.perDay[di];
     if(!items.length) return;
     var cityShort=day.city.split('→')[0].trim();
-    var hero=items[0], grid=items.slice(1);
 
-    var mosaic='';
-    grid.forEach(function(it,i){
-      var cls='stbk-item';
-      if(i%5===4) cls+=' wide';
-      else if(i%5===2) cls+=' diamond';
+    var tiles='';
+    items.forEach(function(it,i){
+      var cls='ap-tile';
+      if(i%9===0) cls+=' big';
+      else if(i%9===4) cls+=' wide';
+      else if(i%9===6) cls+=' tall';
       var kj=esc(JSON.stringify(it.key));
-      var cap=(it.t?esc(it.t)+' · ':'')+esc(it.n);
-      mosaic+='<div class="'+cls+'" onclick="memOpenOv('+kj+','+it.idx+')">'+
+      tiles+='<div class="'+cls+'" onclick="memOpenOv('+kj+','+it.idx+')">'+
         '<img src="'+it.photo+'" loading="lazy">'+
-        '<div class="stbk-cap">'+cap+'</div>'+
       '</div>';
     });
 
-    var heroKj=esc(JSON.stringify(hero.key));
-    html+='<div class="stbk-chapter">'+
-      '<div class="stbk-chapter-hero" style="background-image:url('+hero.photo+')" onclick="memOpenOv('+heroKj+','+hero.idx+')">'+
-        '<div class="stbk-chapter-hero-overlay"></div>'+
-        '<div class="stbk-chapter-num">DÍA '+String(di+1).padStart(2,'0')+'</div>'+
-        '<div class="stbk-chapter-city">'+esc(cityShort)+'</div>'+
-      '</div>'+
-      (mosaic?'<div class="stbk-mosaic">'+mosaic+'</div>':'')+
-    '</div>';
+    html+='<div class="ap-daylabel">DÍA '+String(di+1).padStart(2,'0')+' <span>'+esc(cityShort)+'</span></div>'+
+      '<div class="ap-grid">'+tiles+'</div>';
   });
 
-  html+='<div class="stbk-end"><div class="stbk-end-line"></div><div class="stbk-end-txt">— fin del álbum —</div></div>';
+  html+='<div class="ap-end">— fin del álbum —</div>';
 
   document.getElementById('album-body').innerHTML = html;
   document.getElementById('album-overlay').classList.add('show');
   document.getElementById('album-sheet').classList.add('show');
+}
+
+var albumSlideshowTimer=null;
+function playAlbumSlideshow(){
+  var list=collectAlbumPhotos().flat;
+  if(!list.length) return;
+  var i=0;
+  memOpenOv(list[i].key, list[i].idx);
+  clearInterval(albumSlideshowTimer);
+  albumSlideshowTimer=setInterval(function(){
+    i=(i+1)%list.length;
+    memOpenOv(list[i].key, list[i].idx);
+  }, 2200);
 }
 
 function closeAlbum(){
@@ -4771,6 +4748,8 @@ function openOv(name,idx){
 
 function closeOv(ev,force){
   if(force||ev&&ev.target===document.getElementById('ov')){
+    clearInterval(albumSlideshowTimer);
+    albumSlideshowTimer=null;
     document.getElementById('ov').classList.remove('show');
     document.getElementById('ov-img').src='';
     if(document.getElementById('ov').dataset) delete document.getElementById('ov').dataset.memId;
@@ -6462,17 +6441,9 @@ if('serviceWorker' in navigator){
   <div class="recap-body" id="recap-body"></div>
 </div>
 
-<!-- ÁLBUM DEL VIAJE BOTTOM SHEET -->
+<!-- ÁLBUM DEL VIAJE BOTTOM SHEET (estilo Recuerdos de Apple Fotos) -->
 <div class="bs-overlay" id="album-overlay" onclick="closeAlbum()"></div>
 <div class="bottom-sheet bs-full" id="album-sheet">
-  <div class="bs-grab-bar"></div>
-  <div class="bs-hd">
-    <div>
-      <div class="bs-title">Álbum del viaje</div>
-      <div class="bs-sub" id="album-sub">Alta Vibra · California 2026</div>
-    </div>
-    <button class="bs-close" onclick="closeAlbum()">&#10005;</button>
-  </div>
   <div class="album-body" id="album-body"></div>
 </div>
 
