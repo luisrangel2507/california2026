@@ -1487,18 +1487,6 @@
     }
     .tr-voice-row .vr-hint { color:var(--gold); }
 
-    /* ── FRASES ÚTILES ── */
-    .phrases-body { flex:1; overflow-y:auto; padding:8px 18px 24px; }
-    .phr-cat {
-      font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase;
-      letter-spacing:1.5px; margin:16px 0 6px; font-family:'Space Mono',monospace;
-    }
-    .phr-cat:first-child { margin-top:2px; }
-    .phr-row { padding:9px 0; border-bottom:1px solid var(--border); }
-    .phr-row:last-child { border-bottom:none; }
-    .phr-es { font-size:13px; font-weight:600; }
-    .phr-en { font-size:12.5px; color:var(--cyan); margin-top:2px; }
-
     /* ── RESUMEN DEL VIAJE ── */
     .recap-body { flex:1; overflow-y:auto; padding:14px 18px 24px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .recap-tile { background:var(--glass); border:1px solid var(--border); border-radius:14px; padding:16px 10px; text-align:center; }
@@ -2039,7 +2027,6 @@
     <div class="hero-name-sm" id="hero-name-sm"></div>
     <div class="av-menu" id="av-menu">
       <div class="av-menu-item" onclick="avMenuAction('profile')">Mi Perfil</div>
-      <div class="av-menu-item" onclick="avMenuAction('phrases')">Frases útiles</div>
       <div class="av-menu-item" onclick="avMenuAction('recap')">Resumen del viaje</div>
       <div class="av-menu-item" onclick="avMenuAction('share')">Compartir la app</div>
       <div class="av-menu-item" onclick="avMenuAction('install')">Instalar la app</div>
@@ -2544,7 +2531,6 @@ function avMenuAction(action){
   closeAvMenu();
   if(action==='profile') openMyProfile();
   else if(action==='logout') logoutMe();
-  else if(action==='phrases') openPhrases();
   else if(action==='recap') openRecap();
   else if(action==='share') openShare();
   else if(action==='install') openInstall();
@@ -5598,56 +5584,6 @@ function toast(msg, type){
   }, 3200);
 }
 
-// ── FRASES ÚTILES ────────────────────────────────────────────────────────────
-var PHRASES = [
-  {cat:'Cruce fronterizo', items:[
-    {es:'¿Dónde está la fila para peatones?', en:'Where is the pedestrian line?'},
-    {es:'Vengo de turista, unos días.', en:"I'm a tourist, just a few days."},
-    {es:'Aquí está mi pasaporte.', en:"Here's my passport."},
-    {es:'Voy a San Diego.', en:"I'm going to San Diego."},
-  ]},
-  {cat:'Comida', items:[
-    {es:'Una mesa para cuatro, por favor.', en:'A table for four, please.'},
-    {es:'¿Qué recomienda?', en:'What do you recommend?'},
-    {es:'Sin picante, por favor.', en:'No spicy, please.'},
-    {es:'La cuenta, por favor.', en:'The check, please.'},
-    {es:'¿Aceptan tarjeta?', en:'Do you take card?'},
-  ]},
-  {cat:'Direcciones', items:[
-    {es:'¿Cómo llego a...?', en:'How do I get to...?'},
-    {es:'¿Está lejos de aquí?', en:'Is it far from here?'},
-    {es:'¿Dónde hay un baño?', en:"Where's a restroom?"},
-    {es:'¿Dónde hay una gasolinera?', en:"Where's a gas station?"},
-  ]},
-  {cat:'Hotel', items:[
-    {es:'Tengo una reservación a nombre de...', en:'I have a reservation under...'},
-    {es:'¿A qué hora es el check-out?', en:'What time is check-out?'},
-    {es:'¿Hay wifi?', en:'Is there wifi?'},
-    {es:'¿Puede pedirme un Uber?', en:'Can you get me an Uber?'},
-  ]},
-  {cat:'Emergencias', items:[
-    {es:'Necesito ayuda.', en:'I need help.'},
-    {es:'Llame a la policía, por favor.', en:'Please call the police.'},
-    {es:'Tuvimos un accidente.', en:'We had an accident.'},
-    {es:'¿Dónde está el hospital más cercano?', en:"Where's the nearest hospital?"},
-  ]},
-];
-
-function openPhrases(){
-  document.getElementById('phrases-body').innerHTML = PHRASES.map(function(g){
-    return '<div class="phr-cat">'+esc(g.cat)+'</div>'+
-      g.items.map(function(p){
-        return '<div class="phr-row"><div class="phr-es">'+esc(p.es)+'</div><div class="phr-en">'+esc(p.en)+'</div></div>';
-      }).join('');
-  }).join('');
-  document.getElementById('phrases-overlay').classList.add('show');
-  document.getElementById('phrases-sheet').classList.add('show');
-}
-function closePhrases(){
-  document.getElementById('phrases-overlay').classList.remove('show');
-  document.getElementById('phrases-sheet').classList.remove('show');
-}
-
 // ── TRADUCTOR ────────────────────────────────────────────────────────────────
 var TR_LANGS = { es:{label:'Español', voice:'es-MX'}, en:{label:'Inglés', voice:'en-US'} };
 var trFrom = 'es', trTo = 'en';
@@ -5746,7 +5682,7 @@ async function trTranslateNow(){
   }catch(e){
     if(mySeq !== trSeq) return;
     trLastResult = '';
-    trSetOut('No se pudo traducir — revisa tu conexión. Mientras, checa "Frases útiles".','tr-out-err');
+    trSetOut('No se pudo traducir — revisa tu conexión.','tr-out-err');
   }
 }
 
@@ -6729,7 +6665,7 @@ if('serviceWorker' in navigator){
         <span>👨‍👩‍👧</span>
         <span>Enlace para que tu familia siga el viaje en vivo</span>
       </div>
-      <button class="btn-ntfy" onclick="openLiveShare()">Compartir</button>
+      <button class="btn-ntfy" onclick="openLiveShare()">Sigue mi viaje en vivo</button>
     </div>
 
     <div class="me-admin-sec" id="me-admin-sec" style="display:none">
@@ -6783,20 +6719,6 @@ if('serviceWorker' in navigator){
     <button class="bs-add-btn" onclick="closeResAdd()">Cancelar</button>
     <button class="bs-save-btn" onclick="saveResCustom()">Guardar</button>
   </div>
-</div>
-
-<!-- FRASES ÚTILES BOTTOM SHEET -->
-<div class="bs-overlay" id="phrases-overlay" onclick="closePhrases()"></div>
-<div class="bottom-sheet" id="phrases-sheet">
-  <div class="bs-grab-bar"></div>
-  <div class="bs-hd">
-    <div>
-      <div class="bs-title">Frases útiles</div>
-      <div class="bs-sub">Español → Inglés</div>
-    </div>
-    <button class="bs-close" onclick="closePhrases()">&#10005;</button>
-  </div>
-  <div class="phrases-body" id="phrases-body"></div>
 </div>
 
 <!-- TRADUCTOR — BOTÓN FLOTANTE (estilo widget de chat) -->
