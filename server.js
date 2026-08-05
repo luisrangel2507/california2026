@@ -174,6 +174,32 @@ app.delete('/api/expenses/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Comprobantes (foto o archivo) adjuntos a un gasto, como evidencia del pago
+app.post('/api/expenses/:id/receipts', (req, res) => {
+  const { photo, name, type } = req.body;
+  if (!photo) return res.status(400).json({ error: 'missing fields' });
+  const exp = expStore.find((e) => e.id === req.params.id);
+  if (!exp) return res.status(404).json({ error: 'not found' });
+  if (!exp.receipts) exp.receipts = [];
+  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const receipt = { id, photo, name: name || '', type: type || '', ts: Date.now() };
+  exp.receipts.push(receipt);
+  persistExp();
+  res.json({ ok: true, receipt });
+});
+
+app.delete('/api/expenses/:id/receipts/:rid', (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  const exp = expStore.find((e) => e.id === req.params.id);
+  if (!exp || !exp.receipts) return res.status(404).json({ error: 'not found' });
+  const idx = exp.receipts.findIndex((r) => r.id === req.params.rid);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  exp.receipts.splice(idx, 1);
+  persistExp();
+  res.json({ ok: true });
+});
+
 // ── Pagos entre personas para liquidar deudas del viaje ────────────────────
 // No son gastos del viaje (no cuentan para el total gastado) — solo ajustan
 // los saldos cuando alguien ya le pagó a quien adelantó el dinero.
