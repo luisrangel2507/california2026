@@ -95,31 +95,45 @@ app.post('/api/subscribe', (req, res) => {
   res.json({ ok: true });
 });
 
+// Antes esta función solo devolvía cuántas suscripciones había, sin decir si
+// el envío en sí falló — "sent" salía en true aunque ninguna notificación
+// llegara. El caso más común: las llaves VAPID se regeneran solas en cada
+// arranque si no están fijadas por variable de entorno (ver aviso abajo), así
+// que las suscripciones viejas quedan firmadas contra una llave que ya no
+// existe y el push service las rechaza — no con 404/410 (eso sí se limpia
+// solo) sino con otro código, que antes solo se veía en el log del server,
+// invisible para quien le da a "Probar".
 async function sendPushToAll(payload) {
   const subs = loadSubs();
   const remaining = [];
+  const errors = [];
+  let ok = 0;
   for (const sub of subs) {
     try {
       await webpush.sendNotification(sub, JSON.stringify(payload));
       remaining.push(sub);
+      ok++;
     } catch (err) {
-      if (err.statusCode !== 404 && err.statusCode !== 410) {
-        remaining.push(sub);
-        console.error('Push error:', err.message);
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        // suscripción vencida/eliminada por el navegador, se descarta
+        continue;
       }
-      // 404/410 = suscripción vencida/eliminada por el navegador, se descarta
+      remaining.push(sub);
+      const msg = (err && err.body) || (err && err.message) || String(err);
+      errors.push({ statusCode: (err && err.statusCode) || 0, message: msg });
+      console.error('Push error:', (err && err.statusCode), msg);
     }
   }
   saveSubs(remaining);
-  return subs.length;
+  return { total: subs.length, ok, errors };
 }
 
 app.post('/api/send-test', async (req, res) => {
-  const count = await sendPushToAll({
+  const result = await sendPushToAll({
     title: 'Alta Vibra · California 2026',
     body: 'Esta es una notificación de prueba 🎉'
   });
-  res.json({ ok: true, sent: count });
+  res.json({ ok: true, sent: result.ok, total: result.total, errors: result.errors });
 });
 
 // ── Fotos compartidas por actividad ────────────────────────────────────────

@@ -3259,13 +3259,34 @@ async function subscribeForPush(){
   if(Notification.permission!=='granted') return;
   try{
     var reg = await navigator.serviceWorker.ready;
+    var r = await fetch('/api/vapid-public-key');
+    var data = await r.json();
+    var wantedKey = urlBase64ToUint8Array(data.publicKey);
+
     var existing = await reg.pushManager.getSubscription();
+    if(existing){
+      // Si el servidor regeneró sus llaves VAPID (pasa en cada arranque si no
+      // están fijadas por variable de entorno), esta suscripción quedó
+      // firmada contra una llave que ya no existe — el push service la
+      // rechaza en silencio y nunca llega nada. Hay que tirarla y crear una
+      // nueva contra la llave actual.
+      var sigue = true;
+      try{
+        var curKey = existing.options && existing.options.applicationServerKey;
+        if(curKey){
+          var curArr = new Uint8Array(curKey);
+          sigue = curArr.length===wantedKey.length && curArr.every(function(b,i){ return b===wantedKey[i]; });
+        }
+      }catch(e){ /* no se pudo comparar — se asume que sigue sirviendo */ }
+      if(!sigue){
+        await existing.unsubscribe().catch(function(){});
+        existing = null;
+      }
+    }
     if(!existing){
-      var r = await fetch('/api/vapid-public-key');
-      var data = await r.json();
       existing = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(data.publicKey)
+        applicationServerKey: wantedKey
       });
     }
     await fetch('/api/subscribe', {
@@ -3287,7 +3308,14 @@ async function sendTestPush(){
     await subscribeForPush();
     var r = await fetch('/api/send-test', { method:'POST' });
     var data = await r.json();
-    toast(data.sent ? 'Notificación de prueba enviada — deberías verla en unos segundos.' : 'No hay suscripciones registradas todavía.', data.sent?'success':'error');
+    if(data.sent){
+      toast('Notificación de prueba enviada — deberías verla en unos segundos.','success');
+    } else if(!data.total){
+      toast('No hay suscripciones registradas todavía.','error');
+    } else {
+      var razon = (data.errors && data.errors[0] && data.errors[0].message) || 'motivo desconocido';
+      toast('No llegó a nadie — '+razon,'error');
+    }
   }catch(e){
     toast('Error enviando la notificación de prueba.','error');
   }finally{
