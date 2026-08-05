@@ -1,0 +1,18 @@
+{
+  "appId": "com.altavibra.california2026",
+  "appName": "Alta Vibra",
+  "webDir": "public",
+  "server": {
+    "url": "https://california2026-production.up.railway.app",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#08090F"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}
