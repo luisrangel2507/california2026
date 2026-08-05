@@ -268,6 +268,7 @@ app.post('/api/profiles', (req, res) => {
     birth: data.birth || '',
     address: data.address || '',
     ecName: data.ecName || '',
+    ecPhoneCode: data.ecPhoneCode || '',
     ecPhone: data.ecPhone || '',
   };
   persistProf();

@@ -1270,6 +1270,9 @@
       display:flex; flex-direction:column; gap:6px;
     }
     .me-inp { flex:none; width:100%; margin-bottom:10px; }
+    .me-phone-row { display:flex; gap:7px; margin-bottom:10px; }
+    .me-phone-row .ef-s { flex:0 0 112px; }
+    .me-phone-row .ef-i { flex:1; }
 
     /* ── TRADUCTOR: botón flotante estilo widget de chat ── */
     /* Va abajo a la IZQUIERDA a propósito: el tab Mapa ya tiene 4 botones
@@ -2347,6 +2350,36 @@ const CATS = [
   {id:'other', label:'Otros',           color:'#4A7A9A'},
 ];
 
+// ── LADAS POR PAÍS (contacto de emergencia) ────────────────────────────────
+var COUNTRY_CODES = [
+  {c:'+52', f:'🇲🇽', n:'México'},
+  {c:'+1',  f:'🇺🇸', n:'Estados Unidos / Canadá'},
+  {c:'+34', f:'🇪🇸', n:'España'},
+  {c:'+54', f:'🇦🇷', n:'Argentina'},
+  {c:'+55', f:'🇧🇷', n:'Brasil'},
+  {c:'+56', f:'🇨🇱', n:'Chile'},
+  {c:'+57', f:'🇨🇴', n:'Colombia'},
+  {c:'+51', f:'🇵🇪', n:'Perú'},
+  {c:'+58', f:'🇻🇪', n:'Venezuela'},
+  {c:'+593',f:'🇪🇨', n:'Ecuador'},
+  {c:'+502',f:'🇬🇹', n:'Guatemala'},
+  {c:'+506',f:'🇨🇷', n:'Costa Rica'},
+  {c:'+507',f:'🇵🇦', n:'Panamá'},
+  {c:'+44', f:'🇬🇧', n:'Reino Unido'},
+  {c:'+33', f:'🇫🇷', n:'Francia'},
+  {c:'+49', f:'🇩🇪', n:'Alemania'},
+  {c:'+39', f:'🇮🇹', n:'Italia'},
+  {c:'+351',f:'🇵🇹', n:'Portugal'},
+  {c:'+81', f:'🇯🇵', n:'Japón'},
+  {c:'+86', f:'🇨🇳', n:'China'},
+];
+function buildEcCodeOptions(sel){
+  if(sel.options.length) return;
+  sel.innerHTML = COUNTRY_CODES.map(function(cc){
+    return '<option value="'+cc.c+'">'+cc.f+' '+cc.c+'</option>';
+  }).join('');
+}
+
 // ── PROFILE + PIN ──────────────────────────────────────────────────────────
 var meIndex = localStorage.getItem('ca26_me'); // null | '0' | '1' | '2'
 // Itinerario que alguna vez se guardó solo en este teléfono. Ya no se
@@ -2552,6 +2585,8 @@ async function openMyProfile(){
   document.getElementById('me-birth').value=d.birth||'';
   document.getElementById('me-address').value=d.address||'';
   document.getElementById('me-ec-name').value=d.ecName||'';
+  buildEcCodeOptions(document.getElementById('me-ec-code'));
+  document.getElementById('me-ec-code').value=d.ecPhoneCode||'+52';
   document.getElementById('me-ec-phone').value=d.ecPhone||'';
 
   var adminSec=document.getElementById('me-admin-sec');
@@ -2563,7 +2598,7 @@ async function openMyProfile(){
       return '<div class="me-admin-row">'+
         '<div class="me-admin-name" style="color:'+PC[pi]+'">'+esc(p)+'</div>'+
         '<div class="me-admin-ec">'+(hasContact
-          ? esc(pd.ecName||'—')+(pd.ecPhone?' · '+esc(pd.ecPhone):'')
+          ? esc(pd.ecName||'—')+(pd.ecPhone?' · '+esc((pd.ecPhoneCode||'')+' '+pd.ecPhone).trim():'')
           : '<span style="color:var(--muted)">Sin contacto registrado</span>')+
         '</div>'+
       '</div>';
@@ -2611,6 +2646,7 @@ async function saveMyProfile(){
     birth: document.getElementById('me-birth').value,
     address: document.getElementById('me-address').value,
     ecName: document.getElementById('me-ec-name').value,
+    ecPhoneCode: document.getElementById('me-ec-code').value,
     ecPhone: document.getElementById('me-ec-phone').value
   };
   PROFILE_DATA[i]=data;
@@ -6650,7 +6686,10 @@ if('serviceWorker' in navigator){
     <div class="ef-lbl">Contacto de emergencia — nombre</div>
     <input class="ef-i me-inp" type="text" id="me-ec-name" placeholder="Nombre completo">
     <div class="ef-lbl">Contacto de emergencia — teléfono</div>
-    <input class="ef-i me-inp" type="tel" id="me-ec-phone" placeholder="10 dígitos" inputmode="tel">
+    <div class="me-phone-row">
+      <select class="ef-s" id="me-ec-code"></select>
+      <input class="ef-i" type="tel" id="me-ec-phone" placeholder="10 dígitos" inputmode="tel">
+    </div>
 
     <div class="ntfy-row" style="margin-top:10px">
       <div class="ntfy-status">
