@@ -680,6 +680,18 @@
     .ex-meta { font-size: 10px; color: var(--muted); margin-top: 2px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .ex-split-av { width: 14px; height: 14px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 7px; font-weight: 700; }
     .ex-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+    .ex-receipts { display:flex; align-items:center; gap:5px; margin-top:6px; flex-wrap:wrap; }
+    .ex-rcpt-thumb, .ex-rcpt-file, .ex-receipt-add {
+      width:28px; height:28px; border-radius:6px; flex-shrink:0; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; overflow:hidden;
+    }
+    .ex-rcpt-thumb { border:1px solid var(--border); }
+    .ex-rcpt-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+    .ex-rcpt-file { background:rgba(255,255,255,.06); border:1px solid var(--border); font-size:13px; }
+    .ex-receipt-add {
+      background:rgba(0,200,255,.08); border:1px dashed rgba(0,200,255,.3); color:var(--cyan); font-size:13px;
+    }
+    .ex-receipt-add input { display:none; }
     .ex-am { font-family:'Space Mono',monospace; font-size: 13px; font-weight: 700; color: var(--gold); }
     .ex-pp { font-size: 10px; color: var(--muted); font-family:'Space Mono',monospace; }
     .ex-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; margin-top: 2px; }
@@ -4570,12 +4582,26 @@ function renderExps(){
       return '<span class="ex-split-av" style="background:'+PC[pi]+';color:#000">'+(persons[pi]||'?').charAt(0).toUpperCase()+'</span>';
     }).join('');
     var catObj=CATS.find(function(c){return c.id===(e.cat||'other');})||CATS[CATS.length-1];
+    var eidj=esc(JSON.stringify(e.id));
+    var receipts=e.receipts||[];
+    var rcptHTML=receipts.map(function(r,ri){
+      var isImg=r.type&&r.type.indexOf('image/')===0;
+      return isImg
+        ? '<div class="ex-rcpt-thumb" onclick="expOpenOv('+eidj+','+ri+')"><img src="'+r.photo+'" loading="lazy"></div>'
+        : '<div class="ex-rcpt-file" onclick="expOpenOv('+eidj+','+ri+')" title="'+esc(r.name||'archivo')+'">📄</div>';
+    }).join('');
     return '<div class="ex-it">'+
       '<div class="ex-av" style="background:'+clr+'20;color:'+clr+';border:1px solid '+clr+'40">'+init+'</div>'+
       '<div class="ex-mid">'+
         '<div class="ex-d">'+esc(e.desc)+'</div>'+
         '<div class="ex-meta">Pagó '+esc(persons[e.who]||'?')+' · '+splitAvatars+
           '<span class="cat-badge" style="background:'+catObj.color+'20;color:'+catObj.color+';margin-left:6px">'+esc(catObj.label)+'</span>'+
+        '</div>'+
+        '<div class="ex-receipts">'+rcptHTML+
+          '<label class="ex-receipt-add" title="Adjuntar comprobante">'+
+            '<input type="file" accept="image/*,application/pdf" multiple onchange="addExpReceipt(event,'+eidj+')">'+
+            '<span>📎</span>'+
+          '</label>'+
         '</div>'+
       '</div>'+
       '<div class="ex-right">'+
@@ -4668,6 +4694,71 @@ function compressImage(file){
     };
     reader.readAsDataURL(file);
   });
+}
+
+function readFileAsDataURL(file){
+  return new Promise(function(resolve,reject){
+    var reader=new FileReader();
+    reader.onload=function(e){ resolve(e.target.result); };
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addExpReceipt(ev,expId){
+  var files=Array.from(ev.target.files);
+  if(!files.length) return;
+  var failed=0;
+  for(var i=0;i<files.length;i++){
+    try{
+      var file=files[i];
+      var isImg=file.type.indexOf('image/')===0;
+      var dataUrl=isImg?await compressImage(file):await readFileAsDataURL(file);
+      var r=await fetch('/api/expenses/'+encodeURIComponent(expId)+'/receipts',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({photo:dataUrl,name:file.name,type:file.type})
+      });
+      if(!r.ok){ failed++; continue; }
+      var data=await r.json();
+      var exp=expenses.find(function(e){return String(e.id)===String(expId);});
+      if(exp){ if(!exp.receipts) exp.receipts=[]; exp.receipts.push(data.receipt); }
+    }catch(e){ failed++; }
+  }
+  if(failed) toast(failed+' archivo'+(failed>1?'s':'')+' no se pudo'+(failed>1?'ieron':'')+' subir — revisa tu conexión.','error');
+  ev.target.value='';
+  renderExps();
+}
+
+async function delExpReceipt(expId,rid){
+  if(!isAdmin()) return;
+  var who=persons[parseInt(meIndex)];
+  try{
+    var r=await fetch('/api/expenses/'+encodeURIComponent(expId)+'/receipts/'+encodeURIComponent(rid),{
+      method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({who:who})
+    });
+    if(!r.ok){ toast('No se pudo eliminar el comprobante.','error'); return; }
+  }catch(e){ toast('No se pudo eliminar el comprobante — revisa tu conexión.','error'); return; }
+  var exp=expenses.find(function(e){return String(e.id)===String(expId);});
+  if(exp&&exp.receipts) exp.receipts=exp.receipts.filter(function(r){return String(r.id)!==String(rid);});
+  closeOv(null,1);
+  renderExps();
+}
+
+function expOpenOv(expId,idx){
+  var exp=expenses.find(function(e){return String(e.id)===String(expId);});
+  var r=exp&&exp.receipts&&exp.receipts[idx];
+  if(!r) return;
+  var isImg=r.type&&r.type.indexOf('image/')===0;
+  if(!isImg){
+    var a=document.createElement('a');
+    a.href=r.photo; a.download=r.name||'archivo'; a.target='_blank';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return;
+  }
+  document.getElementById('ov-img').src=r.photo;
+  var ov=document.getElementById('ov');
+  ov.dataset.expId=expId; ov.dataset.rcptId=r.id;
+  ov.classList.add('show');
 }
 
 async function fetchMemory(){
@@ -4884,14 +4975,18 @@ function closeOv(ev,force){
     albumSlideshowTimer=null;
     document.getElementById('ov').classList.remove('show');
     document.getElementById('ov-img').src='';
-    if(document.getElementById('ov').dataset) delete document.getElementById('ov').dataset.memId;
+    var ds=document.getElementById('ov').dataset;
+    if(ds){ delete ds.memId; delete ds.expId; delete ds.rcptId; }
   }
 }
 
 async function delPhoto(){
   var ovEl=document.getElementById('ov');
   var memId=ovEl.dataset&&ovEl.dataset.memId;
+  var expId=ovEl.dataset&&ovEl.dataset.expId;
+  var rcptId=ovEl.dataset&&ovEl.dataset.rcptId;
   if(memId){ await memDelPhoto(memId,null); return; }
+  if(expId&&rcptId){ await delExpReceipt(expId,rcptId); return; }
   if(ovCtx===null||ovIdx===null) return;
   var ps=await dbGet(ovCtx);
   ps.splice(ovIdx,1);
