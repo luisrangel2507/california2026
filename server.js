@@ -3,10 +3,22 @@ const path = require('path');
 const fs = require('fs');
 const webpush = require('web-push');
 const cron = require('node-cron');
+const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_NAME = process.env.ADMIN_NAME || 'Eduardo';
+
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+if (!anthropic) {
+  console.warn(
+    '⚠️  ANTHROPIC_API_KEY no está configurada — el traductor usa Google Translate ' +
+    '(literal) en vez de Claude (natural, capta el tono). Para activarlo:\n' +
+    '   1. Consigue una API key en https://console.anthropic.com\n' +
+    '   2. Railway → este servicio → pestaña "Variables" → agrega ANTHROPIC_API_KEY\n' +
+    '   3. Redeploy'
+  );
+}
 
 app.use(express.json({ limit: '8mb' }));
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -267,6 +279,30 @@ app.post('/api/profiles', (req, res) => {
 // cambia de dominio (como ya nos pasó con la API de tipo de cambio).
 const TRANSLATE_EMAIL = process.env.TRANSLATE_EMAIL || '';
 
+const LANG_NAMES = { es: 'español', en: 'inglés', fr: 'francés', pt: 'portugués', it: 'italiano', de: 'alemán' };
+
+// Claude traduce mejor el tono y el sentido que Google/MyMemory (que son
+// literales) — se intenta primero si hay una llave de Anthropic configurada.
+async function tryClaude(text, from, to) {
+  if (!anthropic) return null;
+  const fromName = LANG_NAMES[from] || from;
+  const toName = LANG_NAMES[to] || to;
+  const msg = await anthropic.messages.create({
+    model: 'claude-opus-5',
+    max_tokens: 300,
+    system: 'Eres un traductor experto en conversaciones cotidianas entre personas. ' +
+      `Traduces de ${fromName} a ${toName} de forma natural y fluida, como lo diría ` +
+      'alguien nativo — nunca de forma literal ni palabra por palabra. Conserva el ' +
+      'tono exacto de quien habla (informal, entusiasta, sarcástico, molesto, etc.) — ' +
+      'la traducción debe sonar igual de natural en ese mismo tono. Responde ' +
+      'ÚNICAMENTE con la traducción, sin explicaciones, notas ni comillas.',
+    messages: [{ role: 'user', content: text }],
+  });
+  const block = msg.content.find((b) => b.type === 'text');
+  const out = block && block.text.trim();
+  return out || null;
+}
+
 async function tryMyMemory(text, from, to) {
   let url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) +
     '&langpair=' + encodeURIComponent(from + '|' + to);
@@ -301,10 +337,10 @@ app.post('/api/translate', async (req, res) => {
   const dst = langRe.test(to) ? to : 'en';
   if (src === dst) return res.json({ translated: text, provider: 'none' });
 
-  // Google GTX responde bastante más rápido y de forma más confiable que
-  // MyMemory (que a veces ni conecta) — va primero para que la mayoría de
-  // las traducciones no paguen el tiempo de espera del que falla.
-  const providers = [['google', tryGoogleGtx], ['mymemory', tryMyMemory]];
+  // Claude va primero (natural, capta el tono) si hay llave configurada;
+  // si no, o si falla, Google GTX (rápido y confiable) y luego MyMemory
+  // como último respaldo (a veces ni conecta).
+  const providers = [['claude', tryClaude], ['google', tryGoogleGtx], ['mymemory', tryMyMemory]];
   for (const [name, fn] of providers) {
     try {
       const out = await fn(text, src, dst);
