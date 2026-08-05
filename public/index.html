@@ -6392,6 +6392,63 @@ function closeShare(){
   document.getElementById('share-overlay').classList.remove('show');
   document.getElementById('share-sheet').classList.remove('show');
 }
+// ── SEGUIR EL VIAJE EN VIVO (familiares y amigos, sin perfil ni PIN) ───────
+var liveShareUrl = null;
+async function openLiveShare(){
+  document.getElementById('live-share-body').innerHTML =
+    '<div style="text-align:center;color:var(--muted);font-size:12px;padding:24px 0">Cargando…</div>';
+  document.getElementById('live-share-overlay').classList.add('show');
+  document.getElementById('live-share-sheet').classList.add('show');
+  try{
+    var r = await fetch('/api/viewer-token');
+    var j = await r.json();
+    liveShareUrl = location.origin+'/seguir/'+j.token;
+  }catch(e){
+    document.getElementById('live-share-body').innerHTML =
+      '<div style="text-align:center;color:var(--red);font-size:13px;padding:24px 0">No se pudo generar el enlace — revisa tu conexión.</div>';
+    return;
+  }
+  var qrSvg = '';
+  try{
+    var qr = qrcode(0,'M');
+    qr.addData(liveShareUrl);
+    qr.make();
+    qrSvg = qr.createSvgTag({cellSize:4, margin:2});
+  }catch(e){ /* qrcode.js no cargó — se muestra solo el enlace */ }
+  document.getElementById('live-share-body').innerHTML =
+    (qrSvg?'<div class="share-qr">'+qrSvg+'</div>':'')+
+    '<div class="share-url">'+esc(liveShareUrl)+'</div>'+
+    '<div class="share-btns">'+
+      '<button onclick="copyLiveShareLink()" style="background:rgba(0,200,255,.12);color:var(--cyan);border:1px solid rgba(0,200,255,.3)">Copiar enlace</button>'+
+      (navigator.share?'<button onclick="nativeLiveShare()" style="background:rgba(0,229,152,.12);color:var(--green);border:1px solid rgba(0,229,152,.3)">Compartir</button>':'')+
+    '</div>'+
+    (isAdmin()?'<button onclick="regenerateLiveLink()" style="margin-top:10px;width:100%;background:rgba(255,80,80,.1);color:var(--red);border:1px solid rgba(255,80,80,.25);border-radius:10px;padding:10px;font-family:\'Space Grotesk\',sans-serif;font-size:12.5px;cursor:pointer">🔄 Generar un enlace nuevo (invalida el anterior)</button>':'');
+}
+function closeLiveShare(){
+  document.getElementById('live-share-overlay').classList.remove('show');
+  document.getElementById('live-share-sheet').classList.remove('show');
+}
+function copyLiveShareLink(){
+  if(!liveShareUrl) return;
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(liveShareUrl).then(function(){ toast('Enlace copiado.','success'); });
+  } else { toast('No se pudo copiar.','error'); }
+}
+function nativeLiveShare(){
+  if(!liveShareUrl) return;
+  navigator.share({title:'Sigue nuestro viaje en vivo — Alta Vibra', url: liveShareUrl}).catch(function(){});
+}
+async function regenerateLiveLink(){
+  if(!confirm('¿Seguro? El enlace anterior dejará de funcionar para quien ya lo tenga.')) return;
+  var who = meIndex!==null ? persons[parseInt(meIndex)] : '';
+  try{
+    var r = await fetch('/api/viewer-token/regenerate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
+    if(!r.ok){ toast('No autorizado.','error'); return; }
+    toast('Nuevo enlace generado.','success');
+    openLiveShare();
+  }catch(e){ toast('No se pudo generar — revisa tu conexión.','error'); }
+}
+
 function copyShareLink(){
   var url = location.origin+'/';
   if(navigator.clipboard){
@@ -6667,6 +6724,14 @@ if('serviceWorker' in navigator){
       <button class="btn-ntfy" id="share-loc-btn" onclick="toggleShareLoc()">Activar</button>
     </div>
 
+    <div class="ntfy-row">
+      <div class="ntfy-status">
+        <span>👨‍👩‍👧</span>
+        <span>Enlace para que tu familia siga el viaje en vivo</span>
+      </div>
+      <button class="btn-ntfy" onclick="openLiveShare()">Compartir</button>
+    </div>
+
     <div class="me-admin-sec" id="me-admin-sec" style="display:none">
       <div class="ef-lbl" style="margin-top:6px">Contactos de emergencia — todos (admin)</div>
       <div id="me-admin-contacts"></div>
@@ -6876,6 +6941,20 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeShare()">&#10005;</button>
   </div>
   <div class="share-body" id="share-body"></div>
+</div>
+
+<!-- SEGUIR EN VIVO (familia y amigos) BOTTOM SHEET -->
+<div class="bs-overlay" id="live-share-overlay" onclick="closeLiveShare()"></div>
+<div class="bottom-sheet" id="live-share-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Seguir el viaje en vivo</div>
+      <div class="bs-sub">Para familiares y amigos, sin necesidad de la app</div>
+    </div>
+    <button class="bs-close" onclick="closeLiveShare()">&#10005;</button>
+  </div>
+  <div class="share-body" id="live-share-body"></div>
 </div>
 
 <!-- INSTALAR APP BOTTOM SHEET -->

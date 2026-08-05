@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const webpush = require('web-push');
 const cron = require('node-cron');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -862,6 +863,41 @@ app.delete('/api/live-locations/:who', (req, res) => {
   delete liveLocStore[req.params.who];
   persistLiveLoc();
   res.json({ ok: true });
+});
+
+// ── Enlace para que familiares y amigos sigan el viaje en vivo ─────────────
+// No tienen perfil ni PIN — el "acceso" es un token largo al azar en la URL
+// (/seguir/<token>), igual de expuesto que el resto de la API (que ya es
+// pública sin autenticación) pero no adivinable ni linkeado desde ningún
+// lado salvo el botón "Compartir" en Mi Perfil. El admin puede invalidarlo
+// generando uno nuevo si se comparte de más.
+const VIEWER_FILE = path.join(DATA_DIR, 'viewer.json');
+let viewerToken = null;
+try { viewerToken = JSON.parse(fs.readFileSync(VIEWER_FILE, 'utf8')).token; } catch (e) {}
+function persistViewerToken() {
+  try { fs.writeFileSync(VIEWER_FILE, JSON.stringify({ token: viewerToken })); } catch (e) {}
+}
+if (!viewerToken) {
+  viewerToken = crypto.randomBytes(24).toString('hex');
+  persistViewerToken();
+}
+
+app.get('/api/viewer-token', (req, res) => res.json({ token: viewerToken }));
+
+app.post('/api/viewer-token/regenerate', (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  viewerToken = crypto.randomBytes(24).toString('hex');
+  persistViewerToken();
+  res.json({ ok: true, token: viewerToken });
+});
+
+app.get('/api/viewer-check/:token', (req, res) => {
+  res.json({ ok: req.params.token === viewerToken });
+});
+
+app.get('/seguir/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'seguir.html'));
 });
 
 // ── ¿Dónde dejamos el carro? (una sola ubicación compartida) ───────────────
