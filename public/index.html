@@ -1706,6 +1706,8 @@
     .me-admin-row:last-child { border-bottom:none; }
     .me-admin-name { font-size:12.5px; font-weight:700; flex-shrink:0; }
     .me-admin-ec { font-size:12px; color:var(--text); text-align:right; }
+    .me-ec-call { color:var(--cyan); text-decoration:none; font-weight:600; white-space:nowrap; }
+    .me-ec-call:active { opacity:.7; }
 
     /* ── LOCKED DAY (itin) ── */
     .day-dot { display:none; }
@@ -2795,14 +2797,29 @@ function renderGroupContacts(){
     var pd=PROFILE_DATA[pi]||{};
     var hasContact=pd.ecName||pd.ecPhone;
     var bloodBadge = pd.blood ? '<span class="me-blood-badge">🩸 '+esc(pd.blood)+'</span>' : '';
+    var phoneHtml='';
+    if(pd.ecPhone){
+      var callArgs=esc(JSON.stringify(p))+','+esc(JSON.stringify(pd.ecName||''))+','+esc(JSON.stringify(pd.ecPhoneCode||''))+','+esc(JSON.stringify(pd.ecPhone));
+      phoneHtml=' · <a href="javascript:void(0)" onclick="confirmCallEC('+callArgs+')" class="me-ec-call">📞 '+esc((pd.ecPhoneCode||'')+' '+pd.ecPhone).trim()+'</a>';
+    }
     return '<div class="me-admin-row">'+
       '<div class="me-admin-name" style="color:'+PC[pi]+'">'+esc(p)+bloodBadge+'</div>'+
       '<div class="me-admin-ec">'+(hasContact
-        ? esc(pd.ecName||'—')+(pd.ecPhone?' · '+esc((pd.ecPhoneCode||'')+' '+pd.ecPhone).trim():'')
+        ? esc(pd.ecName||'—')+phoneHtml
         : '<span style="color:var(--muted)">Sin contacto registrado</span>')+
       '</div>'+
     '</div>';
   }).join('');
+}
+
+// Marcar de verdad (tel:) solo tras confirmar — un toque accidental en una
+// emergencia real no debe llamar a nadie sin querer.
+function confirmCallEC(personName, contactName, code, phone){
+  var shown=((code||'')+' '+phone).trim();
+  var who=contactName?contactName+' — contacto de emergencia de '+personName:'el contacto de emergencia de '+personName;
+  if(!confirm('¿Marcar a '+who+'?\n'+shown)) return;
+  var dial=((code||'')+phone).replace(/[^0-9+]/g,'');
+  window.location.href='tel:'+dial;
 }
 
 async function openMyProfile(){
