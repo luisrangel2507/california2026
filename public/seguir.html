@@ -101,6 +101,30 @@ body {
 .sg-invalid-icon { font-size:44px; margin-bottom:14px; }
 .sg-invalid-title { font-size:18px; font-weight:700; margin-bottom:8px; }
 .sg-invalid-sub { font-size:13px; color:var(--muted); max-width:280px; }
+
+/* ── INTRO: el mismo video de fondo que ven Erick/Rafa/Eduardo al entrar ── */
+.sg-intro {
+  display:none; position:fixed; inset:0; z-index:5000; background:#000;
+  align-items:center; justify-content:center; overflow:hidden; cursor:pointer;
+  transition:opacity .5s ease;
+}
+.sg-intro.show { display:flex; }
+.sg-intro.hide { opacity:0; pointer-events:none; }
+.sg-intro-video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.sg-intro-overlay {
+  position:absolute; inset:0;
+  background:linear-gradient(180deg, rgba(0,0,0,.35) 0%, rgba(0,0,0,.15) 45%, rgba(0,0,0,.78) 100%);
+}
+.sg-intro-content { position:relative; z-index:1; text-align:center; padding:0 30px; }
+.sg-intro-logo { width:72px; height:72px; border-radius:18px; object-fit:cover; margin-bottom:14px; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+.sg-intro-title { font-size:26px; font-weight:700; color:#fff; }
+.sg-intro-sub { font-size:13px; color:rgba(255,255,255,.75); margin-top:6px; letter-spacing:.5px; }
+.sg-intro-hint {
+  position:absolute; z-index:1; bottom:calc(env(safe-area-inset-bottom,0px) + 30px); left:0; right:0;
+  text-align:center; font-size:12px; color:rgba(255,255,255,.65);
+  opacity:0; transition:opacity .5s ease;
+}
+.sg-intro-hint.show { opacity:1; }
 </style>
 </head>
 <body>
@@ -109,6 +133,19 @@ body {
   <div class="sg-invalid-icon">🔒</div>
   <div class="sg-invalid-title">Este enlace ya no es válido</div>
   <div class="sg-invalid-sub">Pídele a quien te lo compartió que te mande uno nuevo desde su Perfil en la app.</div>
+</div>
+
+<div id="sg-intro" class="sg-intro" onclick="finishIntro()">
+  <video id="sg-intro-video" class="sg-intro-video" autoplay muted playsinline webkit-playsinline disablepictureinpicture preload="auto">
+    <source src="/login-bg.mp4" type="video/mp4">
+  </video>
+  <div class="sg-intro-overlay"></div>
+  <div class="sg-intro-content">
+    <img src="/logo-altavibra.png" class="sg-intro-logo" alt="Alta Vibra">
+    <div class="sg-intro-title">Alta Vibra</div>
+    <div class="sg-intro-sub" id="sg-intro-sub">California 2026 · en vivo</div>
+  </div>
+  <div class="sg-intro-hint" id="sg-intro-hint">Toca para continuar</div>
 </div>
 
 <div id="sg-content" style="display:none">
@@ -384,6 +421,31 @@ function showInvalid(){
   document.getElementById('sg-content').style.display = 'none';
 }
 
+// El mismo video de fondo que ven Erick/Rafa/Eduardo al abrir la app —
+// para que quien recibe el enlace sienta la misma bienvenida antes de
+// ver los datos del viaje. Se puede saltar tocando en cualquier lado.
+var introDone = false;
+function finishIntro(){
+  if(introDone) return;
+  introDone = true;
+  var intro = document.getElementById('sg-intro');
+  intro.classList.add('hide');
+  setTimeout(function(){ intro.classList.remove('show','hide'); }, 500);
+  document.getElementById('sg-content').style.display = 'block';
+}
+function showIntro(){
+  var intro = document.getElementById('sg-intro');
+  var video = document.getElementById('sg-intro-video');
+  var hint = document.getElementById('sg-intro-hint');
+  intro.classList.add('show');
+  if(video){
+    video.addEventListener('ended', finishIntro);
+    video.play().catch(function(){ /* autoplay bloqueado — igual se puede tocar para continuar */ });
+  }
+  setTimeout(function(){ hint.classList.add('show'); }, 1500);
+  setTimeout(finishIntro, 12000); // red de seguridad si el video nunca dispara 'ended'
+}
+
 async function init(){
   if(!token){ showInvalid(); return; }
   var check = { ok:false };
@@ -391,12 +453,13 @@ async function init(){
   if(!check.ok){ showInvalid(); return; }
 
   document.getElementById('sg-invalid').style.display = 'none';
-  document.getElementById('sg-content').style.display = 'block';
 
   if(sharedBy){
     document.getElementById('sg-header-title').textContent = '¿Dónde está '+sharedBy+'?';
+    document.getElementById('sg-intro-sub').textContent = '¿Dónde está '+sharedBy+'?';
     document.title = '¿Dónde está '+sharedBy+'? — Alta Vibra';
   }
+  showIntro();
 
   var itinStore = {};
   try{ itinStore = await (await fetch('/api/itinerary',{cache:'no-store'})).json(); }catch(e){}
