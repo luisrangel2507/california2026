@@ -78,6 +78,9 @@ body {
 
 .sg-empty-mini { font-size:12.5px; color:var(--muted); padding:10px 4px; text-align:center; }
 
+.sg-legend-item.sg-mine { font-weight:700; }
+.sg-mine-tag { font-size:10px; color:var(--cyan); font-weight:600; }
+
 .ap-grid {
   display:grid; grid-template-columns:repeat(3, 1fr);
   grid-auto-rows:31vw; grid-auto-flow:dense; gap:2px;
@@ -112,7 +115,7 @@ body {
   <div class="sg-header">
     <img src="/logo-altavibra.png" alt="Alta Vibra">
     <div>
-      <div class="sg-header-title">Alta Vibra</div>
+      <div class="sg-header-title" id="sg-header-title">Alta Vibra</div>
       <div class="sg-header-sub"><span class="sg-live-dot"></span>California 2026 · en vivo</div>
     </div>
   </div>
@@ -170,6 +173,13 @@ var DAYS_SKEL = [
 var token = (function(){
   var m = location.pathname.match(/\/seguir\/([^\/]+)/);
   return m ? decodeURIComponent(m[1]).trim() : '';
+})();
+
+// ?p=Nombre — quién compartió el enlace, para personalizar la página
+// ("¿Dónde está Rafa?") y resaltarlo en la lista de ubicaciones.
+var sharedBy = (function(){
+  var m = location.search.match(/[?&]p=([^&]+)/);
+  return m ? decodeURIComponent(m[1].replace(/\+/g,' ')).trim().slice(0,60) : '';
 })();
 
 var DAYS = [];
@@ -282,12 +292,21 @@ async function refreshLocations(){
     var r = await fetch('/api/live-locations',{cache:'no-store'});
     var data = await r.json();
     var names = Object.keys(data);
+    if(sharedBy){
+      names.sort(function(a,b){
+        if(a===sharedBy) return -1;
+        if(b===sharedBy) return 1;
+        return 0;
+      });
+    }
     var legend = document.getElementById('sg-legend');
     var bounds = [];
     var seen = {};
     var legendHtml = '';
     if(!names.length){
-      legendHtml = '<div class="sg-empty-mini">Nadie está compartiendo su ubicación ahora mismo.</div>';
+      legendHtml = '<div class="sg-empty-mini">'+(sharedBy
+        ? esc(sharedBy)+' no está compartiendo su ubicación ahora mismo.'
+        : 'Nadie está compartiendo su ubicación ahora mismo.')+'</div>';
     }
     names.forEach(function(name){
       var loc = data[name];
@@ -312,7 +331,10 @@ async function refreshLocations(){
       }
       var mins = Math.round((Date.now()-loc.ts)/60000);
       var cuando = fresh ? 'en vivo ahora' : (mins<60 ? 'hace '+mins+' min' : 'hace '+Math.round(mins/60)+' h');
-      legendHtml += '<div class="sg-legend-item"><span class="sg-dot" style="background:'+color+'"></span>'+esc(name)+'<span class="sg-legend-when">· '+cuando+'</span></div>';
+      var isMine = name===sharedBy;
+      legendHtml += '<div class="sg-legend-item'+(isMine?' sg-mine':'')+'"><span class="sg-dot" style="background:'+color+'"></span>'+esc(name)+
+        (isMine?' <span class="sg-mine-tag">· a quien sigues</span>':'')+
+        '<span class="sg-legend-when">· '+cuando+'</span></div>';
     });
     legend.innerHTML = legendHtml;
     if(mapObj){
@@ -369,6 +391,11 @@ async function init(){
 
   document.getElementById('sg-invalid').style.display = 'none';
   document.getElementById('sg-content').style.display = 'block';
+
+  if(sharedBy){
+    document.getElementById('sg-header-title').textContent = '¿Dónde está '+sharedBy+'?';
+    document.title = '¿Dónde está '+sharedBy+'? — Alta Vibra';
+  }
 
   var itinStore = {};
   try{ itinStore = await (await fetch('/api/itinerary',{cache:'no-store'})).json(); }catch(e){}

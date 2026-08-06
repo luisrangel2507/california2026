@@ -6767,7 +6767,8 @@ async function openLiveShare(){
   try{
     var r = await fetch('/api/viewer-token');
     var j = await r.json();
-    liveShareUrl = location.origin+'/seguir/'+j.token;
+    var myName = meIndex!==null ? persons[parseInt(meIndex)] : '';
+    liveShareUrl = location.origin+'/seguir/'+j.token+(myName ? '?p='+encodeURIComponent(myName) : '');
   }catch(e){
     document.getElementById('live-share-body').innerHTML =
       '<div style="text-align:center;color:var(--red);font-size:13px;padding:24px 0">No se pudo generar el enlace — revisa tu conexión.</div>';
