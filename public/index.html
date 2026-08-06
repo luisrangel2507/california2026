@@ -819,6 +819,11 @@
       background:rgba(0,0,0,.65); border:none; color:#fff; font-size:14px; line-height:1;
       display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;
     }
+    .alb-fam-badge {
+      position:absolute; top:4px; left:4px; font-size:11px; line-height:1;
+      background:rgba(245,166,35,.92); color:#000; border-radius:6px; padding:3px 5px;
+      pointer-events:none;
+    }
     .alb-row {
       display:flex; align-items:center; justify-content:space-between;
       padding:8px 14px; border-bottom:1px solid rgba(255,255,255,.04); gap:10px;
@@ -988,6 +993,13 @@
     .ov img { max-width: 95vw; max-height: 88vh; border-radius: 8px; object-fit: contain; }
     .ov-x { position: absolute; top: 14px; right: 14px; background: rgba(255,255,255,.08); border: none; color: #fff; width: 34px; height: 34px; border-radius: 50%; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .ov-del { position: absolute; bottom: 18px; background: rgba(200,40,40,.8); border: none; color: #fff; padding: 8px 20px; border-radius: 8px; font-size: 13px; cursor: pointer; font-family:'Space Grotesk',sans-serif; }
+    .ov-fam {
+      position:absolute; bottom:64px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,.75); border:1px solid rgba(255,255,255,.25); color:#fff;
+      padding:7px 16px; border-radius:8px; font-size:12.5px; cursor:pointer;
+      font-family:'Space Grotesk',sans-serif; white-space:nowrap;
+    }
+    .ov-fam.off { background:rgba(245,166,35,.9); border-color:transparent; color:#000; font-weight:700; }
 
     /* ── GEO BUTTON ── */
     .geo-btn {
@@ -2429,6 +2441,7 @@
 <div class="ov" id="ov" onclick="closeOv(event)">
   <button class="ov-x" onclick="closeOv(null,1)">×</button>
   <img id="ov-img" src="" alt="">
+  <button class="ov-fam" id="ov-fam-btn" style="display:none" onclick="event.stopPropagation();toggleMemFamVisible()"></button>
   <button class="ov-del" onclick="delPhoto()">Eliminar</button>
 </div>
 
@@ -5243,9 +5256,10 @@ async function renderPhotos(){
         ps.forEach(function(p,idx){
           var span=(n===1)?' span2':'';
           var del=admin?'<button class="alb-del" onclick="memDelPhoto(\''+p.id+'\',event)">×</button>':'';
+          var badge=p.fam===false?'<span class="alb-fam-badge" title="No la ve la familia">🙈</span>':'';
           imgs+='<div class="alb-img-wrap'+span+'">'+
             '<img class="alb-img" src="'+p.photo+'" onclick="memOpenOv('+kj+','+idx+')" loading="lazy">'+
-            del+
+            badge+del+
           '</div>';
         });
         imgs+='<label class="alb-add">'+
@@ -5469,7 +5483,36 @@ function memOpenOv(key,idx){
   if(!p) return;
   document.getElementById('ov-img').src=p.photo;
   document.getElementById('ov').dataset.memId=p.id;
+  updateFamBtn(p);
   document.getElementById('ov').classList.add('show');
+}
+
+function updateFamBtn(p){
+  var btn=document.getElementById('ov-fam-btn');
+  if(!btn) return;
+  var visible=p.fam!==false;
+  btn.style.display='';
+  btn.classList.toggle('off', !visible);
+  btn.textContent=visible ? '👪 La ve la familia' : '🙈 Oculta a la familia';
+  btn.title=visible ? 'Toca para ocultarla del enlace de familiares/amigos' : 'Toca para volver a mostrarla';
+}
+
+async function toggleMemFamVisible(){
+  var ovEl=document.getElementById('ov');
+  var memId=ovEl.dataset&&ovEl.dataset.memId;
+  if(!memId||!memOvKey) return;
+  var p=(memStore[memOvKey]||[]).find(function(x){ return x.id===memId; });
+  if(!p) return;
+  var newFam=p.fam===false; // si estaba oculta (fam:false), la vamos a mostrar
+  try{
+    var r=await fetch('/api/memory/'+encodeURIComponent(memId)+'/visibility',{
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({fam:newFam})
+    });
+    if(!r.ok) throw new Error();
+    if(newFam) delete p.fam; else p.fam=false;
+    updateFamBtn(p);
+    renderPhotos();
+  }catch(e){ toast('No se pudo cambiar — revisa tu conexión.','error'); }
 }
 
 function openOv(name,idx){
@@ -5485,6 +5528,7 @@ function closeOv(ev,force){
     albumSlideshowTimer=null;
     document.getElementById('ov').classList.remove('show');
     document.getElementById('ov-img').src='';
+    document.getElementById('ov-fam-btn').style.display='none';
     var ds=document.getElementById('ov').dataset;
     if(ds){ delete ds.memId; delete ds.expId; delete ds.rcptId; }
   }
