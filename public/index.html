@@ -2777,7 +2777,13 @@ function avMenuAction(action){
 
 document.addEventListener('click', function(e){
   var menu=document.getElementById('av-menu');
-  if(menu && menu.classList.contains('show') && !menu.contains(e.target) && e.target.id!=='hero-av-btn'){
+  var avBtn=document.getElementById('hero-av-btn');
+  // Antes se comparaba e.target.id==='hero-av-btn' a secas — dejó de
+  // servir en cuanto el botón empezó a llevar adentro la foto de perfil
+  // (un <img> o un <div> sin id), porque el clic entonces "aterriza" en
+  // ese hijo y nunca coincide con el id exacto. Con .contains() da igual
+  // qué haya adentro del botón.
+  if(menu && menu.classList.contains('show') && !menu.contains(e.target) && !(avBtn && avBtn.contains(e.target))){
     menu.classList.remove('show');
   }
 });
