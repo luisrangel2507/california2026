@@ -1951,9 +1951,11 @@
       display:flex; align-items:center; justify-content:center;
       font-size:17px; font-weight:700; cursor:pointer;
       border:1.5px solid rgba(255,255,255,.18);
-      box-shadow:0 0 14px rgba(0,200,255,.25);
+      box-shadow:0 2px 8px rgba(0,0,0,.35);
       flex-shrink:0; transition:transform .15s;
+      overflow:hidden;
     }
+    .hero-av-btn img { width:100%; height:100%; object-fit:cover; display:block; }
     .hero-av-btn:active { transform:scale(.93); }
     .hero-name-sm { font-size:10px; color:var(--muted); margin-top:3px; text-align:right; letter-spacing:.3px; }
 
@@ -2515,6 +2517,20 @@ const DC = [
 ];
 
 const PC = ['#00C8FF','#FF6A50','#00E598','#F5A623','#B983FF','#FF4FA3','#4FD8FF','#FFD84F']; // Erick, Rafa, Eduardo + spare colors for people the admin adds
+
+// Foto de perfil si la subió, si no las iniciales de siempre con su color.
+// PROFILE_DATA se llena en loadProfiles() (ver init) — si todavía no carga,
+// esto cae solo al fallback de iniciales, sin romper nada.
+function avatarHtml(idx, size, fontPx){
+  var p = persons[idx] || '?';
+  var pd = (typeof PROFILE_DATA !== 'undefined' && PROFILE_DATA[idx]) || null;
+  var photo = pd && pd.photo;
+  if(photo){
+    return '<img src="'+photo+'" style="width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover;display:block;flex-shrink:0" alt="'+esc(p)+'">';
+  }
+  var fs = fontPx || Math.round(size*0.42);
+  return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:'+fs+'px;font-weight:700;background:'+(PC[idx]||'#999')+';color:#000;flex-shrink:0">'+esc(p.charAt(0).toUpperCase())+'</div>';
+}
 const CATS = [
   {id:'food',  label:'Comida',          color:'#FF9A40'},
   {id:'trans', label:'Transporte',      color:'#00C8FF'},
@@ -2570,7 +2586,7 @@ var pinFirst  = '';
 function renderPickCards(){
   document.getElementById('pick-cards').innerHTML = persons.map(function(p,i){
     return '<div class="pick-card" onclick="startPin('+i+')" style="border-color:'+PC[i]+'50">'+
-      '<div class="pick-av" style="background:'+PC[i]+';color:#000">'+p.charAt(0).toUpperCase()+'</div>'+
+      avatarHtml(i, 52, 22)+
       '<div class="pick-nm">'+esc(p)+'</div>'+
       '</div>';
   }).join('');
@@ -2697,12 +2713,12 @@ function updateHeroProfile(){
   var nsm  = document.getElementById('hero-name-sm');
   if(i !== null && persons[i]){
     var p=persons[i];
-    btn.textContent=p.charAt(0).toUpperCase();
-    btn.style.background=PC[i]; btn.style.color='#000'; btn.style.borderColor=PC[i];
+    btn.innerHTML=avatarHtml(i, 40, 17);
+    btn.style.background=''; btn.style.color=''; btn.style.borderColor=PC[i];
     ttl.innerHTML='Hola,&nbsp;<span class="cy">'+esc(p)+'</span>';
     nsm.textContent='mi perfil';
   } else {
-    btn.textContent='?';
+    btn.innerHTML='?';
     btn.style.background='transparent'; btn.style.color='var(--muted)';
     btn.style.borderColor='rgba(255,255,255,.15)';
     ttl.innerHTML='PCH&nbsp;Road&nbsp;Trip&nbsp;&middot;&nbsp;<span class="cy">Sep&nbsp;2026</span>';
@@ -2776,6 +2792,7 @@ async function openMyProfile(){
   var d=PROFILE_DATA[i]||{};
   document.getElementById('me-title').textContent=persons[i];
   document.getElementById('me-title').style.color=PC[i];
+  document.getElementById('me-photo-preview').innerHTML=avatarHtml(i, 64, 26);
   document.getElementById('me-birth').value=d.birth||'';
   document.getElementById('me-blood').value=d.blood||'';
   document.getElementById('me-address').value=d.address||'';
@@ -2830,11 +2847,42 @@ async function saveMyProfile(){
     ecPhoneCode: document.getElementById('me-ec-code').value,
     ecPhone: document.getElementById('me-ec-phone').value
   };
-  PROFILE_DATA[i]=data;
+  PROFILE_DATA[i]=Object.assign({}, PROFILE_DATA[i], data);
   try{
     await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:data})});
   }catch(e){ toast('No se pudo guardar tu perfil — revisa tu conexión.','error'); }
   closeMyProfile();
+}
+
+async function uploadMyPhoto(input){
+  var file=input.files && input.files[0];
+  if(!file) return;
+  var i=parseInt(meIndex);
+  var preview=document.getElementById('me-photo-preview');
+  preview.style.opacity='.5';
+  try{
+    var photo=await compressAvatarImage(file);
+    await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:{photo:photo}})});
+    PROFILE_DATA[i]=Object.assign({}, PROFILE_DATA[i], {photo:photo});
+    preview.innerHTML=avatarHtml(i, 64, 26);
+    updateHeroProfile();
+    toast('Foto actualizada.','success');
+  }catch(e){
+    toast('No se pudo subir la foto — revisa tu conexión.','error');
+  }finally{
+    preview.style.opacity='';
+    input.value='';
+  }
+}
+
+async function removeMyPhoto(){
+  var i=parseInt(meIndex);
+  try{
+    await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:{photo:''}})});
+    PROFILE_DATA[i]=Object.assign({}, PROFILE_DATA[i], {photo:''});
+    document.getElementById('me-photo-preview').innerHTML=avatarHtml(i, 64, 26);
+    updateHeroProfile();
+  }catch(e){ toast('No se pudo quitar la foto — revisa tu conexión.','error'); }
 }
 
 // ── PRIMERA VEZ: información de emergencia obligatoria ─────────────────────
@@ -4756,7 +4804,7 @@ function renderPersonsBar(){
   // Name editor chips
   document.getElementById('persons-bar').innerHTML = persons.map(function(p,i){
     return '<span class="p-tag" style="background:'+PC[i]+'18;border:1px solid '+PC[i]+'35">'+
-      '<span class="p-av" style="background:'+PC[i]+';color:#000">'+(p.charAt(0)||'?').toUpperCase()+'</span>'+
+      avatarHtml(i, 18, 9)+
       '<input class="p-inp" value="'+esc(p)+'" onchange="updateP('+i+',this.value)">'+
       '</span>';
   }).join('');
@@ -4914,7 +4962,7 @@ function renderPersonSummary(){
     var balColor=bal>0.01?'var(--green)':bal<-0.01?'var(--red)':'var(--muted)';
     var balStr=bal>0.01?'+$'+bal.toFixed(0):bal<-0.01?'-$'+Math.abs(bal).toFixed(0):'✓ par';
     return '<div class="ps-card" style="background:'+PC[i]+'10;border-color:'+PC[i]+'30">'+
-      '<div class="ps-av" style="background:'+PC[i]+';color:#000">'+(p.charAt(0)||'?').toUpperCase()+'</div>'+
+      '<div style="margin:0 auto 5px;width:38px">'+avatarHtml(i, 38, 16)+'</div>'+
       '<div class="ps-name" style="color:'+PC[i]+'">'+esc(p)+'</div>'+
       '<div class="ps-paid" style="color:var(--text)">$'+paidTotal[i].toFixed(0)+'</div>'+
       '<div class="ps-bal" style="color:'+balColor+'">'+balStr+'</div>'+
@@ -4939,8 +4987,6 @@ function renderExps(){
   // Show newest first
   var sorted=expenses.slice().reverse();
   list.innerHTML=sorted.map(function(e){
-    var clr=PC[e.who]||'#aaa';
-    var init=(persons[e.who]||'?').charAt(0).toUpperCase();
     var split=e.split||persons.map(function(_,i){return i;});
     var share=(e.amt/split.length);
     var splitAvatars=split.map(function(pi){
@@ -4956,7 +5002,7 @@ function renderExps(){
         : '<div class="ex-rcpt-file" onclick="expOpenOv('+eidj+','+ri+')" title="'+esc(r.name||'archivo')+'">📄</div>';
     }).join('');
     return '<div class="ex-it">'+
-      '<div class="ex-av" style="background:'+clr+'20;color:'+clr+';border:1px solid '+clr+'40">'+init+'</div>'+
+      '<div style="flex-shrink:0;margin-top:1px">'+avatarHtml(e.who, 30, 12)+'</div>'+
       '<div class="ex-mid">'+
         '<div class="ex-d">'+esc(e.desc)+'</div>'+
         '<div class="ex-meta">Pagó '+esc(persons[e.who]||'?')+' · '+splitAvatars+
@@ -5038,6 +5084,27 @@ function renderBals(){
 
   document.getElementById('balances').innerHTML=
     '<div class="bal-hdr">Liquidar — total gastado: $'+total.toLocaleString('es-MX',{minimumFractionDigits:2})+' MXN</div>'+dh+hist;
+}
+
+// Recorte cuadrado centrado + achicado — para que el avatar circular no
+// salga estirado ni pese de más (se ve chiquito en todos lados).
+function compressAvatarImage(file){
+  return new Promise(function(resolve){
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var img=new Image();
+      img.onload=function(){
+        var side=Math.min(img.width,img.height);
+        var sx=(img.width-side)/2, sy=(img.height-side)/2;
+        var size=Math.min(360,side);
+        var c=document.createElement('canvas'); c.width=size; c.height=size;
+        c.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        resolve(c.toDataURL('image/jpeg',0.82));
+      };
+      img.src=e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── PHOTOS (compartidas via servidor) ──────────────────────────────────────
@@ -6833,6 +6900,9 @@ async function init(){
     var i=parseInt(k); if(DAYS[i]) DAYS[i].acts=ITIN_OVERRIDE[i];
   });
   await openDB();
+  // Antes de pintar cualquier avatar (header, dashboard, picker de login)
+  // hace falta saber quién tiene foto de perfil subida.
+  await loadProfiles();
   // El itinerario del servidor manda sobre la copia local
   await loadItinerary();
   await loadExpenses();
@@ -6857,6 +6927,7 @@ async function init(){
   setInterval(async function(){
     await loadExpenses();
     await loadSettlements();
+    await loadProfiles();
     renderExps();
     renderDash(); renderOps();
     await loadReservations();
@@ -7073,6 +7144,16 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeMyProfile()">&#10005;</button>
   </div>
   <div class="me-form">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
+      <div id="me-photo-preview" style="width:64px;height:64px;flex-shrink:0"></div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label class="me-backup-btn" style="display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:none;cursor:pointer">
+          📷 Cambiar foto
+          <input type="file" accept="image/*" style="display:none" onchange="uploadMyPhoto(this)">
+        </label>
+        <button class="me-backup-btn" style="flex:none;background:transparent;border-color:var(--border)" onclick="removeMyPhoto()">Quitar foto</button>
+      </div>
+    </div>
     <div class="ef-lbl">Fecha de nacimiento</div>
     <input class="ef-i me-inp" type="date" id="me-birth">
     <div class="ef-lbl">Tipo de sangre</div>
