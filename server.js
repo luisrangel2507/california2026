@@ -169,6 +169,25 @@ app.delete('/api/memory/:id', (req, res) => {
   else res.status(404).json({ error: 'not found' });
 });
 
+// Por default toda foto es visible para familia/amigos (fam===false es lo
+// único que se guarda) — así ninguna de las que ya se subieron cambia de
+// estado con este cambio. Cualquiera del grupo puede ocultar una foto
+// puntual, sin necesidad de ser admin, igual que subirlas.
+app.post('/api/memory/:id/visibility', (req, res) => {
+  const { fam } = req.body;
+  if (typeof fam !== 'boolean') return res.status(400).json({ error: 'missing fields' });
+  const { id } = req.params;
+  let found = null;
+  Object.keys(memStore).forEach(key => {
+    const p = memStore[key].find((p) => p.id === id);
+    if (p) found = p;
+  });
+  if (!found) return res.status(404).json({ error: 'not found' });
+  if (fam) delete found.fam; else found.fam = false;
+  persistMem();
+  res.json({ ok: true });
+});
+
 // ── Gastos compartidos entre todos los del viaje ───────────────────────────
 const EXP_FILE = path.join(DATA_DIR, 'expenses.json');
 let expStore = [];

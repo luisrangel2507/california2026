@@ -353,7 +353,8 @@ async function refreshPhotos(){
     var mem = await r.json();
     var flat = [];
     Object.keys(mem).forEach(function(key){
-      (mem[key]||[]).forEach(function(p){ flat.push(p); });
+      // fam===false: alguien del grupo la ocultó a propósito para familiares/amigos.
+      (mem[key]||[]).forEach(function(p){ if(p.fam!==false) flat.push(p); });
     });
     flat.sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
     SG_PHOTOS = flat;
