@@ -2364,22 +2364,6 @@
 
       <div id="exp-list"></div>
       <div id="balances"></div>
-
-      <!-- Notif toggle at the bottom -->
-      <div class="ntfy-row" style="margin-top:4px">
-        <div class="ntfy-status">
-          <span id="ntfy-icon">🔔</span>
-          <span id="ntfy-label">Notificaciones de llegada</span>
-        </div>
-        <button class="btn-ntfy" onclick="requestNotifPerm()">Activar</button>
-      </div>
-      <div class="ntfy-row">
-        <div class="ntfy-status">
-          <span>🧪</span>
-          <span>Probar notificación push</span>
-        </div>
-        <button class="btn-ntfy" id="push-test-btn" onclick="sendTestPush()">Probar</button>
-      </div>
     </div>
   </div>
 </div>
@@ -7111,6 +7095,21 @@ if('serviceWorker' in navigator){
         <span>Compartir mi ubicación en vivo con el grupo</span>
       </div>
       <button class="btn-ntfy" id="share-loc-btn" onclick="toggleShareLoc()">Activar</button>
+    </div>
+
+    <div class="ntfy-row">
+      <div class="ntfy-status">
+        <span id="ntfy-icon">🔔</span>
+        <span id="ntfy-label">Notificaciones de llegada</span>
+      </div>
+      <button class="btn-ntfy" onclick="requestNotifPerm()">Activar</button>
+    </div>
+    <div class="ntfy-row">
+      <div class="ntfy-status">
+        <span>🧪</span>
+        <span>Probar notificación push</span>
+      </div>
+      <button class="btn-ntfy" id="push-test-btn" onclick="sendTestPush()">Probar</button>
     </div>
 
     <div class="ntfy-row">
