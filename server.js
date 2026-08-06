@@ -278,13 +278,18 @@ app.post('/api/profiles', (req, res) => {
   if (idx === undefined || !data || typeof data !== 'object') {
     return res.status(400).json({ error: 'missing fields' });
   }
+  // Se hace merge campo por campo (no un reemplazo completo) — así una
+  // subida de foto por sí sola no borra el resto del perfil, y viceversa.
+  const prev = profStore[idx] || {};
+  const pick = (key) => (data[key] !== undefined ? data[key] : (prev[key] || ''));
   profStore[idx] = {
-    birth: data.birth || '',
-    blood: data.blood || '',
-    address: data.address || '',
-    ecName: data.ecName || '',
-    ecPhoneCode: data.ecPhoneCode || '',
-    ecPhone: data.ecPhone || '',
+    birth: pick('birth'),
+    blood: pick('blood'),
+    address: pick('address'),
+    ecName: pick('ecName'),
+    ecPhoneCode: pick('ecPhoneCode'),
+    ecPhone: pick('ecPhone'),
+    photo: pick('photo'),
   };
   persistProf();
   res.json({ ok: true });
