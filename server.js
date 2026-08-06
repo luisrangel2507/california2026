@@ -280,6 +280,7 @@ app.post('/api/profiles', (req, res) => {
   }
   profStore[idx] = {
     birth: data.birth || '',
+    blood: data.blood || '',
     address: data.address || '',
     ecName: data.ecName || '',
     ecPhoneCode: data.ecPhoneCode || '',
