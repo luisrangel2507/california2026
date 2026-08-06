@@ -1031,6 +1031,34 @@
     .car-btn:active { transform: scale(.94); }
     .car-btn.car-set { color: var(--red); box-shadow: 0 0 0 2px rgba(255,80,80,.35), 0 2px 16px rgba(255,80,80,.3); }
 
+    /* ── BOTÓN ESTILO DE MAPA ── */
+    .map-style-btn {
+      position: absolute;
+      bottom: 232px; right: 14px;
+      z-index: 500;
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--panel);
+      border: 1px solid var(--border2);
+      font-size: 17px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 16px rgba(0,200,255,.15);
+      transition: transform .12s var(--ease);
+    }
+    .map-style-btn:active { transform: scale(.94); }
+
+    /* ── SELECTOR DE ESTILO DE MAPA ── */
+    .ms-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; padding:6px 18px 28px; }
+    .ms-opt {
+      border-radius:14px; overflow:hidden; cursor:pointer;
+      border:2px solid transparent; background:var(--glass);
+      transition: border-color .15s;
+    }
+    .ms-opt.on { border-color:var(--cyan); }
+    .ms-thumb { height:76px; display:flex; align-items:center; justify-content:center; font-size:26px; }
+    .ms-lbl { padding:8px 0; text-align:center; font-size:12.5px; font-weight:600; color:var(--text); }
+
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-thumb { background: rgba(0,200,255,.15); border-radius: 2px; }
@@ -2174,6 +2202,7 @@
   <div class="add-place-btn" onclick="toggleAddPlace()" title="Agregar lugar">+</div>
   <div class="map-dl-btn" id="map-dl-btn" onclick="downloadOfflineMap()" title="Descargar mapa para uso offline">📥</div>
   <div class="car-btn" id="car-btn" onclick="carBtnTap()" title="Marcar dónde dejamos el carro">🚗</div>
+  <div class="map-style-btn" onclick="openMapStyle()" title="Estilo de mapa">🗺️</div>
 
   <!-- Add place panel -->
   <div class="ap-panel" id="ap-panel">
@@ -2853,14 +2882,83 @@ async function loadPhotos(){
 }
 
 // ── MAP ────────────────────────────────────────────────────────────────────
+// Estilos de mapa — es preferencia de cada teléfono (localStorage), no
+// estado del viaje: no tiene sentido guardarlo en el servidor.
+var MAP_STYLES = {
+  calles: {
+    label:'Calles', icon:'🗺️', grad:'linear-gradient(135deg,#eef1f5,#c9d3dd)',
+    url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd',
+  },
+  satelite: {
+    label:'Satélite', icon:'🛰️', grad:'linear-gradient(135deg,#3f5c34,#7a6a45)',
+    url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution:'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics', maxZoom:19, subdomains:'',
+  },
+  terreno: {
+    label:'Terreno', icon:'⛰️', grad:'linear-gradient(135deg,#cbb994,#8fae74)',
+    url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    attribution:'© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)', maxZoom:17, subdomains:'abc',
+  },
+  oscuro: {
+    label:'Oscuro', icon:'🌙', grad:'linear-gradient(135deg,#0d1420,#1b2a3d)',
+    url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd',
+  },
+};
+var curMapStyle = localStorage.getItem('ca26_map_style') || 'calles';
+if(!MAP_STYLES[curMapStyle]) curMapStyle = 'calles';
+var mapTileLayer = null;
+
+function tileUrlFor(styleKey, s, z, x, y){
+  var style = MAP_STYLES[styleKey];
+  var retina = (window.devicePixelRatio>=2 && style.url.indexOf('{r}')!==-1) ? '@2x' : '';
+  return style.url.replace('{s}',s).replace('{z}',z).replace('{x}',x).replace('{y}',y).replace('{r}',retina);
+}
+
+function addTileLayer(styleKey){
+  var s = MAP_STYLES[styleKey] || MAP_STYLES.calles;
+  if(mapTileLayer) mapObj.removeLayer(mapTileLayer);
+  mapTileLayer = L.tileLayer(s.url, {
+    attribution:s.attribution, maxZoom:s.maxZoom, subdomains:s.subdomains||'abc'
+  }).addTo(mapObj);
+}
+
 function initMap(){
   mapObj = L.map('map').setView([36.0,-120.2],6);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
-    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd'
-  }).addTo(mapObj);
+  addTileLayer(curMapStyle);
 
   renderPlaceMarkers();
   updateMapDlStatus();
+}
+
+function renderMapStylePicker(){
+  var grid = document.getElementById('ms-grid');
+  if(!grid) return;
+  grid.innerHTML = Object.keys(MAP_STYLES).map(function(key){
+    var s = MAP_STYLES[key];
+    var on = key===curMapStyle;
+    return '<div class="ms-opt'+(on?' on':'')+'" onclick="setMapStyle(\''+key+'\')">'+
+      '<div class="ms-thumb" style="background:'+s.grad+'">'+s.icon+'</div>'+
+      '<div class="ms-lbl">'+esc(s.label)+'</div>'+
+    '</div>';
+  }).join('');
+}
+function setMapStyle(styleKey){
+  if(!MAP_STYLES[styleKey] || styleKey===curMapStyle){ closeMapStyle(); return; }
+  curMapStyle = styleKey;
+  localStorage.setItem('ca26_map_style', styleKey);
+  addTileLayer(styleKey);
+  closeMapStyle();
+}
+function openMapStyle(){
+  renderMapStylePicker();
+  document.getElementById('mapstyle-overlay').classList.add('show');
+  document.getElementById('mapstyle-sheet').classList.add('show');
+}
+function closeMapStyle(){
+  document.getElementById('mapstyle-overlay').classList.remove('show');
+  document.getElementById('mapstyle-sheet').classList.remove('show');
 }
 
 // ── MAPA OFFLINE (pre-descarga de tiles del recorrido) ──────────────────────
@@ -2901,13 +2999,13 @@ async function downloadOfflineMap(){
       });
     });
   });
-  var subs=['a','b','c','d'];
-  var retina=(window.devicePixelRatio>=2)?'@2x':'';
+  var style = MAP_STYLES[curMapStyle] || MAP_STYLES.calles;
+  var subs = style.subdomains ? style.subdomains.split('') : [''];
   var urls=[];
   Object.keys(tileSet).forEach(function(t){
     var p=t.split('/');
     subs.forEach(function(s){
-      urls.push('https://'+s+'.basemaps.cartocdn.com/light_all/'+p[0]+'/'+p[1]+'/'+p[2]+retina+'.png');
+      urls.push(tileUrlFor(curMapStyle, s, p[0], p[1], p[2]));
     });
   });
 
@@ -7076,6 +7174,20 @@ if('serviceWorker' in navigator){
 <div class="bs-overlay" id="board-overlay" onclick="closeBoardingPass()"></div>
 <div class="bottom-sheet bs-full" id="board-sheet">
   <div class="board-body" id="board-body"></div>
+</div>
+
+<!-- ESTILO DE MAPA BOTTOM SHEET -->
+<div class="bs-overlay" id="mapstyle-overlay" onclick="closeMapStyle()"></div>
+<div class="bottom-sheet" id="mapstyle-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Estilo de mapa</div>
+      <div class="bs-sub">Solo cambia en este teléfono</div>
+    </div>
+    <button class="bs-close" onclick="closeMapStyle()">&#10005;</button>
+  </div>
+  <div class="ms-grid" id="ms-grid"></div>
 </div>
 
 <!-- COMPARTIR APP BOTTOM SHEET -->
