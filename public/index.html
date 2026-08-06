@@ -1783,6 +1783,25 @@
     }
     .dc-again:active { background: rgba(255,255,255,.15); }
 
+    /* ── PRIMERA VEZ: información de emergencia obligatoria ── */
+    .firstinfo-screen {
+      display:none; position:absolute; inset:0; z-index:10500;
+      background:var(--bg); flex-direction:column;
+    }
+    .firstinfo-screen.show { display:flex; }
+    .firstinfo-body { flex:1; overflow-y:auto; padding: calc(env(safe-area-inset-top,0px) + 26px) 20px 20px; }
+    .firstinfo-title { font-size:21px; font-weight:700; margin-bottom:6px; }
+    .firstinfo-sub { font-size:12.5px; color:var(--muted); margin-bottom:22px; line-height:1.55; }
+    .firstinfo-footer {
+      flex-shrink:0; padding:14px 18px max(14px, env(safe-area-inset-bottom,14px));
+      border-top:1px solid var(--border);
+    }
+    .me-blood-badge {
+      display:inline-block; font-family:'Space Mono',monospace; font-size:10px; font-weight:700;
+      color:var(--red); background:rgba(255,80,80,.12); border:1px solid rgba(255,80,80,.3);
+      border-radius:8px; padding:1px 6px; margin-left:6px; vertical-align:middle;
+    }
+
     /* ── PROFILE / LOGIN SCREEN ── */
     .pick-screen {
       display: none; position: absolute; inset: 0; z-index: 10000;
@@ -2123,6 +2142,38 @@
       <div class="pin-pad" id="pin-pad"></div>
       <button class="pin-back" onclick="showPickWho()">← Cambiar perfil</button>
     </div>
+  </div>
+</div>
+
+<!-- PRIMERA VEZ: información de emergencia obligatoria -->
+<div class="firstinfo-screen" id="firstinfo-screen">
+  <div class="firstinfo-body">
+    <div class="firstinfo-title">Antes de empezar</div>
+    <div class="firstinfo-sub">Esta información es para emergencias — todos en el grupo la pueden ver si algo pasa durante el viaje. Tómate un minuto para llenarla.</div>
+    <div class="me-form" style="padding:0;gap:6px">
+      <div class="ef-lbl">Fecha de nacimiento</div>
+      <input class="ef-i me-inp" type="date" id="fi-birth">
+      <div class="ef-lbl">Tipo de sangre</div>
+      <select class="ef-s me-inp" id="fi-blood">
+        <option value="">Selecciona...</option>
+        <option>O+</option><option>O-</option>
+        <option>A+</option><option>A-</option>
+        <option>B+</option><option>B-</option>
+        <option>AB+</option><option>AB-</option>
+      </select>
+      <div class="ef-lbl">Dirección</div>
+      <input class="ef-i me-inp" type="text" id="fi-address" placeholder="Calle, ciudad, CP...">
+      <div class="ef-lbl">Contacto de emergencia — nombre</div>
+      <input class="ef-i me-inp" type="text" id="fi-ec-name" placeholder="Nombre completo">
+      <div class="ef-lbl">Contacto de emergencia — teléfono</div>
+      <div class="me-phone-row">
+        <select class="ef-s" id="fi-ec-code"></select>
+        <input class="ef-i" type="tel" id="fi-ec-phone" placeholder="10 dígitos" inputmode="tel">
+      </div>
+    </div>
+  </div>
+  <div class="firstinfo-footer">
+    <button class="bs-save-btn" style="width:100%" onclick="saveFirstInfo()">Guardar y continuar</button>
   </div>
 </div>
 
@@ -2574,7 +2625,7 @@ function checkPin(){
   } else if(pinMode==='confirm'){
     if(pinBuffer===pinFirst){
       localStorage.setItem('ca26_pin_'+pinTarget, pinBuffer);
-      doLogin(pinTarget);
+      doLogin(pinTarget, true);
     } else {
       pinBuffer=''; pinFirst=''; pinMode='create';
       setMsg('No coinciden — intenta de nuevo', true);
@@ -2621,7 +2672,7 @@ function showProfileScreen(){
   if(typeof trBgVideo !== 'undefined') trBgVideo.play();
 }
 
-function doLogin(i){
+function doLogin(i, isNew){
   meIndex=String(i);
   localStorage.setItem('ca26_me', meIndex);
   document.getElementById('pick-screen').classList.remove('show');
@@ -2631,6 +2682,9 @@ function doLogin(i){
   updateHeroProfile();
   showWelcome(i);
   renderDash(); renderOps(); renderBudget();
+  // Cuenta nueva (PIN recién creado): a huevo llenan su info de emergencia
+  // antes de dejarlos usar la app — nadie la llena si es "opcional".
+  if(isNew) showFirstInfoScreen();
 }
 
 // kept for backward compat (called from dashboard)
@@ -2699,6 +2753,23 @@ document.addEventListener('click', function(e){
   }
 });
 
+function renderGroupContacts(){
+  var el = document.getElementById('me-group-contacts');
+  if(!el) return;
+  el.innerHTML = persons.map(function(p,pi){
+    var pd=PROFILE_DATA[pi]||{};
+    var hasContact=pd.ecName||pd.ecPhone;
+    var bloodBadge = pd.blood ? '<span class="me-blood-badge">🩸 '+esc(pd.blood)+'</span>' : '';
+    return '<div class="me-admin-row">'+
+      '<div class="me-admin-name" style="color:'+PC[pi]+'">'+esc(p)+bloodBadge+'</div>'+
+      '<div class="me-admin-ec">'+(hasContact
+        ? esc(pd.ecName||'—')+(pd.ecPhone?' · '+esc((pd.ecPhoneCode||'')+' '+pd.ecPhone).trim():'')
+        : '<span style="color:var(--muted)">Sin contacto registrado</span>')+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
 async function openMyProfile(){
   await loadProfiles();
   var i=parseInt(meIndex);
@@ -2706,29 +2777,15 @@ async function openMyProfile(){
   document.getElementById('me-title').textContent=persons[i];
   document.getElementById('me-title').style.color=PC[i];
   document.getElementById('me-birth').value=d.birth||'';
+  document.getElementById('me-blood').value=d.blood||'';
   document.getElementById('me-address').value=d.address||'';
   document.getElementById('me-ec-name').value=d.ecName||'';
   buildEcCodeOptions(document.getElementById('me-ec-code'));
   document.getElementById('me-ec-code').value=d.ecPhoneCode||'+52';
   document.getElementById('me-ec-phone').value=d.ecPhone||'';
 
-  var adminSec=document.getElementById('me-admin-sec');
-  if(isAdmin()){
-    adminSec.style.display='';
-    document.getElementById('me-admin-contacts').innerHTML=persons.map(function(p,pi){
-      var pd=PROFILE_DATA[pi]||{};
-      var hasContact=pd.ecName||pd.ecPhone;
-      return '<div class="me-admin-row">'+
-        '<div class="me-admin-name" style="color:'+PC[pi]+'">'+esc(p)+'</div>'+
-        '<div class="me-admin-ec">'+(hasContact
-          ? esc(pd.ecName||'—')+(pd.ecPhone?' · '+esc((pd.ecPhoneCode||'')+' '+pd.ecPhone).trim():'')
-          : '<span style="color:var(--muted)">Sin contacto registrado</span>')+
-        '</div>'+
-      '</div>';
-    }).join('');
-  } else {
-    adminSec.style.display='none';
-  }
+  renderGroupContacts();
+  document.getElementById('me-admin-sec').style.display = isAdmin() ? '' : 'none';
 
   updateShareLocBtn();
   showAppVersion();
@@ -2767,6 +2824,7 @@ async function saveMyProfile(){
   var i=parseInt(meIndex);
   var data={
     birth: document.getElementById('me-birth').value,
+    blood: document.getElementById('me-blood').value,
     address: document.getElementById('me-address').value,
     ecName: document.getElementById('me-ec-name').value,
     ecPhoneCode: document.getElementById('me-ec-code').value,
@@ -2777,6 +2835,43 @@ async function saveMyProfile(){
     await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:data})});
   }catch(e){ toast('No se pudo guardar tu perfil — revisa tu conexión.','error'); }
   closeMyProfile();
+}
+
+// ── PRIMERA VEZ: información de emergencia obligatoria ─────────────────────
+// Se muestra justo al crear el PIN (cuenta nueva) — sin botón para cerrar,
+// sin ella no se puede usar la app. Si alguien no la llena, en una
+// emergencia real nadie del grupo sabría su tipo de sangre ni a quién
+// avisar.
+function showFirstInfoScreen(){
+  buildEcCodeOptions(document.getElementById('fi-ec-code'));
+  document.getElementById('fi-ec-code').value='+52';
+  document.getElementById('firstinfo-screen').classList.add('show');
+}
+
+async function saveFirstInfo(){
+  var birth=document.getElementById('fi-birth').value;
+  var blood=document.getElementById('fi-blood').value;
+  var address=document.getElementById('fi-address').value.trim();
+  var ecName=document.getElementById('fi-ec-name').value.trim();
+  var ecCode=document.getElementById('fi-ec-code').value;
+  var ecPhone=document.getElementById('fi-ec-phone').value.trim();
+  if(!birth||!blood||!address||!ecName||!ecPhone){
+    toast('Completa toda la información antes de continuar.','error');
+    return;
+  }
+  var i=parseInt(meIndex);
+  var data={ birth:birth, blood:blood, address:address, ecName:ecName, ecPhoneCode:ecCode, ecPhone:ecPhone };
+  var btn=document.querySelector('#firstinfo-screen .bs-save-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Guardando...'; }
+  try{
+    await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:data})});
+    PROFILE_DATA[i]=data;
+    document.getElementById('firstinfo-screen').classList.remove('show');
+  }catch(e){
+    toast('No se pudo guardar — revisa tu conexión e intenta de nuevo.','error');
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent='Guardar y continuar'; }
+  }
 }
 
 function logoutMe(){
@@ -6979,6 +7074,14 @@ if('serviceWorker' in navigator){
   <div class="me-form">
     <div class="ef-lbl">Fecha de nacimiento</div>
     <input class="ef-i me-inp" type="date" id="me-birth">
+    <div class="ef-lbl">Tipo de sangre</div>
+    <select class="ef-s me-inp" id="me-blood">
+      <option value="">Selecciona...</option>
+      <option>O+</option><option>O-</option>
+      <option>A+</option><option>A-</option>
+      <option>B+</option><option>B-</option>
+      <option>AB+</option><option>AB-</option>
+    </select>
     <div class="ef-lbl">Dirección</div>
     <input class="ef-i me-inp" type="text" id="me-address" placeholder="Calle, ciudad, CP...">
     <div class="ef-lbl">Contacto de emergencia — nombre</div>
@@ -7005,9 +7108,11 @@ if('serviceWorker' in navigator){
       <button class="btn-ntfy" onclick="openLiveShare()">Sigue mi viaje en vivo</button>
     </div>
 
+    <div class="ef-lbl" style="margin-top:14px">Contactos de emergencia del grupo</div>
+    <div class="me-wipe-note" style="margin-bottom:8px">Visible para Erick, Rafa y Eduardo — por si algo pasa.</div>
+    <div id="me-group-contacts"></div>
+
     <div class="me-admin-sec" id="me-admin-sec" style="display:none">
-      <div class="ef-lbl" style="margin-top:6px">Contactos de emergencia — todos (admin)</div>
-      <div id="me-admin-contacts"></div>
       <button class="me-wipe-btn" onclick="wipeItinerary()">Borrar todo el itinerario</button>
       <div class="me-wipe-note">Deja los 9 días en blanco para empezar de cero. Los gastos, fotos y reservaciones no se tocan.</div>
 
