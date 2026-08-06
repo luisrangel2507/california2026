@@ -1231,7 +1231,7 @@
     .bs-overlay.show { display:block; }
     .bottom-sheet {
       position:absolute; bottom:0; left:0; right:0;
-      background:#0A1E2E; border-top:1px solid rgba(0,200,255,.2);
+      background:var(--panel); border-top:1px solid var(--border2);
       border-radius:20px 20px 0 0; z-index:8001;
       display:flex; flex-direction:column; max-height:88vh;
       transform:translateY(100%);
@@ -1535,7 +1535,7 @@
       content:''; position:absolute; left:0; right:0; top:50%; height:1px;
       background:linear-gradient(90deg, rgba(0,200,255,.32), rgba(245,166,35,.32));
     }
-    .bs-full .tr-cv-mid > * { position:relative; z-index:1; background:#0A1E2E; padding:0 6px; }
+    .bs-full .tr-cv-mid > * { position:relative; z-index:1; background:var(--panel); padding:0 6px; }
     .tr-cv-mid .cv-working { color:var(--cyan); }
     .tr-cv-mid .cv-err { color:var(--red); font-size:11.5px; }
     .tr-f2f-btn {
@@ -5758,7 +5758,7 @@ function _iedDragStart(e, idx, clientY){
   var rect=el.getBoundingClientRect();
   _dragClone=el.cloneNode(true);
   _dragClone.style.cssText='position:fixed;left:'+rect.left+'px;top:'+rect.top+'px;width:'+rect.width+'px;'+
-    'z-index:9999;opacity:.96;pointer-events:none;background:#0A1E2E;border-radius:10px;'+
+    'z-index:9999;opacity:.96;pointer-events:none;background:var(--panel);border-radius:10px;'+
     'box-shadow:0 12px 40px rgba(0,0,0,.8),0 0 0 1px rgba(0,200,255,.25);';
   document.body.appendChild(_dragClone);
   el.classList.add('drag-ghost');
