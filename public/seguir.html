@@ -255,9 +255,11 @@ function buildDays(itinStore){
   });
 }
 
+var TRIP_START = new Date('2026-09-02');
+
 function computeItinStatus(){
   var now = new Date();
-  var tripStart = new Date('2026-09-02');
+  var tripStart = TRIP_START;
   var tripEnd = new Date('2026-09-12');
   if(now<tripStart) return {todayIdx:-1, curActIdx:-1};
   if(now>=tripEnd) return {todayIdx:DAYS.length, curActIdx:-1};
@@ -312,8 +314,10 @@ function renderStatus(){
   var elCity = document.getElementById('sg-city');
   var elDate = document.getElementById('sg-date');
   if(s.todayIdx<0){
-    elDay.textContent = 'El viaje aún no empieza';
-    elCity.textContent = 'Arranca el 2 de septiembre';
+    var daysLeft = Math.max(0, Math.ceil((TRIP_START - new Date()) / (1000*60*60*24)));
+    var who = sharedBy || 'El grupo';
+    elDay.textContent = who+' está preparando sus maletas';
+    elCity.textContent = 'Faltan '+daysLeft+(daysLeft===1 ? ' día' : ' días')+' para el viaje';
     elDate.textContent = '';
   } else if(s.todayIdx>=DAYS.length){
     elDay.textContent = '¡El viaje ya terminó!';
@@ -344,13 +348,14 @@ function initMap(){
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
     attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd'
   }).addTo(mapObj);
-  // Las fuentes (Fraunces/Archivo Black) cargan async y pueden mover el
-  // layout después de que Leaflet ya midió el contenedor — sin esto el
-  // mapa se queda con tiles a medias del tamaño viejo.
+  // #sg-content (donde vive el mapa) sigue en display:none mientras dura la
+  // intro — initMap() corre antes de que termine, así que Leaflet mide un
+  // contenedor de 0×0 y se queda pintando tiles de ese tamaño para siempre.
+  // finishIntro() llama invalidateSize() en cuanto el contenido se hace
+  // visible; esto de aquí es solo respaldo por si las fuentes tardan en
+  // cargar y mueven el layout después.
   var fixSize = function(){ if(mapObj) mapObj.invalidateSize(); };
   if(document.fonts && document.fonts.ready){ document.fonts.ready.then(fixSize); }
-  setTimeout(fixSize, 300);
-  setTimeout(fixSize, 1200);
   window.addEventListener('resize', fixSize);
 }
 
@@ -462,6 +467,9 @@ function finishIntro(){
   intro.classList.add('hide');
   setTimeout(function(){ intro.classList.remove('show','hide'); }, 500);
   document.getElementById('sg-content').style.display = 'block';
+  // El mapa se inicializó mientras este contenedor seguía oculto (0×0) —
+  // hasta ahora tiene un tamaño real que medir.
+  if(mapObj) mapObj.invalidateSize();
 }
 function showIntro(){
   var intro = document.getElementById('sg-intro');
