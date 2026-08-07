@@ -110,7 +110,10 @@ async function sendPushToAll(payload) {
   let ok = 0;
   for (const sub of subs) {
     try {
-      await webpush.sendNotification(sub, JSON.stringify(payload));
+      // Sin timeout, una suscripción vieja apuntando a un push service que ya
+      // no responde deja este await colgado indefinidamente — y con él, la
+      // respuesta al botón "Probar" en el celular (se queda en "Enviando...").
+      await webpush.sendNotification(sub, JSON.stringify(payload), { timeout: 8000 });
       remaining.push(sub);
       ok++;
     } catch (err) {
