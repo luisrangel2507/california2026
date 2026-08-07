@@ -66,6 +66,10 @@ body {
 .sg-day { font-family:'Archivo Black',sans-serif; font-size:20px; color:var(--ink); }
 .sg-city { font-size:15px; color:var(--accent); margin-top:5px; font-weight:700; }
 .sg-date { font-size:12px; color:var(--muted); margin-top:3px; font-family:'Space Mono',monospace; }
+.sg-fact {
+  font-size:12.5px; color:var(--ink); opacity:.85; margin-top:12px; padding-top:12px;
+  border-top:1px solid var(--line); line-height:1.5; font-family:'Space Grotesk',sans-serif;
+}
 
 .sg-km-txt { font-size:13.5px; font-weight:700; margin-bottom:9px; color:var(--ink); }
 .sg-km-track { height:8px; border-radius:5px; background:rgba(27,42,61,.1); overflow:hidden; }
@@ -184,6 +188,7 @@ body {
       <div class="sg-day" id="sg-day">Cargando…</div>
       <div class="sg-city" id="sg-city"></div>
       <div class="sg-date" id="sg-date"></div>
+      <div class="sg-fact" id="sg-fact"></div>
     </div>
 
     <div class="sg-card">
@@ -240,6 +245,71 @@ var sharedBy = (function(){
   var m = location.search.match(/[?&]p=([^&]+)/);
   return m ? decodeURIComponent(m[1].replace(/\+/g,' ')).trim().slice(0,60) : '';
 })();
+
+// Datos curiosos: uno general para la tarjeta de "esperando el viaje" (rota
+// día con día) y uno por ciudad para cuando el viaje ya está en marcha. Si el
+// nombre de la ciudad no matchea con ninguno de la lista (o el itinerario
+// trae otra ruta), cae a uno general — nunca se queda en blanco.
+var GENERAL_FUN_FACTS = [
+  'California tiene más de 1,600 km de costa a lo largo del Pacífico.',
+  'El puente Golden Gate se pintó de "international orange" para verse mejor entre la niebla.',
+  'En Sequoia National Park vive el General Sherman, el árbol más grande del mundo por volumen.',
+  'Death Valley tiene el récord de la temperatura más alta jamás registrada en la Tierra: 56.7 °C.',
+  'California es, ella sola, una de las 5 economías más grandes del mundo.',
+  'El letrero de Hollywood originalmente decía "HOLLYWOODLAND" y era un anuncio de bienes raíces de 1923.',
+];
+
+var CITY_FUN_FACTS = {
+  'san diego': 'San Diego fue el primer punto de la costa de California pisado por europeos, en 1542.',
+  'la jolla': '"La Jolla" significa "la joya" — sus cuevas se pueden recorrer a pie con marea baja.',
+  'los angeles': 'Los Ángeles tiene más de 100 km de playa dentro de su propia área metropolitana.',
+  'hollywood': 'El letrero de Hollywood originalmente decía "HOLLYWOODLAND" y era un anuncio de bienes raíces de 1923.',
+  'santa monica': 'El muelle de Santa Mónica marca el final (oficial) de la histórica Ruta 66.',
+  'venice': 'Venice Beach se construyó a inicios de 1900 con canales inspirados en Venecia, Italia.',
+  'malibu': 'Malibu tiene más de 43 km de playas y fue territorio Chumash antes que colonia española.',
+  'santa barbara': 'A Santa Bárbara le dicen "la Riviera Americana" por su arquitectura estilo mediterráneo.',
+  'solvang': 'Solvang lo fundaron daneses en 1911 — por eso hay molinos de viento en pleno California.',
+  'san luis obispo': 'En SLO abrió el primer Motel 6 del mundo, en 1962, a $6 la noche (de ahí el nombre).',
+  'pismo beach': 'Pismo Beach es de las pocas playas de California donde todavía se puede manejar sobre la arena.',
+  'morro bay': 'La Morro Rock que domina la bahía es en realidad un volcán extinto de 23 millones de años.',
+  'big sur': 'Big Sur no tiene semáforos, Starbucks ni McDonald\'s en casi 145 km de costa.',
+  'carmel': 'En Carmel-by-the-Sea sigue vigente una norma de 1963: no se pueden usar tacones altos sin permiso.',
+  'monterey': 'La bahía de Monterey esconde un cañón submarino más profundo que el Gran Cañón.',
+  'santa cruz': 'El Santa Cruz Beach Boardwalk es el parque de diversiones más viejo de California, desde 1907.',
+  'san jose': 'San José fue la primera capital del estado de California, antes que Sacramento.',
+  'san francisco': 'Los tranvías de San Francisco son el único monumento histórico nacional que sigue "en movimiento".',
+  'napa': 'El Valle de Napa tiene más de 400 bodegas de vino en un área más chica que Los Ángeles.',
+  'sonoma': 'En Sonoma se declaró, por 25 días en 1846, la breve "República de la Bandera del Oso".',
+  'sacramento': 'Sacramento es la capital de California desde 1854, gracias a la fiebre del oro.',
+  'yosemite': 'El Half Dome de Yosemite lo formaron glaciares — no es que "le falte la mitad".',
+  'sequoia': 'En Sequoia vive el General Sherman, el árbol más grande del mundo por volumen.',
+  'palm springs': 'El tranvía aéreo de Palm Springs sube casi 2,600 metros de desierto a pino en 10 minutos.',
+  'joshua tree': 'Los "árboles" de Joshua Tree no son árboles — son una especie de yuca gigante.',
+  'las vegas': 'El letrero de "Welcome to Fabulous Las Vegas" está, técnicamente, fuera de los límites de la ciudad.',
+  'death valley': 'Death Valley tiene el récord de la temperatura más alta jamás registrada en la Tierra: 56.7 °C.',
+  'lake tahoe': 'El Lago Tahoe es tan profundo (500 m) que si se vaciara cubriría toda California con 40 cm de agua.',
+  'anaheim': 'Disneyland abrió en Anaheim en 1955 sobre lo que antes eran puras huertas de naranjos.',
+  'disneyland': 'Disneyland abrió en Anaheim en 1955 sobre lo que antes eran puras huertas de naranjos.',
+  'long beach': 'En Long Beach está anclado el Queen Mary, un transatlántico de los años 30 convertido en hotel.',
+  'newport beach': 'El muelle de Newport Beach fue de los primeros en tener luz eléctrica en toda la costa oeste.',
+  'laguna beach': 'Laguna Beach tiene más de 30 playas distintas en apenas 14 km de costa.',
+  'tijuana': 'La garita San Ysidro entre Tijuana y San Diego es el cruce fronterizo más transitado del mundo.',
+};
+
+function stripAccents(s){
+  return s.replace(/[áàäâ]/g,'a').replace(/[éèëê]/g,'e').replace(/[íìïî]/g,'i')
+    .replace(/[óòöô]/g,'o').replace(/[úùüû]/g,'u').replace(/ñ/g,'n');
+}
+
+function funFactForCity(cityStr){
+  if(!cityStr) return null;
+  var norm = stripAccents(cityStr.toLowerCase());
+  var keys = Object.keys(CITY_FUN_FACTS).sort(function(a,b){ return b.length-a.length; });
+  for(var i=0;i<keys.length;i++){
+    if(norm.indexOf(keys[i]) !== -1) return CITY_FUN_FACTS[keys[i]];
+  }
+  return null;
+}
 
 var DAYS = [];
 var mapObj = null, markers = {};
@@ -313,21 +383,27 @@ function renderStatus(){
   var elDay = document.getElementById('sg-day');
   var elCity = document.getElementById('sg-city');
   var elDate = document.getElementById('sg-date');
+  var elFact = document.getElementById('sg-fact');
   if(s.todayIdx<0){
     var daysLeft = Math.max(0, Math.ceil((TRIP_START - new Date()) / (1000*60*60*24)));
     var who = sharedBy || 'El grupo';
     elDay.textContent = 'Sé paciente, '+who+' está preparando sus maletas';
     elCity.textContent = 'Faltan '+daysLeft+(daysLeft===1 ? ' día' : ' días')+' para el viaje';
     elDate.textContent = '';
+    elFact.textContent = '💡 '+GENERAL_FUN_FACTS[daysLeft % GENERAL_FUN_FACTS.length];
   } else if(s.todayIdx>=DAYS.length){
     elDay.textContent = '¡El viaje ya terminó!';
     elCity.textContent = 'Gracias por seguirlo 💙';
     elDate.textContent = '';
+    elFact.textContent = '';
   } else {
     var d = DAYS[s.todayIdx];
     elDay.textContent = 'Día '+(s.todayIdx+1)+' de '+DAYS.length;
     elCity.textContent = d.city || 'Por definir';
     elDate.textContent = d.wd+' '+d.date;
+    var cityShort = (d.city||'').split('→')[0].split('—')[0].trim();
+    var fact = funFactForCity(cityShort) || GENERAL_FUN_FACTS[s.todayIdx % GENERAL_FUN_FACTS.length];
+    elFact.textContent = '💡 '+fact;
   }
   document.getElementById('sg-km-txt').textContent =
     k.soFar+' km recorridos'+(k.total?' de ~'+k.total+' km':'');
