@@ -1230,9 +1230,16 @@
       border-radius:20px 20px 0 0; z-index:8001;
       display:flex; flex-direction:column; max-height:88vh;
       transform:translateY(100%);
-      transition:transform .32s cubic-bezier(.32,.72,0,1);
+      visibility:hidden;
+      transition:transform .32s cubic-bezier(.32,.72,0,1), visibility 0s linear .32s;
     }
-    .bottom-sheet.show { transform:translateY(0); }
+    /* visibility:hidden (además de translateY) es lo que de verdad evita que
+       un sheet "cerrado" se alcance a asomar por debajo de otro si algo sale
+       raro con el layout (p.ej. otro sheet quedó abierto atrás) — sin esto,
+       translateY(100%) por sí solo puede dejar un pixel colado. El retraso
+       en la transición de visibility es para no cortar en seco la animación
+       de cierre. */
+    .bottom-sheet.show { transform:translateY(0); visibility:visible; transition-delay:0s; }
     /* Pantalla completa: el modo conversación necesita las dos mitades
        completas, si no se ve cortado con la app asomándose atrás. */
     .bottom-sheet.bs-full {
