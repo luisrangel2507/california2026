@@ -1121,14 +1121,41 @@
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 18px;
     }
-    .dash-pre-num {
-      font-family:'Space Mono',monospace; font-size:60px; font-weight:700;
-      line-height:1; color:var(--cyan);
-    }
     .dash-pre-lbl {
-      font-size:10px; color:var(--muted); margin-top:8px;
+      font-size:10px; color:var(--muted); margin-top:14px;
       text-transform:uppercase; letter-spacing:3px; font-family:'Space Mono',monospace;
     }
+
+    /* Contador "días para salir" — tablero mecánico tipo split-flap */
+    .flip-counter { display:flex; justify-content:center; gap:7px; }
+    .flip-digit {
+      position:relative; width:48px; height:66px; border-radius:8px;
+      background:linear-gradient(180deg,#F3ECDA,#E2D6B8);
+      box-shadow:0 8px 16px -8px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.6);
+    }
+    .flip-digit::before {
+      content:''; position:absolute; left:2px; right:2px; top:50%; height:1px;
+      background:rgba(27,42,61,.3); z-index:2;
+    }
+    .flip-digit-face {
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      font-family:'Space Mono',monospace; font-size:32px; font-weight:700; color:#1B2A3D;
+      backface-visibility:hidden;
+    }
+    .flip-digit-face.flip-anim { animation:flipDigit .55s cubic-bezier(.45,0,.2,1); }
+    @keyframes flipDigit {
+      0%   { transform:rotateX(0deg); filter:brightness(1); }
+      48%  { transform:rotateX(-92deg); filter:brightness(.75); }
+      52%  { transform:rotateX(92deg); filter:brightness(.75); }
+      100% { transform:rotateX(0deg); filter:brightness(1); }
+    }
+    .flip-rivet {
+      position:absolute; top:50%; width:6px; height:6px; margin-top:-3px;
+      border-radius:50%; background:#9a8f74; z-index:3;
+      box-shadow:inset 0 1px 1px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.3);
+    }
+    .flip-rivet-l { left:-3px; }
+    .flip-rivet-r { right:-3px; }
 
     /* Days strip */
     .dash-days-strip {
@@ -3691,6 +3718,36 @@ function parseMins(t){
   var p=t.split(':'); return p.length===2?parseInt(p[0])*60+parseInt(p[1]):0;
 }
 
+// ── Contador "días para salir" estilo tablero mecánico (split-flap) ────────
+// Se acuerda del último valor pintado para poder animar solo los dígitos que
+// realmente cambiaron — el número real solo cambia una vez al día, así que
+// esto casi nunca anima (correcto: no debe voltear en cada refresco), salvo
+// la primera vez que se pinta en la sesión, donde se fuerza el volteo de
+// todos los dígitos como gesto de "encendido".
+var dashFlipPrevVal = null;
+
+function flipDigitHtml(d){
+  return '<div class="flip-digit"><span class="flip-rivet flip-rivet-l"></span><span class="flip-rivet flip-rivet-r"></span><div class="flip-digit-face">'+d+'</div></div>';
+}
+
+function animateFlipCounterTo(containerId, targetStr, forceAll){
+  var el = document.getElementById(containerId);
+  if(!el) return;
+  var faces = el.querySelectorAll('.flip-digit-face');
+  targetStr.split('').forEach(function(d,i){
+    var face = faces[i];
+    if(!face || (!forceAll && face.textContent===d)) return;
+    setTimeout(function(){
+      face.classList.add('flip-anim');
+      setTimeout(function(){ face.textContent=d; }, 260);
+      face.addEventListener('animationend', function handler(){
+        face.classList.remove('flip-anim');
+        face.removeEventListener('animationend', handler);
+      });
+    }, i*90); // efecto cascada, de izquierda a derecha
+  });
+}
+
 function renderDash(){
   var now = new Date();
   var h24 = now.getHours();
@@ -3714,13 +3771,18 @@ function renderDash(){
   var tripStart = new Date('2026-09-02');
   var tripEnd   = new Date('2026-09-12');
   var actHTML = '';
+  var dLeftStr = null;
 
   if(now < tripStart){
     var dLeft = Math.ceil((tripStart-now)/(1000*60*60*24));
+    dLeftStr = String(dLeft).padStart(2,'0');
+    // Arranca mostrando el valor anterior (si lo hay); animateFlipCounterTo()
+    // lo voltea al valor nuevo justo después de insertarse en el DOM.
+    var startDigits = (dashFlipPrevVal && dashFlipPrevVal.length===dLeftStr.length) ? dashFlipPrevVal : dLeftStr;
     actHTML =
       '<div class="dash-pre-band">'+
         '<div class="dash-now-pill" style="display:inline-flex;margin-bottom:10px"><span class="dot"></span>PRE-VIAJE</div>'+
-        '<div class="dash-pre-num">'+dLeft+'</div>'+
+        '<div class="flip-counter" id="dash-flip-counter">'+startDigits.split('').map(flipDigitHtml).join('')+'</div>'+
         '<div class="dash-pre-lbl">d&iacute;as para salir</div>'+
       '</div>';
   } else if(now >= tripEnd){
@@ -3834,6 +3896,10 @@ function renderDash(){
   }
 
   document.getElementById('dash-body').innerHTML = ambientHTML+actHTML+daysHTML+spendHTML+progressHTML+catHTML;
+  if(dLeftStr!==null){
+    animateFlipCounterTo('dash-flip-counter', dLeftStr, dashFlipPrevVal===null);
+  }
+  dashFlipPrevVal = dLeftStr;
 }
 
 // ── ITINERARY ──────────────────────────────────────────────────────────────
