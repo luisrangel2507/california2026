@@ -1121,6 +1121,10 @@
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 18px;
     }
+    .dash-pre-phrase {
+      font-size:14.5px; font-weight:600; color:var(--text); line-height:1.4;
+      margin-bottom:16px; font-family:'Space Grotesk',sans-serif;
+    }
     .dash-pre-lbl {
       font-size:10px; color:var(--muted); margin-top:14px;
       text-transform:uppercase; letter-spacing:3px; font-family:'Space Mono',monospace;
@@ -3718,6 +3722,16 @@ function parseMins(t){
   var p=t.split(':'); return p.length===2?parseInt(p[0])*60+parseInt(p[1]):0;
 }
 
+// Frases que van rotando día con día en la cuenta regresiva pre-viaje, para
+// que no sea siempre el mismo "PRE-VIAJE" — cuál toca depende de cuántos
+// días falten, así se ve distinta cada día pero no cambia sola a medio día.
+var PRE_TRIP_PHRASES = [
+  { before: '¿C&oacute;mo te caer&iacute;a una hamburguesa de In-N-Out en', after: 'd&iacute;as?' },
+  { before: 'La playa de Manhattan Beach te espera en', after: 'd&iacute;as' },
+  { before: 'Ya sabes qu&eacute; vas a comprar en el outlet en', after: 'd&iacute;as' },
+  { before: 'DEM2 te desea buen viaje en', after: 'd&iacute;as' },
+];
+
 // ── Contador "días para salir" estilo tablero mecánico (split-flap) ────────
 // Se acuerda del último valor pintado para poder animar solo los dígitos que
 // realmente cambiaron — el número real solo cambia una vez al día, así que
@@ -3779,11 +3793,12 @@ function renderDash(){
     // Arranca mostrando el valor anterior (si lo hay); animateFlipCounterTo()
     // lo voltea al valor nuevo justo después de insertarse en el DOM.
     var startDigits = (dashFlipPrevVal && dashFlipPrevVal.length===dLeftStr.length) ? dashFlipPrevVal : dLeftStr;
+    var phrase = PRE_TRIP_PHRASES[dLeft % PRE_TRIP_PHRASES.length];
     actHTML =
       '<div class="dash-pre-band">'+
-        '<div class="dash-now-pill" style="display:inline-flex;margin-bottom:10px"><span class="dot"></span>PRE-VIAJE</div>'+
+        '<div class="dash-pre-phrase">'+phrase.before+'</div>'+
         '<div class="flip-counter" id="dash-flip-counter">'+startDigits.split('').map(flipDigitHtml).join('')+'</div>'+
-        '<div class="dash-pre-lbl">d&iacute;as para salir</div>'+
+        '<div class="dash-pre-lbl">'+phrase.after+'</div>'+
       '</div>';
   } else if(now >= tripEnd){
     actHTML =
