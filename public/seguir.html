@@ -344,6 +344,14 @@ function initMap(){
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
     attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd'
   }).addTo(mapObj);
+  // Las fuentes (Fraunces/Archivo Black) cargan async y pueden mover el
+  // layout después de que Leaflet ya midió el contenedor — sin esto el
+  // mapa se queda con tiles a medias del tamaño viejo.
+  var fixSize = function(){ if(mapObj) mapObj.invalidateSize(); };
+  if(document.fonts && document.fonts.ready){ document.fonts.ready.then(fixSize); }
+  setTimeout(fixSize, 300);
+  setTimeout(fixSize, 1200);
+  window.addEventListener('resize', fixSize);
 }
 
 async function refreshLocations(){
