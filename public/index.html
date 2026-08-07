@@ -2395,6 +2395,12 @@
   <button class="ov-del" onclick="delPhoto()">Eliminar</button>
 </div>
 
+<!-- Profile photo overlay -->
+<div class="ov" id="me-photo-ov" onclick="closeMyPhotoOv(event)">
+  <button class="ov-x" onclick="closeMyPhotoOv(null,1)">×</button>
+  <img id="me-photo-ov-img" src="" alt="">
+</div>
+
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="qrcode.js"></script>
@@ -5405,6 +5411,21 @@ function closeOv(ev,force){
   }
 }
 
+function openMyPhotoOv(){
+  var i=parseInt(meIndex);
+  var pd=PROFILE_DATA[i]||{};
+  if(!pd.photo) return;
+  document.getElementById('me-photo-ov-img').src=pd.photo;
+  document.getElementById('me-photo-ov').classList.add('show');
+}
+
+function closeMyPhotoOv(ev,force){
+  if(force||ev&&ev.target===document.getElementById('me-photo-ov')){
+    document.getElementById('me-photo-ov').classList.remove('show');
+    document.getElementById('me-photo-ov-img').src='';
+  }
+}
+
 async function delPhoto(){
   var ovEl=document.getElementById('ov');
   var memId=ovEl.dataset&&ovEl.dataset.memId;
@@ -7060,7 +7081,7 @@ if('serviceWorker' in navigator){
   </div>
   <div class="me-form">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px">
-      <div id="me-photo-preview" style="width:64px;height:64px;flex-shrink:0"></div>
+      <div id="me-photo-preview" style="width:64px;height:64px;flex-shrink:0;cursor:pointer" onclick="openMyPhotoOv()"></div>
       <div style="display:flex;flex-direction:column;gap:6px">
         <label class="me-backup-btn" style="display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:none;cursor:pointer">
           📷 Cambiar foto
