@@ -316,7 +316,7 @@ function renderStatus(){
   if(s.todayIdx<0){
     var daysLeft = Math.max(0, Math.ceil((TRIP_START - new Date()) / (1000*60*60*24)));
     var who = sharedBy || 'El grupo';
-    elDay.textContent = who+' está preparando sus maletas';
+    elDay.textContent = 'Sé paciente, '+who+' está preparando sus maletas';
     elCity.textContent = 'Faltan '+daysLeft+(daysLeft===1 ? ' día' : ' días')+' para el viaje';
     elDate.textContent = '';
   } else if(s.todayIdx>=DAYS.length){
