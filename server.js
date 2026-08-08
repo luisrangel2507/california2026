@@ -139,6 +139,32 @@ app.post('/api/send-test', async (req, res) => {
   res.json({ ok: true, sent: result.ok, total: result.total, errors: result.errors });
 });
 
+// ── Frases de la cuenta regresiva pre-viaje (editables por el admin) ───────
+const PHRASES_FILE = path.join(DATA_DIR, 'countdown-phrases.json');
+function loadCountdownPhrases() {
+  try { return JSON.parse(fs.readFileSync(PHRASES_FILE, 'utf8')); }
+  catch (e) { return []; }
+}
+function saveCountdownPhrases(list) {
+  fs.writeFileSync(PHRASES_FILE, JSON.stringify(list, null, 2));
+}
+
+app.get('/api/countdown-phrases', (req, res) => {
+  res.json({ phrases: loadCountdownPhrases() });
+});
+
+app.post('/api/countdown-phrases', (req, res) => {
+  const { phrases, who } = req.body || {};
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  if (!Array.isArray(phrases)) return res.status(400).json({ error: 'missing fields' });
+  const clean = phrases
+    .map((p) => (typeof p === 'string' ? p.trim().slice(0, 200) : ''))
+    .filter(Boolean)
+    .slice(0, 40);
+  saveCountdownPhrases(clean);
+  res.json({ ok: true, phrases: clean });
+});
+
 // ── Fotos compartidas por actividad ────────────────────────────────────────
 const MEM_FILE = path.join(DATA_DIR, 'memory.json');
 let memStore = {};
