@@ -1113,20 +1113,48 @@
     }
     .dash-edit-btn:active { color:var(--cyan); }
 
-    /* Pre-trip countdown */
+    /* Pre-trip countdown — fondo de cielo con nubes que se deslizan despacio */
     .dash-pre-band {
+      position:relative; overflow:hidden; flex-shrink:0;
       padding:28px 20px; text-align:center;
       margin: 14px 14px 0;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, #9FC0E6 0%, #C9DEF2 55%, #EAF3FB 100%);
+      border: 1px solid rgba(255,255,255,.35);
       border-radius: 18px;
     }
+    .dash-pre-sky { position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+    .dash-pre-sky::before, .dash-pre-sky::after {
+      content:''; position:absolute; inset:0;
+      background-repeat: repeat-x; filter: blur(8px);
+    }
+    .dash-pre-sky::before {
+      background-image:
+        radial-gradient(ellipse 90px 24px at 15% 40%, rgba(255,255,255,.9), transparent 70%),
+        radial-gradient(ellipse 130px 30px at 55% 60%, rgba(255,255,255,.8), transparent 70%),
+        radial-gradient(ellipse 100px 26px at 85% 30%, rgba(255,255,255,.85), transparent 70%);
+      background-size: 340px 100%;
+      animation: cloudDrift1 70s linear infinite;
+    }
+    .dash-pre-sky::after {
+      background-image:
+        radial-gradient(ellipse 70px 18px at 30% 55%, rgba(255,255,255,.7), transparent 70%),
+        radial-gradient(ellipse 110px 26px at 75% 45%, rgba(255,255,255,.6), transparent 70%);
+      background-size: 260px 100%;
+      animation: cloudDrift2 110s linear infinite reverse;
+      opacity:.7;
+    }
+    @keyframes cloudDrift1 { from{background-position-x:0;} to{background-position-x:-340px;} }
+    @keyframes cloudDrift2 { from{background-position-x:0;} to{background-position-x:-260px;} }
+    @media (prefers-reduced-motion: reduce) {
+      .dash-pre-sky::before, .dash-pre-sky::after { animation: none; }
+    }
+    .dash-pre-content { position:relative; z-index:1; }
     .dash-pre-phrase {
-      font-size:14.5px; font-weight:600; color:var(--text); line-height:1.4;
+      font-size:14.5px; font-weight:600; color:#1B2A3D; line-height:1.4;
       margin-bottom:16px; font-family:'Space Grotesk',sans-serif;
     }
     .dash-pre-lbl {
-      font-size:10px; color:var(--muted); margin-top:14px;
+      font-size:10px; color:rgba(27,42,61,.65); margin-top:14px;
       text-transform:uppercase; letter-spacing:3px; font-family:'Space Mono',monospace;
     }
 
@@ -3804,9 +3832,12 @@ function renderDash(){
     var phrase = PRE_TRIP_PHRASES[dLeft % PRE_TRIP_PHRASES.length];
     actHTML =
       '<div class="dash-pre-band">'+
-        '<div class="dash-pre-phrase">'+phrase.before+'</div>'+
-        '<div class="flip-counter" id="dash-flip-counter">'+startDigits.split('').map(flipDigitHtml).join('')+'</div>'+
-        '<div class="dash-pre-lbl">'+phrase.after+'</div>'+
+        '<div class="dash-pre-sky"></div>'+
+        '<div class="dash-pre-content">'+
+          '<div class="dash-pre-phrase">'+phrase.before+'</div>'+
+          '<div class="flip-counter" id="dash-flip-counter">'+startDigits.split('').map(flipDigitHtml).join('')+'</div>'+
+          '<div class="dash-pre-lbl">'+phrase.after+'</div>'+
+        '</div>'+
       '</div>';
   } else if(now >= tripEnd){
     actHTML =
