@@ -3788,9 +3788,19 @@ async function loadCountdownPhrases(){
 }
 
 function splitPhraseTemplate(tpl){
+  // "{d}" es para quien lo escriba desde compu, pero en el teclado del cel
+  // las llaves ni siquiera están a la vista y el autocorrector se las come
+  // fácil — así que si no aparece, el número se mete solo justo antes de la
+  // palabra "día"/"días" (que casi cualquier frase de cuenta regresiva ya
+  // trae de por sí, sin necesidad de escribir nada especial).
   var i = tpl.indexOf('{d}');
-  if(i<0) return { before: tpl.trim(), after: 'días' };
-  return { before: tpl.slice(0,i).trim(), after: tpl.slice(i+3).trim() || 'días' };
+  if(i>=0) return { before: tpl.slice(0,i).trim(), after: tpl.slice(i+3).trim() || 'días' };
+  var m = tpl.match(/\bd[ií]as?\b/i);
+  if(!m) return { before: tpl.trim(), after: 'días' };
+  // limpia restos de "{d}"/"d" sueltos que haya quedado a mano de un intento
+  // fallido de usar el placeholder (típico del autocorrector del cel)
+  var before = tpl.slice(0,m.index).replace(/(\{d\}|\bd\b)\s*$/i,'').trim();
+  return { before: before, after: tpl.slice(m.index).trim() };
 }
 
 async function savePhrases(){
@@ -7420,8 +7430,8 @@ if('serviceWorker' in navigator){
       <div class="me-wipe-note">El servidor puede perder el itinerario si Railway lo redespliega sin un disco permanente. Descarga un respaldo de vez en cuando — es un archivo que puedes guardar donde quieras y restaurar aquí mismo si algún día el itinerario aparece vacío.</div>
 
       <div class="ef-lbl" style="margin-top:14px">Frases de la cuenta regresiva</div>
-      <div class="me-wipe-note">Se van rotando día con día en Inicio mientras falta para el viaje. Una frase por línea; escribe <b>{d}</b> donde quieras que aparezca el número de días. Déjalo en blanco para usar las de siempre.</div>
-      <textarea class="ef-i" id="me-phrases" rows="6" style="width:100%;resize:vertical;font-family:'Space Mono',monospace;font-size:12px;box-sizing:border-box" placeholder="¿Cómo te caería una hamburguesa de In-N-Out en {d} días?"></textarea>
+      <div class="me-wipe-note">Se van rotando día con día en Inicio mientras falta para el viaje. Una frase por línea — el número de días aparece solo justo antes de donde escribas "día" o "días", no hace falta poner nada especial. Déjalo en blanco para usar las de siempre.</div>
+      <textarea class="ef-i" id="me-phrases" rows="6" style="width:100%;resize:vertical;font-family:'Space Mono',monospace;font-size:12px;box-sizing:border-box" placeholder="¿Cómo te caería una hamburguesa de In-N-Out en días?"></textarea>
       <button class="me-backup-btn" style="margin-top:8px" onclick="savePhrases()">Guardar frases</button>
     </div>
     <div class="me-version" id="me-version"></div>
