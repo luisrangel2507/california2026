@@ -6162,6 +6162,27 @@ function closeTranslate(){
     try{ localStorage.setItem(FAB_POS_KEY, JSON.stringify({left:r.left, top:r.top})); }catch(e){}
   }
 
+  // Al soltar, se "imanta" al borde (izquierdo o derecho, el más cercano) en
+  // vez de quedarse flotando a media pantalla — así siempre se ve completo y
+  // nunca tapa contenido del centro.
+  function snapToEdge(){
+    var w = fab.offsetWidth||56, margin = 16;
+    var r = fab.getBoundingClientRect();
+    var center = r.left + w/2;
+    var targetLeft = (center < window.innerWidth/2) ? margin : (window.innerWidth - w - margin);
+    fab.style.transition = 'left .28s cubic-bezier(.34,1.56,.64,1), top .2s ease';
+    applyFabPos(targetLeft, r.top);
+    var done=false;
+    function finish(){
+      if(done) return; done=true;
+      fab.style.transition='';
+      saveFabPos();
+      fab.removeEventListener('transitionend', finish);
+    }
+    fab.addEventListener('transitionend', finish);
+    setTimeout(finish, 350); // respaldo si transitionend no dispara (reduce motion, etc.)
+  }
+
   function initTrFabDrag(){
     fab = document.getElementById('tr-fab');
     if(!fab || fab.dataset.dragReady) return;
@@ -6189,8 +6210,8 @@ function closeTranslate(){
     function endDrag(){
       if(!dragging) return;
       dragging=false;
-      fab.style.transition='';
-      if(moved) saveFabPos();
+      if(moved) snapToEdge();
+      else fab.style.transition='';
     }
     fab.addEventListener('pointerup', endDrag);
     fab.addEventListener('pointercancel', endDrag);
