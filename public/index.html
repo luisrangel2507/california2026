@@ -118,12 +118,12 @@
       height: 252px; width: auto;
       filter: drop-shadow(0 0 16px rgba(245,166,35,.7)) drop-shadow(0 0 6px rgba(0,200,255,.45));
     }
-    /* El modo "Centro de Operaciones" (desktop, layout horizontal de dos
-       columnas) queda desactivado a propósito — la app se debe ver siempre
-       como la app vertical de teléfono, sin importar qué tan ancha esté la
-       ventana. El breakpoint queda arriba de cualquier pantalla real en vez
-       de borrar el CSS/JS de abajo, por si algún día se quiere retomar. */
-    @media (min-width: 100000px) {
+    /* "Centro de Operaciones": en pantallas de escritorio (≥1180px, así una
+       laptop chica cae aquí pero un iPad en horizontal — 1024px — sigue
+       viendo la app de teléfono normal) se cambia a un layout de mapa al
+       centro con paneles de info a los lados, en vez de la app angosta de
+       teléfono estirada con espacio muerto alrededor. */
+    @media (min-width: 1180px) {
       .dash-hero-logo { display: none; }
     }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
@@ -2028,9 +2028,12 @@
        renderOps() llegó a correr) aparecían sueltos en el flujo normal. */
     .ops-panel { display: none; }
 
-    /* ── CENTRO DE OPERACIONES (desktop) — desactivado, ver nota arriba ──── */
-    @media (min-width: 100000px) {
-      .app { flex-direction: row; height: 100vh; overflow: hidden; }
+    /* ── CENTRO DE OPERACIONES (desktop) ─────────────────────────────────── */
+    @media (min-width: 1180px) {
+      /* body es el contenedor flex real (no hay un div .app aparte); en
+         móvil es columna y con max-width de teléfono — aquí se abre a lo
+         ancho y se acuesta para los tres paneles lado a lado. */
+      body { flex-direction: row; max-width: none; height: 100vh; overflow: hidden; }
       .app-header, .nav, #geo-bar { display: none !important; }
       #view-dash, #view-itin, #view-budget, #view-photos, #view-decide { display: none !important; }
       #view-map { display: flex !important; flex: 1; order: 1; position: relative; }
