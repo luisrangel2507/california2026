@@ -2479,6 +2479,47 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="qrcode.js"></script>
 <script>
+// ── Manejo de errores visible ───────────────────────────────────────────────
+// Hasta ahora, si algo tronaba durante init() (o en cualquier otro momento),
+// la página se quedaba en negro sin ninguna pista de qué pasó — ni en
+// consola llegábamos a verlo porque son celulares reales, no algo que se
+// pueda depurar de control remoto. Esto pinta el error directo en pantalla
+// para poder mandar screenshot de la causa real en vez de adivinarle.
+function showFatalError(msg){
+  try{
+    var el = document.getElementById('fatal-error-banner');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'fatal-error-banner';
+      el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;'+
+        'background:#B00020;color:#fff;padding:12px 14px;'+
+        'font:11px/1.5 "Space Mono",monospace;white-space:pre-wrap;word-break:break-word;'+
+        'max-height:70vh;overflow-y:auto;-webkit-overflow-scrolling:touch;'+
+        'box-shadow:0 4px 20px rgba(0,0,0,.6);';
+      document.body.appendChild(el);
+    }
+    var line = document.createElement('div');
+    line.style.cssText = 'margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.3);';
+    line.textContent = new Date().toLocaleTimeString()+' — '+msg;
+    el.appendChild(line);
+  }catch(e){}
+}
+function safeCall(fn, label){
+  try{ fn(); }
+  catch(err){
+    console.error('Error en '+label+':', err);
+    showFatalError(label+'() falló: '+((err&&err.message)||err));
+  }
+}
+window.addEventListener('error', function(e){
+  showFatalError('Error: '+(e.message||e)+' @ '+(e.filename||'?')+':'+(e.lineno||'?'));
+});
+window.addEventListener('unhandledrejection', function(e){
+  var reason = e.reason;
+  var msg = (reason && reason.message) ? reason.message : String(reason);
+  showFatalError('Promesa rechazada sin atrapar: '+msg);
+});
+
 // ── INSTALAR APP (Android/desktop: prompt nativo · iOS: instrucciones) ──────
 var deferredInstallPrompt = null;
 window.addEventListener('beforeinstallprompt', function(e){
@@ -7129,7 +7170,11 @@ async function init(){
   Object.keys(ITIN_OVERRIDE).forEach(function(k){
     var i=parseInt(k); if(DAYS[i]) DAYS[i].acts=ITIN_OVERRIDE[i];
   });
-  await openDB();
+  // IndexedDB solo se usa para el caché local de fotos — si falla (modo
+  // privado, cuota llena, algún bug de iOS) no debe tumbar el resto de la
+  // app; antes un rechazo aquí mataba init() completo desde la primera
+  // línea y la pantalla se quedaba en negro sin ninguna pista.
+  try{ await openDB(); }catch(err){ console.error('openDB falló:', err); showFatalError('openDB() falló: '+((err&&err.message)||err)); }
   // Antes de pintar cualquier avatar (header, dashboard, picker de login)
   // hace falta saber quién tiene foto de perfil subida.
   await loadProfiles();
@@ -7138,12 +7183,13 @@ async function init(){
   await loadExpenses();
   await loadSettlements();
   await loadCountdownPhrases();
-  updateHeroProfile();
-  renderDash(); renderOps();
-  initMap();
-  renderCustomMarkers();
-  renderItin();
-  renderBudget();
+  safeCall(updateHeroProfile, 'updateHeroProfile');
+  safeCall(renderDash, 'renderDash');
+  safeCall(renderOps, 'renderOps');
+  safeCall(initMap, 'initMap');
+  safeCall(renderCustomMarkers, 'renderCustomMarkers');
+  safeCall(renderItin, 'renderItin');
+  safeCall(renderBudget, 'renderBudget');
   updateNotifStatus();
   loadAllWeather();
   loadFx();
@@ -7208,7 +7254,10 @@ async function init(){
   });
 }
 
-init();
+init().catch(function(err){
+  console.error('init() falló:', err);
+  showFatalError('init() falló: '+((err&&err.message)||err));
+});
 
 // ── LOGIN BG VIDEO — forzar autoplay siempre, sin botón de play ────────────
 // Ojo: en iOS un <video> reproduciéndose le quita la sesión de audio al
