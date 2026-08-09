@@ -7196,6 +7196,16 @@ async function init(){
     // de que ya se definió trBgVideo, así que aquí sí se puede arrancar.
     if(typeof trBgVideo !== 'undefined') trBgVideo.play();
   }
+  // Con sesión iniciada, init() pasa por varios awaits (fetches) antes de
+  // pintar todo esto — de vez en cuando Safari termina el primer render sin
+  // repintar nada (pantalla negra, solo se ve el botón flotante del
+  // traductor porque va en su propia capa) hasta que el usuario toca la
+  // pantalla. Este empujón fuerza ese repintado inicial sin esperar a que
+  // alguien haga scroll.
+  requestAnimationFrame(function(){
+    document.documentElement.style.opacity = '.999';
+    requestAnimationFrame(function(){ document.documentElement.style.opacity = ''; });
+  });
 }
 
 init();
