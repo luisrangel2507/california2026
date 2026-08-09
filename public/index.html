@@ -1994,6 +1994,40 @@
     .wb-name { font-size:28px; font-weight:700; }
     .wb-sub { font-size:12px; color:var(--muted); margin-top:5px; }
 
+    /* ── PANTALLA DE CARGA JUSTO DESPUÉS DE INICIAR SESIÓN ── */
+    .login-loading-screen {
+      display:none; position:absolute; inset:0; z-index:10800;
+      overflow:hidden; opacity:1; transition:opacity .5s ease;
+    }
+    .login-loading-screen.show { display:block; }
+    .login-loading-screen.hide { opacity:0; }
+    .login-loading-bg {
+      position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+    }
+    .login-loading-overlay {
+      position:absolute; inset:0;
+      background:linear-gradient(180deg, rgba(2,11,22,.15) 0%, rgba(2,11,22,.25) 55%, rgba(2,11,22,.92) 100%);
+    }
+    .login-loading-content {
+      position:absolute; left:0; right:0; bottom:0; z-index:1;
+      display:flex; flex-direction:column; align-items:center;
+      padding:0 20px max(34px, env(safe-area-inset-bottom,34px));
+    }
+    .login-loading-logo { height:74px; width:auto; margin-bottom:22px;
+      filter: drop-shadow(0 0 16px rgba(245,166,35,.6)) drop-shadow(0 0 6px rgba(0,200,255,.4)); }
+    .login-loading-dots { display:flex; gap:6px; margin-bottom:12px; }
+    .login-loading-dots span {
+      width:6px; height:6px; border-radius:50%; background:var(--cyan);
+      animation:pulse 1.2s ease-in-out infinite;
+    }
+    .login-loading-dots span:nth-child(2) { animation-delay:.15s; }
+    .login-loading-dots span:nth-child(3) { animation-delay:.3s; }
+    .login-loading-text {
+      font-size:11px; font-family:'Space Mono',monospace; letter-spacing:3px;
+      text-transform:uppercase; color:rgba(255,255,255,.75);
+      text-shadow:0 1px 8px rgba(0,0,0,.5);
+    }
+
     /* ── HERO AVATAR ── */
     .hero-av-btn {
       width:40px; height:40px; border-radius:50%;
@@ -2236,6 +2270,17 @@
   <div class="wb-pre">Alta Vibra — California 2026</div>
   <div class="wb-name" id="wb-name">—</div>
   <div class="wb-sub">Bienvenido al viaje</div>
+</div>
+
+<!-- PANTALLA DE CARGA (justo después de iniciar sesión) -->
+<div class="login-loading-screen" id="login-loading-screen">
+  <img class="login-loading-bg" src="login-loading.jpg" alt="">
+  <div class="login-loading-overlay"></div>
+  <div class="login-loading-content">
+    <img class="login-loading-logo" src="logo-altavibra.png" alt="Alta Vibra">
+    <div class="login-loading-dots"><span></span><span></span><span></span></div>
+    <div class="login-loading-text">Cargando…</div>
+  </div>
 </div>
 
 <!-- ARRIVAL BANNER -->
@@ -2782,9 +2827,28 @@ function doLogin(i, isNew){
   updateHeroProfile();
   showWelcome(i);
   renderDash(); renderOps(); renderBudget();
-  // Cuenta nueva (PIN recién creado): a huevo llenan su info de emergencia
-  // antes de dejarlos usar la app — nadie la llena si es "opcional".
-  if(isNew) showFirstInfoScreen();
+  // Pantalla de carga con foto: un momento de marca justo al entrar, antes
+  // de mostrar el dashboard (que ya está pintado detrás, listo para
+  // revelarse en cuanto se desvanezca).
+  showLoginLoading(function(){
+    // Cuenta nueva (PIN recién creado): a huevo llenan su info de emergencia
+    // antes de dejarlos usar la app — nadie la llena si es "opcional".
+    if(isNew) showFirstInfoScreen();
+  });
+}
+
+function showLoginLoading(onDone){
+  var el = document.getElementById('login-loading-screen');
+  if(!el){ if(onDone) onDone(); return; }
+  el.classList.remove('hide');
+  el.classList.add('show');
+  setTimeout(function(){
+    el.classList.add('hide');
+    setTimeout(function(){
+      el.classList.remove('show','hide');
+      if(onDone) onDone();
+    }, 520); // duración del fade (debe coincidir con la transición del CSS)
+  }, 1700); // cuánto se queda visible antes de empezar a desvanecer
 }
 
 // kept for backward compat (called from dashboard)
