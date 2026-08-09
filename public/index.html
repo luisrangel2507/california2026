@@ -1856,6 +1856,12 @@
       display: none; position: absolute; inset: 0; z-index: 10000;
       flex-direction: column; align-items: center; justify-content: flex-end;
       overflow: hidden;
+      /* Respaldo sólido por si el video/imagen de fondo no cargan — antes no
+         hacía falta (no había nada detrás al primer login), pero ahora esta
+         misma pantalla también se reusa como bloqueo por inactividad, con
+         el dashboard ya pintado detrás: sin esto, cualquier tropiezo del
+         video deja ver el contenido de fondo por completo. */
+      background: var(--bg);
     }
     .pick-screen.show { display: flex; }
     .pick-bg-video {
@@ -2776,6 +2782,21 @@ function checkPin(){
       setMsg('No coinciden — intenta de nuevo', true);
       shakeDots(); updateDots();
     }
+  } else if(pinMode==='unlock'){
+    // Bloqueo por inactividad: la sesión sigue siendo la misma persona, solo
+    // hay que volver a comprobar el PIN — no se pasa por doLogin() de nuevo
+    // (no tiene caso repetir la pantalla de carga ni el banner de bienvenida
+    // cada vez que se desbloquea).
+    var storedU=localStorage.getItem('ca26_pin_'+pinTarget);
+    if(pinBuffer===storedU){
+      pinMode='enter';
+      document.getElementById('pick-screen').classList.remove('show');
+      resetInactivityTimer();
+    } else {
+      pinBuffer='';
+      setMsg('PIN incorrecto', true);
+      shakeDots(); updateDots();
+    }
   } else { // enter
     var stored=localStorage.getItem('ca26_pin_'+pinTarget);
     if(pinBuffer===stored){
@@ -2787,6 +2808,36 @@ function checkPin(){
     }
   }
 }
+
+// ── Bloqueo automático por inactividad ──────────────────────────────────────
+// Tras 5 minutos sin tocar la pantalla (con sesión iniciada), se pide el PIN
+// de nuevo — la sesión de esa persona sigue siendo la misma, solo hay que
+// volver a comprobar que sigue siendo ella quien tiene el teléfono en mano.
+var INACTIVITY_LIMIT_MS = 5*60*1000;
+var inactivityTimer = null;
+function resetInactivityTimer(){
+  if(inactivityTimer) clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(lockForInactivity, INACTIVITY_LIMIT_MS);
+}
+function lockForInactivity(){
+  if(meIndex===null) return; // nadie ha iniciado sesión, nada que bloquear
+  var pickEl = document.getElementById('pick-screen');
+  if(pickEl.classList.contains('show')) return; // ya hay algo mostrándose ahí
+  var i = parseInt(meIndex);
+  pinTarget=i; pinBuffer=''; pinFirst=''; pinMode='unlock';
+  document.getElementById('pin-pname').textContent = persons[i];
+  document.getElementById('pin-pname').style.color = PC[i];
+  setMsg('Pasaron 5 minutos — ingresa tu PIN para seguir', false);
+  updateDots();
+  document.getElementById('pick-who').style.display='none';
+  document.getElementById('pick-pin').style.display='';
+  var tb=document.querySelector('.pick-title-block'); if(tb) tb.style.display='none';
+  pickEl.classList.add('show');
+}
+['touchstart','mousedown','keydown','scroll','wheel'].forEach(function(evt){
+  document.addEventListener(evt, resetInactivityTimer, {passive:true});
+});
+resetInactivityTimer();
 
 function updateDots(){
   for(var j=0;j<4;j++){
