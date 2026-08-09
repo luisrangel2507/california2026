@@ -4004,11 +4004,21 @@ function renderDash(){
     }
   }
 
-  document.getElementById('dash-body').innerHTML = ambientHTML+actHTML+daysHTML+spendHTML+progressHTML+catHTML;
+  var dashBodyEl = document.getElementById('dash-body');
+  dashBodyEl.innerHTML = ambientHTML+actHTML+daysHTML+spendHTML+progressHTML+catHTML;
   if(dLeftStr!==null){
     animateFlipCounterTo('dash-flip-counter', dLeftStr, dashFlipPrevVal===null);
   }
   dashFlipPrevVal = dLeftStr;
+  // Si este panel se reemplaza mientras no es el que se está viendo (p. ej.
+  // al guardar algo desde Mi Perfil, que tapa todo con un sheet encima),
+  // Safari a veces se queda sin repintar el contenido nuevo hasta que el
+  // usuario hace scroll — se ve como una franja en negro debajo del
+  // contador hasta que se toca la pantalla. Apagar y prender
+  // -webkit-overflow-scrolling fuerza el repintado de una vez.
+  dashBodyEl.style.webkitOverflowScrolling = 'auto';
+  void dashBodyEl.offsetHeight;
+  requestAnimationFrame(function(){ dashBodyEl.style.webkitOverflowScrolling = 'touch'; });
 }
 
 // ── ITINERARY ──────────────────────────────────────────────────────────────
