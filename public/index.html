@@ -2868,8 +2868,10 @@ async function openMyProfile(){
   renderGroupContacts();
   document.getElementById('me-admin-sec').style.display = isAdmin() ? '' : 'none';
   if(isAdmin()){
-    if(customPreTripPhrases===null) await loadCountdownPhrases();
-    document.getElementById('me-phrases').value = (customPreTripPhrases||[]).join('\n');
+    if(phrasesStore===null) await loadCountdownPhrases();
+    var personSel = document.getElementById('me-phrases-person');
+    personSel.innerHTML = persons.map(function(p){return '<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
+    loadPhrasesForPersonSel();
   }
 
   updateShareLocBtn();
@@ -3772,7 +3774,8 @@ function parseMins(t){
 // Frases que van rotando día con día en la cuenta regresiva pre-viaje, para
 // que no sea siempre el mismo "PRE-VIAJE" — cuál toca depende de cuántos
 // días falten, así se ve distinta cada día pero no cambia sola a medio día.
-// El admin puede reemplazarlas desde Mi Perfil (customPreTripPhrases); "{d}"
+// El admin controla una lista distinta por persona desde Mi Perfil
+// (phrasesStore = { "Erick": [...], "Rafa": [...], "Eduardo": [...] }); "{d}"
 // marca dónde va el número de días dentro del texto.
 var DEFAULT_PRE_TRIP_PHRASES = [
   '¿Cómo te caería una hamburguesa de In-N-Out en {d} días?',
@@ -3780,14 +3783,14 @@ var DEFAULT_PRE_TRIP_PHRASES = [
   'Ya sabes qué vas a comprar en el outlet en {d} días',
   'DEM2 te desea buen viaje en {d} días',
 ];
-var customPreTripPhrases = null; // null = todavía no se cargó del servidor
+var phrasesStore = null; // null = todavía no se cargó del servidor
 
 async function loadCountdownPhrases(){
   try{
     var r = await fetch('/api/countdown-phrases',{cache:'no-store'});
     var data = await r.json();
-    customPreTripPhrases = Array.isArray(data.phrases) ? data.phrases : [];
-  }catch(e){ customPreTripPhrases = []; }
+    phrasesStore = (data.phrases && typeof data.phrases==='object') ? data.phrases : {};
+  }catch(e){ phrasesStore = {}; }
 }
 
 function splitPhraseTemplate(tpl){
@@ -3806,19 +3809,25 @@ function splitPhraseTemplate(tpl){
   return { before: before, after: tpl.slice(m.index).trim() };
 }
 
+function loadPhrasesForPersonSel(){
+  var person = document.getElementById('me-phrases-person').value;
+  document.getElementById('me-phrases').value = ((phrasesStore||{})[person]||[]).join('\n');
+}
+
 async function savePhrases(){
+  var person = document.getElementById('me-phrases-person').value;
   var raw = document.getElementById('me-phrases').value;
   var list = raw.split('\n').map(function(s){return s.trim();}).filter(Boolean);
   try{
     var r = await fetch('/api/countdown-phrases',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ phrases:list, who: persons[parseInt(meIndex)] })
+      body: JSON.stringify({ person:person, phrases:list, who: persons[parseInt(meIndex)] })
     });
     var data = await r.json();
     if(!r.ok) throw new Error(data.error||'error');
-    customPreTripPhrases = data.phrases;
-    renderDash();
-    toast('Frases guardadas.','success');
+    phrasesStore = data.phrases;
+    if(persons[parseInt(meIndex)]===person) renderDash();
+    toast('Frases de '+person+' guardadas.','success');
   }catch(e){ toast('No se pudieron guardar las frases.','error'); }
 }
 
@@ -3883,7 +3892,8 @@ function renderDash(){
     // Arranca mostrando el valor anterior (si lo hay); animateFlipCounterTo()
     // lo voltea al valor nuevo justo después de insertarse en el DOM.
     var startDigits = (dashFlipPrevVal && dashFlipPrevVal.length===dLeftStr.length) ? dashFlipPrevVal : dLeftStr;
-    var phraseList = (customPreTripPhrases && customPreTripPhrases.length) ? customPreTripPhrases : DEFAULT_PRE_TRIP_PHRASES;
+    var myPersonPhrases = (phrasesStore && meIndex!==null) ? phrasesStore[persons[parseInt(meIndex)]] : null;
+    var phraseList = (myPersonPhrases && myPersonPhrases.length) ? myPersonPhrases : DEFAULT_PRE_TRIP_PHRASES;
     var phrase = splitPhraseTemplate(phraseList[dLeft % phraseList.length]);
     actHTML =
       '<div class="dash-pre-band">'+
@@ -7443,7 +7453,8 @@ if('serviceWorker' in navigator){
       <div class="me-wipe-note">El servidor puede perder el itinerario si Railway lo redespliega sin un disco permanente. Descarga un respaldo de vez en cuando — es un archivo que puedes guardar donde quieras y restaurar aquí mismo si algún día el itinerario aparece vacío.</div>
 
       <div class="ef-lbl" style="margin-top:14px">Frases de la cuenta regresiva</div>
-      <div class="me-wipe-note">Se van rotando día con día en Inicio mientras falta para el viaje. Una frase por línea — el número de días aparece solo justo antes de donde escribas "día" o "días", no hace falta poner nada especial. Déjalo en blanco para usar las de siempre.</div>
+      <div class="me-wipe-note">Se van rotando día con día en Inicio mientras falta para el viaje — cada quien ve solo las suyas. Elige a quién le vas a armar la lista, una frase por línea. El número de días aparece solo justo antes de donde escribas "día" o "días", no hace falta poner nada especial. Déjalo en blanco para que a esa persona le salgan las de siempre.</div>
+      <select class="ef-s" id="me-phrases-person" style="margin-bottom:8px" onchange="loadPhrasesForPersonSel()"></select>
       <textarea class="ef-i" id="me-phrases" rows="6" style="width:100%;resize:vertical;font-family:'Space Mono',monospace;font-size:12px;box-sizing:border-box" placeholder="¿Cómo te caería una hamburguesa de In-N-Out en días?"></textarea>
       <button class="me-backup-btn" style="margin-top:8px" onclick="savePhrases()">Guardar frases</button>
     </div>
