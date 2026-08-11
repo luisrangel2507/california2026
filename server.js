@@ -1069,6 +1069,9 @@ function pointInGeometry(lat, lon, geometry) {
   if (geometry.type === 'MultiPolygon') return geometry.coordinates.some((poly) => poly.some((ring) => pointInRing(lat, lon, ring)));
   return false;
 }
+function pointInAnyGeometry(lat, lon, geometries) {
+  return (geometries || []).some((g) => pointInGeometry(lat, lon, g));
+}
 // Geometría GeoJSON (anillos en [lon,lat]) a arreglos [lat,lon] que Leaflet
 // puede dibujar directo con L.polygon().
 function geometryToLatLngPolygons(geometry) {
@@ -1081,15 +1084,43 @@ function geometryToLatLngPolygons(geometry) {
   }
   return [];
 }
+function geometriesToLatLngPolygons(geometries) {
+  return (geometries || []).flatMap(geometryToLatLngPolygons);
+}
+
+// Muchas alertas de NWS no traen geometry inline — en vez traen
+// properties.affectedZones (URLs a zonas de pronóstico/condado), y hay que
+// resolver cada una por separado para conseguir su polígono. Las formas de
+// las zonas casi nunca cambian, así que se cachean en memoria — evita
+// volver a pedir la misma zona en cada corrida del cron.
+const zoneGeometryCache = {};
+async function fetchZoneGeometry(zoneUrl) {
+  if (Object.prototype.hasOwnProperty.call(zoneGeometryCache, zoneUrl)) return zoneGeometryCache[zoneUrl];
+  try {
+    const r = await fetch(zoneUrl, {
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        'User-Agent': '(Alta Vibra trip app, contacto en el perfil de Railway)',
+        Accept: 'application/geo+json',
+      },
+    });
+    const geom = r.ok ? ((await r.json()).geometry || null) : null;
+    zoneGeometryCache[zoneUrl] = geom;
+    return geom;
+  } catch (e) {
+    zoneGeometryCache[zoneUrl] = null;
+    return null;
+  }
+}
 
 // api.weather.gov es un API federal documentado y estable — a diferencia del
 // endpoint de CAL FIRE que resultó no ser JSON de verdad, este sí se puede
 // codificar con confianza. Aun así se junta diagnóstico (status, cuántas
-// alertas trajo crudo, cuántas tenían geometría usable) porque este sandbox
-// tampoco tiene salida a api.weather.gov para probarlo antes de que corra en
-// producción.
+// alertas trajo crudo, cuántas tenían geometría usable, cuántas zonas se
+// tuvieron que resolver aparte) porque este sandbox tampoco tiene salida a
+// api.weather.gov para probarlo antes de que corra en producción.
 async function fetchActiveHazards() {
-  const debug = { ok: false, status: null, rawCount: null, parsedCount: null, error: null };
+  const debug = { ok: false, status: null, rawCount: null, parsedCount: null, zonesResolved: 0, error: null };
   try {
     const r = await fetch('https://api.weather.gov/alerts/active?area=CA', {
       signal: AbortSignal.timeout(15000),
@@ -1103,32 +1134,35 @@ async function fetchActiveHazards() {
     const j = await r.json();
     const features = Array.isArray(j.features) ? j.features : [];
     debug.rawCount = features.length;
-    const hazards = features
-      .map((f) => {
-        const p = f.properties || {};
-        const cat = categorizeHazard(p.event);
-        return {
-          id: String(p.id || f.id || ''),
-          event: p.event || 'Alerta',
-          headline: p.headline || p.event || '',
-          severity: p.severity || 'Unknown',
-          areaDesc: p.areaDesc || '',
-          expires: p.expires || null,
-          category: cat.key,
-          emoji: cat.emoji,
-          label: cat.label,
-          color: cat.color,
-          geometry: f.geometry || null,
-        };
-      })
-      // Sin geometría no hay forma confiable de saber si nos toca ni qué
-      // pintar en el mapa — se descarta esa alerta (NWS no siempre la manda,
-      // es una limitación conocida de esta primera versión).
-      .filter((h) => h.id && h.geometry);
+    const hazards = [];
+    for (const f of features) {
+      const p = f.properties || {};
+      const id = String(p.id || f.id || '');
+      if (!id) continue;
+      let geometries = [];
+      if (f.geometry) {
+        geometries = [f.geometry];
+      } else if (Array.isArray(p.affectedZones) && p.affectedZones.length) {
+        // Sin geometría inline — se resuelven las zonas afectadas (tope de 5
+        // por alerta para no disparar el tiempo de revisión si una alerta
+        // cubre decenas de condados).
+        const resolved = await Promise.all(p.affectedZones.slice(0, 5).map(fetchZoneGeometry));
+        geometries = resolved.filter(Boolean);
+        debug.zonesResolved += geometries.length;
+      }
+      if (!geometries.length) continue;
+      const cat = categorizeHazard(p.event);
+      hazards.push({
+        id, event: p.event || 'Alerta', headline: p.headline || p.event || '',
+        severity: p.severity || 'Unknown', areaDesc: p.areaDesc || '', expires: p.expires || null,
+        category: cat.key, emoji: cat.emoji, label: cat.label, color: cat.color,
+        geometries,
+      });
+    }
     debug.parsedCount = hazards.length;
     debug.ok = true;
     if (features.length && !hazards.length) {
-      debug.error = 'Trajo ' + features.length + ' alertas pero ninguna con geometría/id usable — primera cruda: ' + JSON.stringify(features[0]).slice(0, 400);
+      debug.error = 'Trajo ' + features.length + ' alertas pero ninguna con zona resuelta (ni geometría inline ni zonas afectadas válidas) — primera cruda: ' + JSON.stringify(features[0]).slice(0, 400);
     }
     return { hazards, debug };
   } catch (e) {
@@ -1187,21 +1221,25 @@ async function checkHazardAlerts() {
   hazardStore.debug = Object.assign(hazardStore.debug, debug);
   const nearby = [];
   for (const hz of hazards) {
-    // ¿Algún punto vigilado cae DENTRO del polígono de la alerta?
-    let matchLabel = (points.find((p) => pointInGeometry(p.lat, p.lon, hz.geometry)) || {}).label || null;
-    // Si no, ¿algún tramo de carretera pasa por el polígono? (muestreado)
+    // ¿Algún punto vigilado cae DENTRO de alguna de las geometrías de la alerta?
+    let matchLabel = (points.find((p) => pointInAnyGeometry(p.lat, p.lon, hz.geometries)) || {}).label || null;
+    // Si no, ¿algún tramo de carretera pasa por ahí? (muestreado)
     if (!matchLabel) {
       for (const seg of segments) {
-        let hit = pointInGeometry(seg.a.lat, seg.a.lon, hz.geometry);
+        let hit = pointInAnyGeometry(seg.a.lat, seg.a.lon, hz.geometries);
         for (let i = 1; i <= 20 && !hit; i++) {
           const t = i / 20;
-          hit = pointInGeometry(seg.a.lat + (seg.b.lat - seg.a.lat) * t, seg.a.lon + (seg.b.lon - seg.a.lon) * t, hz.geometry);
+          hit = pointInAnyGeometry(seg.a.lat + (seg.b.lat - seg.a.lat) * t, seg.a.lon + (seg.b.lon - seg.a.lon) * t, hz.geometries);
         }
         if (hit) { matchLabel = 'la carretera hacia ' + seg.b.label; break; }
       }
     }
     if (matchLabel) {
-      nearby.push({ ...hz, nearLabel: matchLabel, polygons: geometryToLatLngPolygons(hz.geometry) });
+      // Sin "geometries" (el GeoJSON crudo) — el cliente solo necesita
+      // "polygons" ya convertido; mandar ambos duplicaría el payload en
+      // zonas grandes con muchos vértices (litorales de condado, etc).
+      const { geometries, ...hzWithoutGeom } = hz;
+      nearby.push({ ...hzWithoutGeom, nearLabel: matchLabel, polygons: geometriesToLatLngPolygons(geometries) });
       if (!hazardStore.notifiedIds.includes(hz.id)) {
         hazardStore.notifiedIds.push(hz.id);
         await sendPushToAll({
