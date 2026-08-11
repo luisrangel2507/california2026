@@ -181,11 +181,14 @@
     #geo-bar.show { display: flex; }
     #geo-bar .geo-icon { font-size: 13px; }
 
-    /* ── HAZARD ALERT BAR (incendios, huracanes, inundaciones, tormentas...) ── */
+    /* ── HAZARD ALERT BAR (incendios, huracanes, inundaciones, tormentas...) ──
+       Vive dentro de #view-map, no arriba de todo — solo se ve en la
+       pestaña Mapa, no encima del resto de la app. */
     #hazard-bar {
-      position: relative; z-index: 1; display: none; align-items: center;
-      gap: 8px; padding: 7px 16px;
-      background: rgba(255,90,50,.1); border-bottom: 1px solid rgba(255,90,50,.3);
+      position: absolute; top: 0; left: 0; right: 0; z-index: 500;
+      display: none; align-items: center;
+      gap: 8px; padding: 10px 16px;
+      background: rgba(20,10,8,.88); border-bottom: 1px solid rgba(255,90,50,.4);
       font-size: 11px; color: #FF7A50; cursor: pointer;
     }
     #hazard-bar.show { display: flex; }
@@ -2342,12 +2345,6 @@
   <button class="reset-notif" onclick="resetNotified()" style="margin-left:auto">Resetear alertas</button>
 </div>
 
-<!-- HAZARD ALERT BAR -->
-<div id="hazard-bar" onclick="goToHazardOnMap()">
-  <span class="hazard-icon" id="hazard-icon">⚠️</span>
-  <span id="hazard-txt">—</span>
-</div>
-
 <!-- NAV -->
 <div class="nav">
   <div class="nav-tab active" onclick="go('dash',this)">
@@ -2394,6 +2391,11 @@
 <!-- MAP -->
 <div id="view-map" class="view">
   <div id="map"></div>
+  <!-- HAZARD ALERT BAR — solo dentro del mapa, no en las demás pestañas -->
+  <div id="hazard-bar" onclick="goToHazardOnMap()">
+    <span class="hazard-icon" id="hazard-icon">⚠️</span>
+    <span id="hazard-txt">—</span>
+  </div>
   <div class="ops-map-chip" id="ops-map-chip" style="display:none">
     <div class="ops-chip-dot"></div>
     <div class="ops-chip-txt" id="ops-chip-txt">—</div>
@@ -3562,7 +3564,7 @@ function renderHazardBar(){
   var first = HAZARD_ALERTS[0];
   var txt = HAZARD_ALERTS.length===1
     ? first.label+' cerca de '+first.nearLabel
-    : HAZARD_ALERTS.length+' alertas activas cerca de la ruta — toca para ver en el mapa';
+    : HAZARD_ALERTS.length+' alertas activas cerca de la ruta — toca para verlas todas';
   document.getElementById('hazard-icon').textContent = first.emoji || '⚠️';
   document.getElementById('hazard-txt').textContent = txt;
   bar.classList.add('show');
@@ -3630,8 +3632,8 @@ function renderHazardZones(){
 }
 
 function goToHazardOnMap(){
-  var mapTab = document.querySelector('.nav-tab[onclick*="\'map\'"]');
-  if(mapTab) go('map', mapTab);
+  // La barra ya vive dentro de la pestaña Mapa (no hace falta cambiar de
+  // vista) — solo centra el mapa en las alertas activas.
   if(mapObj && hazardZones.length){
     var group = L.featureGroup(hazardZones);
     mapObj.fitBounds(group.getBounds(), {padding:[30,30]});
