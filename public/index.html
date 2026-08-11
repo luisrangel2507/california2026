@@ -2779,10 +2779,14 @@ function showPickWho(){
 function startPin(i){
   pinTarget=i; pinBuffer=''; pinFirst='';
   var hasPIN = !!localStorage.getItem('ca26_pin_'+i);
-  pinMode = hasPIN ? 'enter' : 'create';
+  // Si venimos del bloqueo por inactividad y es la misma persona retomando su
+  // sesión, se entra en modo 'unlock' (no repite el login completo). Si es
+  // otra persona la que toca su avatar, es un cambio de sesión real.
+  var isResuming = isInactivityUnlock && String(i)===meIndex;
+  pinMode = isResuming ? 'unlock' : (hasPIN ? 'enter' : 'create');
   document.getElementById('pin-pname').textContent = persons[i];
   document.getElementById('pin-pname').style.color = PC[i];
-  setMsg(hasPIN ? 'Ingresa tu PIN' : 'Crea un PIN de 4 dígitos', false);
+  setMsg(isResuming ? 'Ingresa tu PIN para seguir' : (hasPIN ? 'Ingresa tu PIN' : 'Crea un PIN de 4 dígitos'), false);
   updateDots();
   document.getElementById('pick-who').style.display='none';
   document.getElementById('pick-pin').style.display='';
@@ -2823,6 +2827,7 @@ function checkPin(){
     var storedU=localStorage.getItem('ca26_pin_'+pinTarget);
     if(pinBuffer===storedU){
       pinMode='enter';
+      isInactivityUnlock=false;
       document.getElementById('pick-screen').classList.remove('show');
       resetInactivityTimer();
     } else {
@@ -2852,6 +2857,8 @@ function resetInactivityTimer(){
   if(inactivityTimer) clearTimeout(inactivityTimer);
   inactivityTimer = setTimeout(lockForInactivity, INACTIVITY_LIMIT_MS);
 }
+var isInactivityUnlock = false; // en la pantalla "¿Quién eres?" por bloqueo, no por logout real
+
 function lockForInactivity(){
   if(meIndex===null) return; // nadie ha iniciado sesión, nada que bloquear
   var pickEl = document.getElementById('pick-screen');
@@ -2861,16 +2868,16 @@ function lockForInactivity(){
   // no tiene sentido pedirle que se vuelva a autenticar justo al terminar.
   var fi = document.getElementById('firstinfo-screen');
   if(fi && fi.classList.contains('show')) { resetInactivityTimer(); return; }
-  var i = parseInt(meIndex);
-  pinTarget=i; pinBuffer=''; pinFirst=''; pinMode='unlock';
-  document.getElementById('pin-pname').textContent = persons[i];
-  document.getElementById('pin-pname').style.color = PC[i];
-  setMsg('Pasaron 5 minutos — ingresa tu PIN para seguir', false);
-  updateDots();
-  document.getElementById('pick-who').style.display='none';
-  document.getElementById('pick-pin').style.display='';
-  var tb=document.querySelector('.pick-title-block'); if(tb) tb.style.display='none';
+  // Manda a la pantalla completa de "¿Quién eres?" (como al abrir la app),
+  // no directo al teclado de PIN — startPin() reconoce que viene de aquí
+  // (isInactivityUnlock) y si vuelven a tocar el mismo avatar, entra en modo
+  // 'unlock' para no repetir la pantalla de carga ni el banner de bienvenida.
+  isInactivityUnlock = true;
+  renderPickCards();
+  showPickWho();
   pickEl.classList.add('show');
+  if(typeof trBgVideo !== 'undefined') trBgVideo.play();
+  toast('Pasaron 5 minutos — vuelve a entrar');
 }
 ['touchstart','mousedown','keydown','scroll','wheel'].forEach(function(evt){
   document.addEventListener(evt, resetInactivityTimer, {passive:true});
@@ -2909,6 +2916,7 @@ function showProfileScreen(){
 function doLogin(i, isNew){
   meIndex=String(i);
   localStorage.setItem('ca26_me', meIndex);
+  isInactivityUnlock=false; // sesión nueva de verdad — ya no es un desbloqueo
   document.getElementById('pick-screen').classList.remove('show');
   // Ya dentro de la app el video queda oculto: se pausa para no quedarnos con
   // la sesión de audio del sistema y cortarle la música al usuario.
