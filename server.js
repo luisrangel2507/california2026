@@ -1086,9 +1086,52 @@ function gatherFireWatchPoints() {
   return points;
 }
 
+// Un incendio puede estar lejos de cualquier parada puntual y aun así caer
+// justo sobre la carretera que conecta dos paradas seguidas — esos tramos
+// (en el orden real del itinerario: día, luego actividad dentro del día)
+// también cuentan como "en la ruta", no solo los puntos donde nos detenemos.
+function gatherFireRouteSegments() {
+  const dayKeys = Object.keys(itinStore)
+    .map((k) => parseInt(k, 10))
+    .filter((n) => Number.isInteger(n))
+    .sort((a, b) => a - b);
+  const ordered = [];
+  dayKeys.forEach((k) => {
+    const day = itinStore[String(k)];
+    (day.acts || []).forEach((a) => {
+      if (Array.isArray(a.c) && a.c.length === 2) {
+        ordered.push({ lat: a.c[0], lon: a.c[1], label: a.n || day.city || 'itinerario' });
+      }
+    });
+  });
+  const segments = [];
+  for (let i = 0; i < ordered.length - 1; i++) {
+    segments.push({ a: ordered[i], b: ordered[i + 1] });
+  }
+  return segments;
+}
+
+// Distancia mínima de un punto a un tramo de carretera, aproximando el tramo
+// con muestras a intervalos regulares (interpolación lineal en lat/lon —
+// suficiente a esta escala, no hace falta geometría de gran círculo exacta
+// para un chequeo de "¿está cerca o no?").
+function distanceToSegmentKm(plat, plon, aLat, aLon, bLat, bLon) {
+  const steps = 20;
+  let min = haversineKm(plat, plon, aLat, aLon);
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const d = haversineKm(plat, plon, aLat + (bLat - aLat) * t, aLon + (bLon - aLon) * t);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
 async function checkFireAlerts() {
   const points = gatherFireWatchPoints();
-  if (!points.length) { fireStore.nearby = []; fireStore.lastCheck = Date.now(); persistFire(); return; }
+  const segments = gatherFireRouteSegments();
+  if (!points.length && !segments.length) {
+    fireStore.nearby = []; fireStore.lastCheck = Date.now(); persistFire(); return;
+  }
   const fires = await fetchActiveFires();
   const nearby = [];
   for (const fire of fires) {
@@ -1096,6 +1139,10 @@ async function checkFireAlerts() {
     for (const p of points) {
       const d = haversineKm(fire.lat, fire.lon, p.lat, p.lon);
       if (!best || d < best.distanceKm) best = { distanceKm: d, label: p.label };
+    }
+    for (const seg of segments) {
+      const d = distanceToSegmentKm(fire.lat, fire.lon, seg.a.lat, seg.a.lon, seg.b.lat, seg.b.lon);
+      if (!best || d < best.distanceKm) best = { distanceKm: d, label: 'la carretera hacia ' + seg.b.label };
     }
     if (best && best.distanceKm <= FIRE_ALERT_RADIUS_KM) {
       nearby.push({ ...fire, distanceKm: Math.round(best.distanceKm), nearLabel: best.label });
