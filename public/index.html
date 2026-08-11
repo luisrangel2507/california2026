@@ -142,6 +142,7 @@
     }
     .dash-photo-content {
       position: absolute; bottom: 0; left: 0; right: 0; padding: 22px 20px;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 14px;
     }
     .dash-photo-meta {
       font-size: 9px; color: rgba(255,255,255,.55);
@@ -155,6 +156,13 @@
     .dash-photo-ampm {
       font-size: 20px; font-weight: 700; letter-spacing: 0;
       margin-left: 7px; opacity: .85;
+    }
+    /* Clima actual, en la locación donde estamos ahorita mismo */
+    .dash-photo-wx { text-align: right; flex-shrink: 0; }
+    .dash-photo-wx-lbl { font-size: 20px; font-weight: 700; letter-spacing: -.3px; line-height: 1.2; }
+    .dash-photo-wx-temp {
+      font-family:'Space Mono',monospace; font-size: 32px; font-weight: 700;
+      line-height: 1; letter-spacing: -1px; margin-top: 4px;
     }
 
     /* ── GEO STATUS BAR ── */
@@ -3788,6 +3796,7 @@ function startGeo(){
       // Auto-update dashboard location to nearest checkpoint
       autoUpdateCp(lat,lon);
       maybeBroadcastLoc(lat,lon);
+      maybeUpdateCurrentWeather(lat,lon);
 
       document.getElementById('geo-bar').classList.add('show');
     },
@@ -4061,8 +4070,16 @@ function renderDash(){
       '<div class="dash-photo-overlay"></div>'+
       '<div class="dash-hero-logo"><img src="logo-altavibra.png" alt="Alta Vibra"></div>'+
       '<div class="dash-photo-content">'+
-        '<div class="dash-photo-city">La hora es:</div>'+
-        '<div class="dash-photo-time">'+timeStr+'<span class="dash-photo-ampm">'+ampm+'</span></div>'+
+        '<div>'+
+          '<div class="dash-photo-city">La hora es:</div>'+
+          '<div class="dash-photo-time">'+timeStr+'<span class="dash-photo-ampm">'+ampm+'</span></div>'+
+        '</div>'+
+        (CUR_WX ? (
+          '<div class="dash-photo-wx">'+
+            '<div class="dash-photo-wx-lbl">Aqu&iacute;</div>'+
+            '<div class="dash-photo-wx-temp">'+wxIcon(CUR_WX.code)+' '+CUR_WX.temp+'&deg;</div>'+
+          '</div>'
+        ) : '')+
       '</div>'+
     '</div>';
 
@@ -4368,6 +4385,40 @@ async function loadAllWeather(){
   if(!stale.length) return;
   await Promise.all(stale.map(fetchWeatherForDay));
   renderItin();
+}
+
+// ── CLIMA ACTUAL (dónde estamos ahorita, no un día del itinerario) ─────────
+var CUR_WX = JSON.parse(localStorage.getItem('ca26_cur_wx') || 'null');
+
+async function fetchCurrentWeatherAt(lat, lon){
+  try{
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current_weather=true';
+    var r=await fetch(url);
+    if(!r.ok) return;
+    var j=await r.json();
+    if(!j.current_weather) return;
+    CUR_WX={ temp: Math.round(j.current_weather.temperature), code: j.current_weather.weathercode, ts: Date.now() };
+    localStorage.setItem('ca26_cur_wx', JSON.stringify(CUR_WX));
+    safeCall(renderDash, 'renderDash');
+  }catch(e){ /* sin conexión — se queda con el último valor cacheado, si hay */ }
+}
+
+// Se llama tanto desde startGeo() (ubicación en vivo, la fuente ideal) como
+// desde init() como respaldo si todavía no hay permiso de GPS — en ese caso
+// usa la coordenada del día actual del itinerario en vez de dejar el bloque
+// vacío.
+function maybeUpdateCurrentWeather(lat, lon){
+  if(CUR_WX && (Date.now()-CUR_WX.ts)<30*60*1000) return; // ya está fresco (30 min)
+  fetchCurrentWeatherAt(lat, lon);
+}
+
+function loadCurrentWeatherFallback(){
+  if(CUR_WX && (Date.now()-CUR_WX.ts)<30*60*1000) return;
+  var now=new Date();
+  var tripStart=new Date('2026-09-02');
+  var dayIdx=Math.max(0, Math.min(DAYS.length-1, Math.floor((now-tripStart)/(1000*60*60*24))));
+  var coord=dayCoordFor(dayIdx);
+  if(coord) fetchCurrentWeatherAt(coord[0], coord[1]);
 }
 
 // ── RESERVACIONES (horario, fecha y ubicación) — compartidas por servidor ──
@@ -7341,6 +7392,7 @@ async function init(){
   safeCall(renderBudget, 'renderBudget');
   updateNotifStatus();
   loadAllWeather();
+  loadCurrentWeatherFallback();
   loadFx();
   seedReservations().then(loadReservations).then(renderItin);
   loadCarLoc();
