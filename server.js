@@ -1234,17 +1234,75 @@ async function fetchActiveFireIncidents() {
 // bastante cerca como para joder la ruta (caminos cerrados, humo, avisos de
 // evacuación). Por eso el radio de "esto me toca" lleva un colchón extra
 // sobre el radio real de la quemazón — el radio real (sin colchón) es el que
-// se manda al cliente para dibujar el círculo en el mapa.
+// se manda al cliente para dibujar el círculo en el mapa. Un cierre de
+// carretera es la cosa en sí misma, no una zona de riesgo alrededor de algo
+// más grande — su colchón es mucho más chico, solo para cubrir imprecisión
+// del punto marcado (la coordenada suele ser un extremo del tramo cerrado,
+// no todo el tramo).
 const FIRE_MATCH_BUFFER_M = 50000; // 50km
+const CLOSURE_MATCH_BUFFER_M = 10000; // 10km
 
 // Despacha la comprobación de "¿este punto cae dentro de la alerta?" según
-// la forma que tenga — polígono (NWS) o círculo (WFIGS, centro + radio
-// aproximado a partir del acreaje, más el colchón de arriba).
+// la forma que tenga — polígono (NWS) o círculo (WFIGS/Caltrans, centro +
+// radio aproximado, más el colchón que le toque según el tipo).
 function hazardContainsPoint(hz, lat, lon) {
   if (hz.shapeType === 'circle') {
-    return haversineKm(lat, lon, hz.lat, hz.lon) * 1000 <= (hz.radiusM + FIRE_MATCH_BUFFER_M);
+    const buffer = hz.category === 'closure' ? CLOSURE_MATCH_BUFFER_M : FIRE_MATCH_BUFFER_M;
+    return haversineKm(lat, lon, hz.lat, hz.lon) * 1000 <= (hz.radiusM + buffer);
   }
   return pointInAnyGeometry(lat, lon, hz.geometries || []);
+}
+
+// Cierres de carretera — Caltrans (departamento de transporte de CA) publica
+// su Lane Closure System (LCS) como JSON público por distrito, sin llave,
+// el mismo que alimenta su propio mapa QuickMap. El shape exacto de cada
+// registro no está documentado formalmente en ningún lado que se pueda citar
+// con certeza — el parseo va con varios nombres de campo alternativos y
+// diagnóstico completo (muestra cruda incluida) para poder corregirlo rápido
+// si algo no coincide, igual que pasó con CAL FIRE/NWS antes.
+const CALTRANS_DISTRICTS = [3, 4, 5, 6, 7, 8, 10, 11, 12]; // cubre de Sacramento a San Diego por la costa; deja fuera 1/2/9 (norte remoto/desierto lejos de esta ruta)
+async function fetchRoadClosures() {
+  const debug = { ok: false, districtStatuses: {}, rawCount: 0, parsedCount: 0, error: null, sample: null };
+  const closures = [];
+  await Promise.all(CALTRANS_DISTRICTS.map(async (d) => {
+    const dd = String(d).padStart(2, '0');
+    try {
+      const url = `https://cwwp2.dot.ca.gov/data/d${d}/lcs/lcsStatusD${dd}.json`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': '(Alta Vibra trip app, contacto en el perfil de Railway)' } });
+      debug.districtStatuses[d] = r.status;
+      if (!r.ok) return;
+      const j = await r.json();
+      const list = Array.isArray(j) ? j : (Array.isArray(j && j.data) ? j.data : []);
+      debug.rawCount += list.length;
+      list.forEach((raw) => {
+        const c = raw.closure || raw;
+        const loc = c.location || {};
+        const begin = loc.begin || {};
+        const lat = parseFloat(begin.beginLatitude ?? begin.latitude ?? c.latitude ?? c.lat);
+        const lon = parseFloat(begin.beginLongitude ?? begin.longitude ?? c.longitude ?? c.lon);
+        if (debug.sample === null) debug.sample = JSON.stringify(raw).slice(0, 500);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        const route = c.route || c.routeName || c.freewayName || '';
+        const desc = c.workDescription || c.closureDescription || c.description || c.comments || '';
+        closures.push({
+          id: String(c.closureID || c.id || (lat + ',' + lon + ':' + desc)),
+          event: 'Carretera cerrada',
+          headline: (route ? 'Hwy ' + route + ' — ' : '') + (desc || 'Cierre de carretera'),
+          severity: 'Severe', areaDesc: c.county || c.countyName || '', expires: null,
+          category: 'closure', emoji: '🚧', label: 'Carretera cerrada', color: '#FFB000',
+          shapeType: 'circle', lat, lon, radiusM: 1500,
+        });
+      });
+    } catch (e) {
+      debug.districtStatuses[d] = 'error:' + e.message;
+    }
+  }));
+  debug.parsedCount = closures.length;
+  debug.ok = true;
+  if (debug.rawCount && !closures.length) {
+    debug.error = 'Trajo ' + debug.rawCount + ' cierres pero ninguno con coordenada usable — muestra cruda: ' + debug.sample;
+  }
+  return { closures, debug };
 }
 
 // Puntos contra los que se mide si una alerta nos toca: cada parada del
@@ -1289,25 +1347,29 @@ async function checkHazardAlerts() {
   const segments = gatherRouteSegments();
   hazardStore.debug = { pointsCount: points.length, segmentsCount: segments.length };
 
-  const [{ hazards, debug }, { incidents, debug: fireDebug }] = await Promise.all([
+  const [{ hazards, debug }, { incidents, debug: fireDebug }, { closures, debug: closureDebug }] = await Promise.all([
     fetchActiveHazards(),
     fetchActiveFireIncidents(),
+    fetchRoadClosures(),
   ]);
   hazardStore.debug = Object.assign(hazardStore.debug, debug, {
     fireStatus: fireDebug.status, fireRawCount: fireDebug.rawCount,
     fireParsedCount: fireDebug.parsedCount, fireError: fireDebug.error,
+    closureRawCount: closureDebug.rawCount, closureParsedCount: closureDebug.parsedCount,
+    closureError: closureDebug.error, closureSample: closureDebug.sample,
   });
 
   // El mapa muestra TODOS los incendios activos de California en rojo/
   // naranja, toquen o no la ruta — es la vista de "panorama completo", no
   // solo lo que nos afecta directo. Las notificaciones push (abajo) sí se
-  // quedan limitadas a lo relevante, para no saturar con incendios lejanos.
+  // quedan limitadas a lo relevante — tanto para incendios como para
+  // cierres de carretera — para no saturar con cosas lejanas.
   hazardStore.allFires = incidents.map((f) => {
     const { geometries, ...rest } = f;
     return rest;
   });
 
-  const allHazards = hazards.concat(incidents);
+  const allHazards = hazards.concat(incidents).concat(closures);
   const nearby = [];
   if (!points.length && !segments.length) {
     hazardStore.debug.error = 'No hay ni una parada del itinerario con coordenada, ni ubicación en vivo, ni carro — no se puede saber qué toca la ruta (el mapa de incendios sí se actualizó igual).';

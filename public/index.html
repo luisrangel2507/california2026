@@ -3592,11 +3592,20 @@ function renderHazardZones(){
     hazardZones.push(circle);
   });
 
-  // Alertas de clima (huracán, inundación, tormenta...) — esas sí se quedan
-  // filtradas a las que tocan la ruta; pintar TODAS las de California sería
-  // demasiado ruido en el mapa.
+  // Cierres de carretera y alertas de clima (huracán, inundación,
+  // tormenta...) — esas sí se quedan filtradas a las que tocan la ruta;
+  // pintar TODAS las de California sería demasiado ruido en el mapa.
   HAZARD_ALERTS.forEach(function(h){
-    if(h.shapeType==='circle') return; // los incendios ya se dibujaron arriba (con TODOS, no solo los que matchean)
+    if(h.category==='fire') return; // los incendios ya se dibujaron arriba (con TODOS, no solo los que matchean)
+    if(h.shapeType==='circle' && h.lat!=null && h.lon!=null){
+      // Cierre de carretera (Caltrans) — punto, no polígono.
+      var circle = L.circle([h.lat,h.lon],{
+        radius:h.radiusM||1500, color:h.color||'#FFB000', weight:2, opacity:.8,
+        fillColor:h.color||'#FFB000', fillOpacity:.22,
+      }).addTo(mapObj).bindPopup(hazardPopupHtml(h));
+      hazardZones.push(circle);
+      return;
+    }
     (h.polygons||[]).forEach(function(rings){
       var poly = L.polygon(rings,{
         color:h.color||'#FF9A40', weight:2, opacity:.8,
@@ -3641,10 +3650,12 @@ async function testHazardAlerts(){
       'Alertas de clima en CA: '+(d.rawCount!=null?d.rawCount:'—')+' · Con zona usable: '+(d.parsedCount!=null?d.parsedCount:'—')+' · Zonas resueltas aparte: '+(d.zonesResolved!=null?d.zonesResolved:'—'),
       'WFIGS (incendios activos) respondió: '+(d.fireStatus!=null?('HTTP '+d.fireStatus):'—'),
       'Incendios con nombre en CA: '+(d.fireRawCount!=null?d.fireRawCount:'—')+' · Usables: '+(d.fireParsedCount!=null?d.fireParsedCount:'—')+' — TODOS se pintan en el mapa',
+      'Cierres de carretera (Caltrans) crudos: '+(d.closureRawCount!=null?d.closureRawCount:'—')+' · Usables: '+(d.closureParsedCount!=null?d.closureParsedCount:'—'),
       'De todo lo anterior, toca tu ruta (push/barra): '+(d.matchedCount!=null?d.matchedCount:'—'),
     ];
     if(d.error) lines.push('⚠️ Clima: '+d.error);
     if(d.fireError) lines.push('⚠️ Incendios: '+d.fireError);
+    if(d.closureError) lines.push('⚠️ Cierres: '+d.closureError);
     alert('⚠️ Revisión de alertas\n\n'+lines.join('\n')+'\n\nIncendios en el mapa: '+ALL_FIRES.length+' · Cerca de la ruta: '+HAZARD_ALERTS.length);
     toast(HAZARD_ALERTS.length ? HAZARD_ALERTS.length+' alerta(s) cerca de la ruta' : 'Sin alertas cerca por ahora ✓','success');
   }catch(e){ toast('No se pudo revisar — revisa tu conexión.','error'); }
