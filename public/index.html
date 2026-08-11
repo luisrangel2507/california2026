@@ -1992,7 +1992,7 @@
     /* ── WELCOME BANNER ── */
     .welcome-bnr {
       display:none; position:absolute; top:0; left:0; right:0; z-index:9500;
-      padding:22px 18px; text-align:center;
+      padding: calc(env(safe-area-inset-top,0px) + 22px) 18px 22px; text-align:center;
       background:linear-gradient(135deg,#00293A,#001A10);
       border-bottom:2px solid var(--cyan);
       box-shadow:0 4px 30px rgba(0,200,255,.35);
