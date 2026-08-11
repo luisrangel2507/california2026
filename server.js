@@ -1012,7 +1012,7 @@ app.delete('/api/car', (req, res) => {
 // alerta trae la geometría (polígono) real de la zona afectada, así que se
 // puede pintar el área en el mapa en vez de solo un pin.
 const HAZARD_FILE = path.join(DATA_DIR, 'hazard-alerts.json');
-let hazardStore = { notifiedIds: [], nearby: [], lastCheck: 0 };
+let hazardStore = { notifiedIds: [], nearby: [], allFires: [], lastCheck: 0 };
 try {
   const loaded = JSON.parse(fs.readFileSync(HAZARD_FILE, 'utf8'));
   if (loaded && typeof loaded === 'object') hazardStore = Object.assign(hazardStore, loaded);
@@ -1288,10 +1288,7 @@ async function checkHazardAlerts() {
   const points = gatherRouteWatchPoints();
   const segments = gatherRouteSegments();
   hazardStore.debug = { pointsCount: points.length, segmentsCount: segments.length };
-  if (!points.length && !segments.length) {
-    hazardStore.debug.error = 'No hay ni una parada del itinerario con coordenada, ni ubicación en vivo, ni carro — nada contra qué revisar.';
-    hazardStore.nearby = []; hazardStore.lastCheck = Date.now(); persistHazard(); return;
-  }
+
   const [{ hazards, debug }, { incidents, debug: fireDebug }] = await Promise.all([
     fetchActiveHazards(),
     fetchActiveFireIncidents(),
@@ -1300,35 +1297,49 @@ async function checkHazardAlerts() {
     fireStatus: fireDebug.status, fireRawCount: fireDebug.rawCount,
     fireParsedCount: fireDebug.parsedCount, fireError: fireDebug.error,
   });
+
+  // El mapa muestra TODOS los incendios activos de California en rojo/
+  // naranja, toquen o no la ruta — es la vista de "panorama completo", no
+  // solo lo que nos afecta directo. Las notificaciones push (abajo) sí se
+  // quedan limitadas a lo relevante, para no saturar con incendios lejanos.
+  hazardStore.allFires = incidents.map((f) => {
+    const { geometries, ...rest } = f;
+    return rest;
+  });
+
   const allHazards = hazards.concat(incidents);
   const nearby = [];
-  for (const hz of allHazards) {
-    // ¿Algún punto vigilado cae DENTRO de la alerta (polígono o círculo)?
-    let matchLabel = (points.find((p) => hazardContainsPoint(hz, p.lat, p.lon)) || {}).label || null;
-    // Si no, ¿algún tramo de carretera pasa por ahí? (muestreado)
-    if (!matchLabel) {
-      for (const seg of segments) {
-        let hit = hazardContainsPoint(hz, seg.a.lat, seg.a.lon);
-        for (let i = 1; i <= 20 && !hit; i++) {
-          const t = i / 20;
-          hit = hazardContainsPoint(hz, seg.a.lat + (seg.b.lat - seg.a.lat) * t, seg.a.lon + (seg.b.lon - seg.a.lon) * t);
+  if (!points.length && !segments.length) {
+    hazardStore.debug.error = 'No hay ni una parada del itinerario con coordenada, ni ubicación en vivo, ni carro — no se puede saber qué toca la ruta (el mapa de incendios sí se actualizó igual).';
+  } else {
+    for (const hz of allHazards) {
+      // ¿Algún punto vigilado cae DENTRO de la alerta (polígono o círculo)?
+      let matchLabel = (points.find((p) => hazardContainsPoint(hz, p.lat, p.lon)) || {}).label || null;
+      // Si no, ¿algún tramo de carretera pasa por ahí? (muestreado)
+      if (!matchLabel) {
+        for (const seg of segments) {
+          let hit = hazardContainsPoint(hz, seg.a.lat, seg.a.lon);
+          for (let i = 1; i <= 20 && !hit; i++) {
+            const t = i / 20;
+            hit = hazardContainsPoint(hz, seg.a.lat + (seg.b.lat - seg.a.lat) * t, seg.a.lon + (seg.b.lon - seg.a.lon) * t);
+          }
+          if (hit) { matchLabel = 'la carretera hacia ' + seg.b.label; break; }
         }
-        if (hit) { matchLabel = 'la carretera hacia ' + seg.b.label; break; }
       }
-    }
-    if (matchLabel) {
-      // Sin "geometries" (el GeoJSON crudo) — el cliente solo necesita
-      // "polygons" ya convertido; mandar ambos duplicaría el payload en
-      // zonas grandes con muchos vértices (litorales de condado, etc).
-      const { geometries, ...hzWithoutGeom } = hz;
-      const shapeExtra = hz.shapeType === 'polygon' ? { polygons: geometriesToLatLngPolygons(geometries) } : {};
-      nearby.push({ ...hzWithoutGeom, nearLabel: matchLabel, ...shapeExtra });
-      if (!hazardStore.notifiedIds.includes(hz.id)) {
-        hazardStore.notifiedIds.push(hz.id);
-        await sendPushToAll({
-          title: hz.emoji + ' ' + hz.label + ' cerca de ' + matchLabel,
-          body: hz.headline || hz.event,
-        });
+      if (matchLabel) {
+        // Sin "geometries" (el GeoJSON crudo) — el cliente solo necesita
+        // "polygons" ya convertido; mandar ambos duplicaría el payload en
+        // zonas grandes con muchos vértices (litorales de condado, etc).
+        const { geometries, ...hzWithoutGeom } = hz;
+        const shapeExtra = hz.shapeType === 'polygon' ? { polygons: geometriesToLatLngPolygons(geometries) } : {};
+        nearby.push({ ...hzWithoutGeom, nearLabel: matchLabel, ...shapeExtra });
+        if (!hazardStore.notifiedIds.includes(hz.id)) {
+          hazardStore.notifiedIds.push(hz.id);
+          await sendPushToAll({
+            title: hz.emoji + ' ' + hz.label + ' cerca de ' + matchLabel,
+            body: hz.headline || hz.event,
+          });
+        }
       }
     }
   }
@@ -1343,7 +1354,7 @@ async function checkHazardAlerts() {
 }
 
 app.get('/api/hazard-alerts', (req, res) => {
-  res.json({ nearby: hazardStore.nearby, lastCheck: hazardStore.lastCheck });
+  res.json({ nearby: hazardStore.nearby, allFires: hazardStore.allFires || [], lastCheck: hazardStore.lastCheck });
 });
 
 // Revisión manual (botón de admin) — regresa el diagnóstico completo para
@@ -1353,7 +1364,7 @@ app.post('/api/hazard-alerts/check', async (req, res) => {
   const who = req.body && req.body.who;
   if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
   await checkHazardAlerts();
-  res.json({ ok: true, nearby: hazardStore.nearby, debug: hazardStore.debug });
+  res.json({ ok: true, nearby: hazardStore.nearby, allFires: hazardStore.allFires || [], debug: hazardStore.debug });
 });
 
 // Primer chequeo a los pocos segundos de arrancar (no hay que esperar el
