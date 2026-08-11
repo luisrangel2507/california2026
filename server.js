@@ -1003,20 +1003,40 @@ app.delete('/api/car', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Alertas de incendios cerca de la ruta (CAL FIRE, sin API key) ──────────
-// Revisa los incendios activos que reporta CAL FIRE contra dónde está el
-// grupo ahorita (ubicación en vivo / el carro) y contra cada parada del
-// itinerario (incluidas las que todavía faltan) — si alguno cae cerca,
-// manda push a todos y lo deja disponible para pintar en el mapa.
-const FIRE_ALERT_RADIUS_KM = 80; // ~50 millas
-const FIRE_FILE = path.join(DATA_DIR, 'fire-alerts.json');
-let fireStore = { notifiedIds: [], nearby: [], lastCheck: 0 };
+// ── Alertas de clima/desastre cerca de la ruta (NWS, sin API key) ──────────
+// CAL FIRE no tenía un API JSON de verdad (el endpoint que se probó regresaba
+// la página HTML del sitio, no datos) — se reemplaza por el National Weather
+// Service (api.weather.gov), que es público, oficial, bien documentado, y
+// además de incendios (Red Flag Warning) cubre huracanes, inundaciones,
+// tormentas eléctricas, calor extremo, etc. — todo en un solo feed, y cada
+// alerta trae la geometría (polígono) real de la zona afectada, así que se
+// puede pintar el área en el mapa en vez de solo un pin.
+const HAZARD_FILE = path.join(DATA_DIR, 'hazard-alerts.json');
+let hazardStore = { notifiedIds: [], nearby: [], lastCheck: 0 };
 try {
-  const loaded = JSON.parse(fs.readFileSync(FIRE_FILE, 'utf8'));
-  if (loaded && typeof loaded === 'object') fireStore = Object.assign(fireStore, loaded);
+  const loaded = JSON.parse(fs.readFileSync(HAZARD_FILE, 'utf8'));
+  if (loaded && typeof loaded === 'object') hazardStore = Object.assign(hazardStore, loaded);
 } catch (e) {}
-function persistFire() {
-  try { fs.writeFileSync(FIRE_FILE, JSON.stringify(fireStore)); } catch (e) {}
+function persistHazard() {
+  try { fs.writeFileSync(HAZARD_FILE, JSON.stringify(hazardStore)); } catch (e) {}
+}
+
+// Categorías amigables — el nombre crudo que manda NWS ("Red Flag Warning",
+// "Flash Flood Warning") no le dice nada a nadie que no sea meteorólogo.
+const HAZARD_CATEGORIES = [
+  { match: /red flag|fire weather/i, key: 'fire', emoji: '🔥', label: 'Riesgo de incendio', color: '#FF3B1F' },
+  { match: /hurricane|tropical storm|tropical depression/i, key: 'hurricane', emoji: '🌀', label: 'Huracán', color: '#B23BFF' },
+  { match: /flash flood|flood/i, key: 'flood', emoji: '🌊', label: 'Inundación', color: '#2E9BFF' },
+  { match: /thunderstorm/i, key: 'storm', emoji: '⛈️', label: 'Tormenta eléctrica', color: '#FFD23B' },
+  { match: /excessive heat|heat/i, key: 'heat', emoji: '🌡️', label: 'Calor extremo', color: '#FF7A1F' },
+  { match: /high surf|coastal|rip current/i, key: 'surf', emoji: '🌊', label: 'Oleaje/costa peligrosa', color: '#2E9BFF' },
+  { match: /rain/i, key: 'rain', emoji: '🌧️', label: 'Lluvia fuerte', color: '#3B7DFF' },
+  { match: /high wind|wind advisory/i, key: 'wind', emoji: '💨', label: 'Viento fuerte', color: '#8FA6B8' },
+  { match: /winter storm|snow|ice/i, key: 'snow', emoji: '❄️', label: 'Nieve/hielo', color: '#8FD9FF' },
+];
+function categorizeHazard(eventName) {
+  const found = HAZARD_CATEGORIES.find((c) => c.match.test(eventName || ''));
+  return found || { key: 'other', emoji: '⚠️', label: eventName || 'Alerta', color: '#FF9A40' };
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -1029,58 +1049,99 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// CAL FIRE no publica documentación formal de este endpoint (es el que usa
-// su propio mapa de incidentes en fire.ca.gov), así que el parseo es
-// defensivo por si algún nombre de campo cambia — si no reconoce nada,
-// regresa una lista vacía en vez de tronar. También junta un diagnóstico
-// (status HTTP, cuántos incidentes trajo crudo, error si lo hubo) porque la
-// única forma real de confirmar que el parseo coincide con la respuesta de
-// verdad es viéndolo correr en producción — este sandbox no tiene salida a
-// fire.ca.gov para probarlo antes.
-async function fetchActiveFires() {
+// Ray casting clásico: ¿el punto cae dentro del anillo? Un "anillo" GeoJSON
+// es una lista de [lon,lat] (ojo: lon primero, no lat — al revés de como se
+// suele pensar en "lat,lon").
+function pointInRing(lat, lon, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+function pointInGeometry(lat, lon, geometry) {
+  if (!geometry) return false;
+  if (geometry.type === 'Polygon') return geometry.coordinates.some((ring) => pointInRing(lat, lon, ring));
+  if (geometry.type === 'MultiPolygon') return geometry.coordinates.some((poly) => poly.some((ring) => pointInRing(lat, lon, ring)));
+  return false;
+}
+// Geometría GeoJSON (anillos en [lon,lat]) a arreglos [lat,lon] que Leaflet
+// puede dibujar directo con L.polygon().
+function geometryToLatLngPolygons(geometry) {
+  if (!geometry) return [];
+  if (geometry.type === 'Polygon') {
+    return [geometry.coordinates.map((ring) => ring.map(([lon, lat]) => [lat, lon]))];
+  }
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.map((poly) => poly.map((ring) => ring.map(([lon, lat]) => [lat, lon])));
+  }
+  return [];
+}
+
+// api.weather.gov es un API federal documentado y estable — a diferencia del
+// endpoint de CAL FIRE que resultó no ser JSON de verdad, este sí se puede
+// codificar con confianza. Aun así se junta diagnóstico (status, cuántas
+// alertas trajo crudo, cuántas tenían geometría usable) porque este sandbox
+// tampoco tiene salida a api.weather.gov para probarlo antes de que corra en
+// producción.
+async function fetchActiveHazards() {
   const debug = { ok: false, status: null, rawCount: null, parsedCount: null, error: null };
   try {
-    const r = await fetch('https://www.fire.ca.gov/api/incidents', {
+    const r = await fetch('https://api.weather.gov/alerts/active?area=CA', {
       signal: AbortSignal.timeout(15000),
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AltaVibraTripApp/1.0)' },
+      headers: {
+        'User-Agent': '(Alta Vibra trip app, contacto en el perfil de Railway)',
+        Accept: 'application/geo+json',
+      },
     });
     debug.status = r.status;
-    if (!r.ok) { debug.error = 'HTTP ' + r.status; return { fires: [], debug }; }
+    if (!r.ok) { debug.error = 'HTTP ' + r.status; return { hazards: [], debug }; }
     const j = await r.json();
-    const list = Array.isArray(j) ? j : (Array.isArray(j.Incidents) ? j.Incidents : []);
-    debug.rawCount = list.length;
-    if (!list.length) debug.error = 'La respuesta no trajo un arreglo de incidentes reconocible — revisa el shape real (keys: ' + Object.keys(j || {}).join(',') + ')';
-    const fires = list
-      .map((inc) => ({
-        id: String(inc.UniqueId ?? inc.Id ?? inc.id ?? inc.Name ?? inc.name ?? ''),
-        name: inc.Name || inc.name || 'Incendio sin nombre',
-        county: inc.County || inc.county || '',
-        acres: inc.AcresBurned ?? inc.acres ?? null,
-        contained: inc.PercentContained ?? inc.percentContained ?? null,
-        lat: parseFloat(inc.Latitude ?? inc.latitude),
-        lon: parseFloat(inc.Longitude ?? inc.longitude),
-        active: inc.IsActive !== undefined ? !!inc.IsActive : true,
-        url: inc.Url || inc.url || '',
-      }))
-      .filter((f) => f.id && f.active && Number.isFinite(f.lat) && Number.isFinite(f.lon));
-    debug.parsedCount = fires.length;
+    const features = Array.isArray(j.features) ? j.features : [];
+    debug.rawCount = features.length;
+    const hazards = features
+      .map((f) => {
+        const p = f.properties || {};
+        const cat = categorizeHazard(p.event);
+        return {
+          id: String(p.id || f.id || ''),
+          event: p.event || 'Alerta',
+          headline: p.headline || p.event || '',
+          severity: p.severity || 'Unknown',
+          areaDesc: p.areaDesc || '',
+          expires: p.expires || null,
+          category: cat.key,
+          emoji: cat.emoji,
+          label: cat.label,
+          color: cat.color,
+          geometry: f.geometry || null,
+        };
+      })
+      // Sin geometría no hay forma confiable de saber si nos toca ni qué
+      // pintar en el mapa — se descarta esa alerta (NWS no siempre la manda,
+      // es una limitación conocida de esta primera versión).
+      .filter((h) => h.id && h.geometry);
+    debug.parsedCount = hazards.length;
     debug.ok = true;
-    if (list.length && !fires.length) {
-      debug.error = 'Trajo ' + list.length + ' incidentes pero ninguno pasó el parseo — los nombres de campo (Latitude/Longitude/IsActive/etc.) no coinciden con lo esperado. Primer incidente crudo: ' + JSON.stringify(list[0]).slice(0, 400);
+    if (features.length && !hazards.length) {
+      debug.error = 'Trajo ' + features.length + ' alertas pero ninguna con geometría/id usable — primera cruda: ' + JSON.stringify(features[0]).slice(0, 400);
     }
-    return { fires, debug };
+    return { hazards, debug };
   } catch (e) {
     debug.error = e.message;
-    console.error('fetchActiveFires:', e.message);
-    return { fires: [], debug };
+    console.error('fetchActiveHazards:', e.message);
+    return { hazards: [], debug };
   }
 }
 
-// Puntos contra los que se mide cercanía: cada parada del itinerario (ya
-// visitada o todavía por venir — un incendio cerca de algo que viene en
-// camino importa igual o más que uno cerca de donde ya estuvimos) más la
-// ubicación en vivo de cada quien y la del carro, si son recientes.
-function gatherFireWatchPoints() {
+// Puntos contra los que se mide si una alerta nos toca: cada parada del
+// itinerario (visitada o todavía por venir) más la ubicación en vivo de cada
+// quien y la del carro, si son recientes.
+function gatherRouteWatchPoints() {
   const points = [];
   Object.values(itinStore).forEach((day) => {
     (day.acts || []).forEach((a) => {
@@ -1091,122 +1152,95 @@ function gatherFireWatchPoints() {
   });
   const freshMs = 2 * 60 * 60 * 1000;
   Object.entries(liveLocStore).forEach(([who, loc]) => {
-    if (loc && Date.now() - loc.ts < freshMs) {
-      points.push({ lat: loc.lat, lon: loc.lon, label: who + ' ahorita' });
-    }
+    if (loc && Date.now() - loc.ts < freshMs) points.push({ lat: loc.lat, lon: loc.lon, label: who + ' ahorita' });
   });
-  if (carLoc && Date.now() - carLoc.ts < freshMs) {
-    points.push({ lat: carLoc.lat, lon: carLoc.lon, label: 'el carro' });
-  }
+  if (carLoc && Date.now() - carLoc.ts < freshMs) points.push({ lat: carLoc.lat, lon: carLoc.lon, label: 'el carro' });
   return points;
 }
 
-// Un incendio puede estar lejos de cualquier parada puntual y aun así caer
-// justo sobre la carretera que conecta dos paradas seguidas — esos tramos
-// (en el orden real del itinerario: día, luego actividad dentro del día)
-// también cuentan como "en la ruta", no solo los puntos donde nos detenemos.
-function gatherFireRouteSegments() {
-  const dayKeys = Object.keys(itinStore)
-    .map((k) => parseInt(k, 10))
-    .filter((n) => Number.isInteger(n))
-    .sort((a, b) => a - b);
+// Una alerta puede no tocar ninguna parada puntual y aun así cubrir la
+// carretera que conecta dos paradas seguidas — esos tramos (en el orden real
+// del itinerario: día, luego actividad dentro del día) también cuentan.
+function gatherRouteSegments() {
+  const dayKeys = Object.keys(itinStore).map((k) => parseInt(k, 10)).filter((n) => Number.isInteger(n)).sort((a, b) => a - b);
   const ordered = [];
   dayKeys.forEach((k) => {
     const day = itinStore[String(k)];
     (day.acts || []).forEach((a) => {
-      if (Array.isArray(a.c) && a.c.length === 2) {
-        ordered.push({ lat: a.c[0], lon: a.c[1], label: a.n || day.city || 'itinerario' });
-      }
+      if (Array.isArray(a.c) && a.c.length === 2) ordered.push({ lat: a.c[0], lon: a.c[1], label: a.n || day.city || 'itinerario' });
     });
   });
   const segments = [];
-  for (let i = 0; i < ordered.length - 1; i++) {
-    segments.push({ a: ordered[i], b: ordered[i + 1] });
-  }
+  for (let i = 0; i < ordered.length - 1; i++) segments.push({ a: ordered[i], b: ordered[i + 1] });
   return segments;
 }
 
-// Distancia mínima de un punto a un tramo de carretera, aproximando el tramo
-// con muestras a intervalos regulares (interpolación lineal en lat/lon —
-// suficiente a esta escala, no hace falta geometría de gran círculo exacta
-// para un chequeo de "¿está cerca o no?").
-function distanceToSegmentKm(plat, plon, aLat, aLon, bLat, bLon) {
-  const steps = 20;
-  let min = haversineKm(plat, plon, aLat, aLon);
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const d = haversineKm(plat, plon, aLat + (bLat - aLat) * t, aLon + (bLon - aLon) * t);
-    if (d < min) min = d;
-  }
-  return min;
-}
-
-async function checkFireAlerts() {
-  const points = gatherFireWatchPoints();
-  const segments = gatherFireRouteSegments();
-  fireStore.debug = { pointsCount: points.length, segmentsCount: segments.length };
+async function checkHazardAlerts() {
+  const points = gatherRouteWatchPoints();
+  const segments = gatherRouteSegments();
+  hazardStore.debug = { pointsCount: points.length, segmentsCount: segments.length };
   if (!points.length && !segments.length) {
-    fireStore.debug.error = 'No hay ni una parada del itinerario con coordenada, ni ubicación en vivo, ni carro — nada contra qué medir distancia.';
-    fireStore.nearby = []; fireStore.lastCheck = Date.now(); persistFire(); return;
+    hazardStore.debug.error = 'No hay ni una parada del itinerario con coordenada, ni ubicación en vivo, ni carro — nada contra qué revisar.';
+    hazardStore.nearby = []; hazardStore.lastCheck = Date.now(); persistHazard(); return;
   }
-  const { fires, debug } = await fetchActiveFires();
-  fireStore.debug = Object.assign(fireStore.debug, debug);
+  const { hazards, debug } = await fetchActiveHazards();
+  hazardStore.debug = Object.assign(hazardStore.debug, debug);
   const nearby = [];
-  let closestKm = null;
-  for (const fire of fires) {
-    let best = null;
-    for (const p of points) {
-      const d = haversineKm(fire.lat, fire.lon, p.lat, p.lon);
-      if (!best || d < best.distanceKm) best = { distanceKm: d, label: p.label };
+  for (const hz of hazards) {
+    // ¿Algún punto vigilado cae DENTRO del polígono de la alerta?
+    let matchLabel = (points.find((p) => pointInGeometry(p.lat, p.lon, hz.geometry)) || {}).label || null;
+    // Si no, ¿algún tramo de carretera pasa por el polígono? (muestreado)
+    if (!matchLabel) {
+      for (const seg of segments) {
+        let hit = pointInGeometry(seg.a.lat, seg.a.lon, hz.geometry);
+        for (let i = 1; i <= 20 && !hit; i++) {
+          const t = i / 20;
+          hit = pointInGeometry(seg.a.lat + (seg.b.lat - seg.a.lat) * t, seg.a.lon + (seg.b.lon - seg.a.lon) * t, hz.geometry);
+        }
+        if (hit) { matchLabel = 'la carretera hacia ' + seg.b.label; break; }
+      }
     }
-    for (const seg of segments) {
-      const d = distanceToSegmentKm(fire.lat, fire.lon, seg.a.lat, seg.a.lon, seg.b.lat, seg.b.lon);
-      if (!best || d < best.distanceKm) best = { distanceKm: d, label: 'la carretera hacia ' + seg.b.label };
-    }
-    if (best && (closestKm === null || best.distanceKm < closestKm)) closestKm = best.distanceKm;
-    if (best && best.distanceKm <= FIRE_ALERT_RADIUS_KM) {
-      nearby.push({ ...fire, distanceKm: Math.round(best.distanceKm), nearLabel: best.label });
-      if (!fireStore.notifiedIds.includes(fire.id)) {
-        fireStore.notifiedIds.push(fire.id);
-        const parts = [fire.name];
-        if (fire.contained != null) parts.push(fire.contained + '% contenido');
+    if (matchLabel) {
+      nearby.push({ ...hz, nearLabel: matchLabel, polygons: geometryToLatLngPolygons(hz.geometry) });
+      if (!hazardStore.notifiedIds.includes(hz.id)) {
+        hazardStore.notifiedIds.push(hz.id);
         await sendPushToAll({
-          title: '🔥 Incendio cerca de ' + best.label,
-          body: parts.join(' · ') + ' · ~' + Math.round(best.distanceKm) + ' km',
+          title: hz.emoji + ' ' + hz.label + ' cerca de ' + matchLabel,
+          body: hz.headline || hz.event,
         });
       }
     }
   }
-  fireStore.debug.closestFireKm = closestKm === null ? null : Math.round(closestKm);
-  // Si un incendio ya no sale cerca (se contuvo, se cayó de la lista de CAL
-  // FIRE, o nos alejamos), se olvida — así si reaparece se vuelve a avisar.
-  fireStore.notifiedIds = fireStore.notifiedIds.filter((id) => nearby.some((f) => f.id === id));
-  fireStore.nearby = nearby;
-  fireStore.lastCheck = Date.now();
-  persistFire();
+  hazardStore.debug.checkedCount = hazards.length;
+  hazardStore.debug.matchedCount = nearby.length;
+  // Si una alerta ya no toca la ruta (expiró, se movió, o nos alejamos), se
+  // olvida — así si vuelve a tocar se avisa de nuevo.
+  hazardStore.notifiedIds = hazardStore.notifiedIds.filter((id) => nearby.some((h) => h.id === id));
+  hazardStore.nearby = nearby;
+  hazardStore.lastCheck = Date.now();
+  persistHazard();
 }
 
-app.get('/api/fire-alerts', (req, res) => {
-  res.json({ nearby: fireStore.nearby, lastCheck: fireStore.lastCheck });
+app.get('/api/hazard-alerts', (req, res) => {
+  res.json({ nearby: hazardStore.nearby, lastCheck: hazardStore.lastCheck });
 });
 
-// Revisión manual (botón de admin) — no hay que esperar el cron ni un
-// incendio real cerca para comprobar que la integración sigue viva. Regresa
-// el diagnóstico completo (debug) para poder ver EN PRODUCCIÓN, sin
-// adivinarle, si CAL FIRE respondió bien, cuántos incidentes trajo crudo, y
-// qué tan cerca quedó el más cercano aunque no haya cruzado el umbral.
-app.post('/api/fire-alerts/check', async (req, res) => {
+// Revisión manual (botón de admin) — regresa el diagnóstico completo para
+// poder ver EN PRODUCCIÓN, sin adivinarle, si NWS respondió bien, cuántas
+// alertas trajo crudo, y cuántas de verdad tocan la ruta.
+app.post('/api/hazard-alerts/check', async (req, res) => {
   const who = req.body && req.body.who;
   if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
-  await checkFireAlerts();
-  res.json({ ok: true, nearby: fireStore.nearby, debug: fireStore.debug });
+  await checkHazardAlerts();
+  res.json({ ok: true, nearby: hazardStore.nearby, debug: hazardStore.debug });
 });
 
-// Primer chequeo a los pocos segundos de arrancar (no hay que esperar 30
-// min tras cada redeploy para que el mapa tenga datos), y luego cada 30 min.
-setTimeout(() => { checkFireAlerts().catch((e) => console.error('checkFireAlerts:', e.message)); }, 15000);
-cron.schedule('*/30 * * * *', () => {
-  checkFireAlerts().catch((e) => console.error('checkFireAlerts:', e.message));
+// Primer chequeo a los pocos segundos de arrancar (no hay que esperar el
+// intervalo completo tras cada redeploy), y luego cada 20 min — el clima
+// cambia más rápido que un incendio ya andando.
+setTimeout(() => { checkHazardAlerts().catch((e) => console.error('checkHazardAlerts:', e.message)); }, 15000);
+cron.schedule('*/20 * * * *', () => {
+  checkHazardAlerts().catch((e) => console.error('checkHazardAlerts:', e.message));
 });
 
 // ── Reservaciones (con horario, fecha y ubicación) ─────────────────────────
