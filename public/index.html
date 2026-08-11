@@ -1254,6 +1254,7 @@
     /* Person spend rows (minimal) */
     .prow { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
     .prow:last-child { margin-bottom:0; }
+    .prow-name { font-size:11px; width:44px; flex-shrink:0; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .prow-track { flex:1; height:6px; background:rgba(255,255,255,.07); border-radius:3px; overflow:hidden; }
     .prow-fill { height:100%; border-radius:3px; transition:width .45s ease; }
     .prow-amt { font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); min-width:50px; text-align:right; }
@@ -4341,6 +4342,7 @@ function renderDash(){
     var balStr=bal>0.5?'+$'+bal.toFixed(0):bal<-0.5?'-$'+Math.abs(bal).toFixed(0):'&#10003;';
     return '<div class="prow">'+
       avatarHtml(i, 16, 8)+
+      '<span class="prow-name">'+esc(p)+'</span>'+
       '<div class="prow-track"><div class="prow-fill" style="width:'+pct+'%;background:'+PC[i]+'"></div></div>'+
       '<span class="prow-amt">$'+paidTotal[i].toLocaleString('es-MX',{minimumFractionDigits:0})+'</span>'+
       '<span class="prow-bal" style="color:'+balClr+'">'+balStr+'</span>'+
