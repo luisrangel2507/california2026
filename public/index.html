@@ -7548,9 +7548,33 @@ async function init(){
   // app; antes un rechazo aquí mataba init() completo desde la primera
   // línea y la pantalla se quedaba en negro sin ninguna pista.
   try{ await openDB(); }catch(err){ console.error('openDB falló:', err); showFatalError('openDB() falló: '+((err&&err.message)||err)); }
+  // Mostrar el picker de login (si nadie ha iniciado sesión) va aquí, ANTES
+  // de todo lo demás — antes vivía hasta el final de init(), después de
+  // varios awaits (fetches) y renders. Ninguno de esos truena solo (todos
+  // tienen su propio try/catch o van por safeCall), pero si alguno nuevo se
+  // agrega sin esa protección, ya no debe poder bloquear lo único que de
+  // verdad es crítico: que quien no tiene sesión vea la pantalla de login en
+  // vez de quedarse viendo un cascarón en negro. El picker no depende de
+  // nada de lo que carga después (perfiles, itinerario, gastos...), así que
+  // no hay razón para esperar.
+  safeCall(function(){
+    if(meIndex===null){
+      renderPickCards();
+      document.getElementById('pick-screen').classList.add('show');
+      // init() es async y esta parte corre después de un await, o sea
+      // después de que el script terminó de ejecutarse de corrido y ya se
+      // definió trBgVideo (var de nivel superior, más abajo en el archivo),
+      // así que aquí sí se puede arrancar.
+      if(typeof trBgVideo !== 'undefined') trBgVideo.play();
+    }
+  }, 'mostrar picker de login');
   // Antes de pintar cualquier avatar (header, dashboard, picker de login)
   // hace falta saber quién tiene foto de perfil subida.
   await loadProfiles();
+  // El picker ya se mostró arriba con las iniciales de color (por si
+  // loadProfiles tarda) — ahora que ya están las fotos, se repinta para que
+  // aparezcan sin esperar a nada más.
+  if(meIndex===null) safeCall(renderPickCards, 'renderPickCards (fotos)');
   // El itinerario del servidor manda sobre la copia local
   await loadItinerary();
   await loadExpenses();
@@ -7615,14 +7639,6 @@ async function init(){
   dcArea.addEventListener('touchend',   dcOnTouchEnd,   {passive:false});
   dcArea.addEventListener('touchmove',  dcOnTouchMove,  {passive:false});
   dcArea.addEventListener('touchcancel',dcOnTouchEnd,   {passive:false});
-  // Show profile picker if no profile selected yet
-  if(meIndex===null){
-    renderPickCards();
-    document.getElementById('pick-screen').classList.add('show');
-    // init() es async y esta parte corre después de los await, o sea después
-    // de que ya se definió trBgVideo, así que aquí sí se puede arrancar.
-    if(typeof trBgVideo !== 'undefined') trBgVideo.play();
-  }
   // Con sesión iniciada, init() pasa por varios awaits (fetches) antes de
   // pintar todo esto — de vez en cuando Safari termina el primer render sin
   // repintar nada (pantalla negra, solo se ve el botón flotante del
