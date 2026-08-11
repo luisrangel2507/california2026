@@ -2541,6 +2541,7 @@
 // consola llegábamos a verlo porque son celulares reales, no algo que se
 // pueda depurar de control remoto. Esto pinta el error directo en pantalla
 // para poder mandar screenshot de la causa real en vez de adivinarle.
+var lastFatalErrorMsg = null, lastFatalErrorLine = null, lastFatalErrorCount = 0;
 function showFatalError(msg){
   try{
     var el = document.getElementById('fatal-error-banner');
@@ -2548,16 +2549,37 @@ function showFatalError(msg){
       el = document.createElement('div');
       el.id = 'fatal-error-banner';
       el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;'+
-        'background:#B00020;color:#fff;padding:12px 14px;'+
+        'background:#B00020;color:#fff;padding:12px 34px 12px 14px;'+
         'font:11px/1.5 "Space Mono",monospace;white-space:pre-wrap;word-break:break-word;'+
         'max-height:70vh;overflow-y:auto;-webkit-overflow-scrolling:touch;'+
         'box-shadow:0 4px 20px rgba(0,0,0,.6);';
+      var closeBtn = document.createElement('button');
+      closeBtn.textContent = '✕';
+      closeBtn.setAttribute('aria-label','Cerrar aviso de error');
+      closeBtn.style.cssText = 'position:absolute;top:8px;right:8px;background:none;border:none;'+
+        'color:#fff;font-size:16px;line-height:1;cursor:pointer;padding:4px;';
+      closeBtn.onclick = function(){ el.remove(); lastFatalErrorMsg=null; lastFatalErrorLine=null; lastFatalErrorCount=0; };
+      el.appendChild(closeBtn);
       document.body.appendChild(el);
     }
+    // Un error que se repite cada 15s (el refresco automático, por ejemplo)
+    // no debe llenar la pantalla de líneas idénticas para siempre — se
+    // acumula un contador sobre la misma línea en vez de apilar.
+    if(msg === lastFatalErrorMsg && lastFatalErrorLine){
+      lastFatalErrorCount++;
+      lastFatalErrorLine.textContent = new Date().toLocaleTimeString()+' — '+msg+' (x'+lastFatalErrorCount+')';
+      return;
+    }
+    lastFatalErrorMsg = msg; lastFatalErrorCount = 1;
     var line = document.createElement('div');
     line.style.cssText = 'margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.3);';
     line.textContent = new Date().toLocaleTimeString()+' — '+msg;
     el.appendChild(line);
+    lastFatalErrorLine = line;
+    // Tope de líneas distintas guardadas, para que esto tampoco crezca sin
+    // límite si van saliendo errores distintos uno tras otro.
+    var lines = el.querySelectorAll(':scope > div');
+    while(lines.length > 8){ lines[0].remove(); lines = el.querySelectorAll(':scope > div'); }
   }catch(e){}
 }
 function safeCall(fn, label){
@@ -2828,6 +2850,11 @@ function lockForInactivity(){
   if(meIndex===null) return; // nadie ha iniciado sesión, nada que bloquear
   var pickEl = document.getElementById('pick-screen');
   if(pickEl.classList.contains('show')) return; // ya hay algo mostrándose ahí
+  // El formulario obligatorio de información de emergencia (cuenta nueva)
+  // no debe taparse por debajo con el PIN — si alguien se tarda llenándolo,
+  // no tiene sentido pedirle que se vuelva a autenticar justo al terminar.
+  var fi = document.getElementById('firstinfo-screen');
+  if(fi && fi.classList.contains('show')) { resetInactivityTimer(); return; }
   var i = parseInt(meIndex);
   pinTarget=i; pinBuffer=''; pinFirst=''; pinMode='unlock';
   document.getElementById('pin-pname').textContent = persons[i];
@@ -7322,16 +7349,21 @@ async function init(){
   // Refresca los gastos cada 15s para que se vean casi en tiempo real
   // entre todos los que tengan la app abierta.
   setInterval(async function(){
+    // Cada await ya tiene su propio try/catch adentro (loadX no tumba nada
+    // si no hay conexión); los render* de aquí no, así que van envueltos
+    // con safeCall — si alguno truena a media función, los pasos de después
+    // (ubicación en vivo, itinerario) igual deben seguir corriendo cada 15s.
     await loadExpenses();
     await loadSettlements();
     await loadProfiles();
-    renderExps();
-    renderDash(); renderOps();
+    safeCall(renderExps, 'renderExps');
+    safeCall(renderDash, 'renderDash');
+    safeCall(renderOps, 'renderOps');
     await loadReservations();
     // Si el admin cambia el itinerario, los demás lo ven sin recargar
     await loadItinerary();
-    renderItin();
-    renderPlaceMarkers();
+    safeCall(renderItin, 'renderItin');
+    safeCall(renderPlaceMarkers, 'renderPlaceMarkers');
     await loadCarLoc();
     await loadGroupLocations();
   }, 15000);
