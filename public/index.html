@@ -3575,7 +3575,7 @@ function renderPlaceMarkers(){
         '<div class="pop-day">DÍA '+(di+1)+' · Actividad #'+num+' · '+esc(day.date)+(a.t?' · '+esc(a.t):'')+(done?' · ✓ hecho':'')+'</div>'+
         (a.note?'<div class="pop-day">'+esc(a.note)+'</div>':'')+
         '<div class="pop-actions">'+
-          '<a class="pop-maps" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank">Ver en Maps</a>'+
+          '<a class="pop-maps" href="https://www.google.com/maps/search/?api=1&query='+a.c[0]+','+a.c[1]+'" target="_blank">Ver en Maps</a>'+
         '</div>'
       );
       placeMarkers.push(marker);
@@ -3633,7 +3633,7 @@ function hazardPopupHtml(h, lat, lon){
     '<div class="pop-day">'+esc(h.headline||h.event)+'</div>'+
     (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
     (h.nearLabel?'<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>':'')+
-    (lat!=null&&lon!=null?'<div class="pop-actions"><a class="pop-maps" href="https://maps.google.com/?q='+lat+','+lon+'" target="_blank">Ver en Google Maps</a></div>':'');
+    (lat!=null&&lon!=null?'<div class="pop-actions"><a class="pop-maps" href="https://www.google.com/maps/search/?api=1&query='+lat+','+lon+'" target="_blank">Ver en Google Maps</a></div>':'');
 }
 
 function renderHazardZones(){
@@ -3821,7 +3821,7 @@ function renderCustomMarkers(){
       '<div class="pop-name">'+esc(p.n)+'</div>'+
       '<div class="pop-custom">Lugar personalizado</div>'+
       '<div class="pop-actions">'+
-        '<a class="pop-maps" href="https://maps.google.com/?q='+p.c[0]+','+p.c[1]+'" target="_blank">Ver en Maps</a>'+
+        '<a class="pop-maps" href="https://www.google.com/maps/search/?api=1&query='+p.c[0]+','+p.c[1]+'" target="_blank">Ver en Maps</a>'+
         '<button class="pop-del" onclick="deleteCustomPlace('+p.id+')">Eliminar</button>'+
       '</div>'
     );
@@ -5092,7 +5092,7 @@ function renderGeoFixList(){
     // De las ya ubicadas, el link a donde quedó: es la forma rápida de ver si
     // el pin cayó donde debía.
     var verDonde = puesta
-      ? '<a class="gfx-see" href="https://maps.google.com/?q='+a.c[0]+','+a.c[1]+'" target="_blank">ver dónde quedó ›</a>'
+      ? '<a class="gfx-see" href="https://www.google.com/maps/search/?api=1&query='+a.c[0]+','+a.c[1]+'" target="_blank">ver dónde quedó ›</a>'
       : '';
     return '<div class="gfx-row'+(puesta?' ok':'')+'">'+
       '<div class="gfx-top">'+
