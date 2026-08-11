@@ -3534,7 +3534,13 @@ function renderPlaceMarkers(){
 // ── ALERTAS DE CLIMA/DESASTRE (NWS) — incendios, huracanes, inundaciones,
 // tormentas eléctricas, calor extremo... cerca de dónde estamos o vamos a
 // estar. Cada alerta trae la zona afectada real (polígono), no solo un pin.
+// HAZARD_ALERTS: alertas de clima/incendio que sí tocan la ruta — mueven la
+// barra de arriba y las notificaciones push.
+// ALL_FIRES: TODOS los incendios activos de California, toquen o no la ruta
+// — el mapa muestra el panorama completo en rojo/naranja, no solo lo que
+// nos afecta directo.
 var HAZARD_ALERTS = [];
+var ALL_FIRES = [];
 var hazardZones = [];
 
 async function loadHazardAlerts(){
@@ -3543,6 +3549,7 @@ async function loadHazardAlerts(){
     if(!r.ok) return;
     var j = await r.json();
     HAZARD_ALERTS = j.nearby || [];
+    ALL_FIRES = j.allFires || [];
   }catch(e){ return; /* sin conexión — se queda con lo último que había */ }
   renderHazardBar();
   safeCall(renderHazardZones, 'renderHazardZones');
@@ -3561,32 +3568,40 @@ function renderHazardBar(){
   bar.classList.add('show');
 }
 
+function hazardPopupHtml(h){
+  var expiresStr = h.expires ? new Date(h.expires).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+  return '<div class="pop-name">'+(h.emoji||'⚠️')+' '+esc(h.label||h.event)+'</div>'+
+    '<div class="pop-day">'+esc(h.headline||h.event)+'</div>'+
+    (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
+    (h.nearLabel?'<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>':'');
+}
+
 function renderHazardZones(){
   if(!mapObj) return;
   hazardZones.forEach(function(z){ mapObj.removeLayer(z); });
   hazardZones = [];
+
+  // Incendios: TODOS los activos de California (rojo/naranja), sin filtrar
+  // por cercanía a la ruta.
+  ALL_FIRES.forEach(function(h){
+    if(h.lat==null || h.lon==null) return;
+    var circle = L.circle([h.lat,h.lon],{
+      radius:h.radiusM||800, color:h.color||'#FF3B1F', weight:2, opacity:.8,
+      fillColor:h.color||'#FF3B1F', fillOpacity:.22,
+    }).addTo(mapObj).bindPopup(hazardPopupHtml(h));
+    hazardZones.push(circle);
+  });
+
+  // Alertas de clima (huracán, inundación, tormenta...) — esas sí se quedan
+  // filtradas a las que tocan la ruta; pintar TODAS las de California sería
+  // demasiado ruido en el mapa.
   HAZARD_ALERTS.forEach(function(h){
-    var expiresStr = h.expires ? new Date(h.expires).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
-    var popupHtml =
-      '<div class="pop-name">'+(h.emoji||'⚠️')+' '+esc(h.label||h.event)+'</div>'+
-      '<div class="pop-day">'+esc(h.headline||h.event)+'</div>'+
-      (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
-      '<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>';
-    if(h.shapeType==='circle' && h.lat!=null && h.lon!=null){
-      // Incendios activos con nombre (WFIGS) traen un punto, no un polígono
-      // — se aproxima la zona quemada con un círculo del tamaño del acreaje.
-      var circle = L.circle([h.lat,h.lon],{
-        radius:h.radiusM||800, color:h.color||'#FF3B1F', weight:2, opacity:.8,
-        fillColor:h.color||'#FF3B1F', fillOpacity:.22,
-      }).addTo(mapObj).bindPopup(popupHtml);
-      hazardZones.push(circle);
-      return;
-    }
+    if(h.shapeType==='circle') return; // los incendios ya se dibujaron arriba (con TODOS, no solo los que matchean)
     (h.polygons||[]).forEach(function(rings){
       var poly = L.polygon(rings,{
         color:h.color||'#FF9A40', weight:2, opacity:.8,
         fillColor:h.color||'#FF9A40', fillOpacity:.18,
-      }).addTo(mapObj).bindPopup(popupHtml);
+      }).addTo(mapObj).bindPopup(hazardPopupHtml(h));
       hazardZones.push(poly);
     });
   });
@@ -3613,6 +3628,7 @@ async function testHazardAlerts(){
     if(!r.ok){ toast('No se pudo revisar — ¿eres admin?','error'); return; }
     var j = await r.json();
     HAZARD_ALERTS = j.nearby || [];
+    ALL_FIRES = j.allFires || [];
     renderHazardBar();
     safeCall(renderHazardZones, 'renderHazardZones');
     // Diagnóstico completo en un alert (no un toast) para poder mandar
@@ -3624,12 +3640,12 @@ async function testHazardAlerts(){
       'NWS (clima) respondió: '+(d.status!=null?('HTTP '+d.status):'—'),
       'Alertas de clima en CA: '+(d.rawCount!=null?d.rawCount:'—')+' · Con zona usable: '+(d.parsedCount!=null?d.parsedCount:'—')+' · Zonas resueltas aparte: '+(d.zonesResolved!=null?d.zonesResolved:'—'),
       'WFIGS (incendios activos) respondió: '+(d.fireStatus!=null?('HTTP '+d.fireStatus):'—'),
-      'Incendios con nombre en CA: '+(d.fireRawCount!=null?d.fireRawCount:'—')+' · Usables: '+(d.fireParsedCount!=null?d.fireParsedCount:'—'),
-      'De todo lo anterior, toca tu ruta: '+(d.matchedCount!=null?d.matchedCount:'—'),
+      'Incendios con nombre en CA: '+(d.fireRawCount!=null?d.fireRawCount:'—')+' · Usables: '+(d.fireParsedCount!=null?d.fireParsedCount:'—')+' — TODOS se pintan en el mapa',
+      'De todo lo anterior, toca tu ruta (push/barra): '+(d.matchedCount!=null?d.matchedCount:'—'),
     ];
     if(d.error) lines.push('⚠️ Clima: '+d.error);
     if(d.fireError) lines.push('⚠️ Incendios: '+d.fireError);
-    alert('⚠️ Revisión de alertas\n\n'+lines.join('\n')+'\n\nActivas cerca de la ruta: '+HAZARD_ALERTS.length);
+    alert('⚠️ Revisión de alertas\n\n'+lines.join('\n')+'\n\nIncendios en el mapa: '+ALL_FIRES.length+' · Cerca de la ruta: '+HAZARD_ALERTS.length);
     toast(HAZARD_ALERTS.length ? HAZARD_ALERTS.length+' alerta(s) cerca de la ruta' : 'Sin alertas cerca por ahora ✓','success');
   }catch(e){ toast('No se pudo revisar — revisa tu conexión.','error'); }
   finally{ if(btn) btn.textContent = 'Revisar ahora'; }
