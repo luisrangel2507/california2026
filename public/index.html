@@ -1233,11 +1233,10 @@
     /* Person spend rows (minimal) */
     .prow { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
     .prow:last-child { margin-bottom:0; }
-    .prow-init { font-family:'Space Mono',monospace; font-size:11px; font-weight:700; width:13px; flex-shrink:0; }
     .prow-track { flex:1; height:3px; background:rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
     .prow-fill { height:100%; border-radius:2px; transition:width .45s ease; }
     .prow-amt { font-family:'Space Mono',monospace; font-size:10px; color:var(--muted); min-width:50px; text-align:right; }
-    .prow-bal { font-size:10px; min-width:42px; text-align:right; font-family:'Space Mono',monospace; }
+    .prow-bal { font-size:10px; min-width:48px; text-align:right; font-family:'Space Mono',monospace; }
 
     /* Category rows */
     .crow { display:flex; align-items:center; gap:9px; margin-bottom:8px; }
@@ -2164,7 +2163,6 @@
 
       .ops-prow { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
       .ops-prow:last-child { margin-bottom: 0; }
-      .ops-prow-init { font-family:'Space Mono',monospace; font-size:10px; font-weight:700; width:12px; flex-shrink:0; }
       .ops-prow-track { flex:1; height:2px; background:rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
       .ops-prow-fill  { height:100%; border-radius:2px; }
       .ops-prow-amt   { font-family:'Space Mono',monospace; font-size:9px; color:var(--muted); min-width:52px; text-align:right; }
@@ -4147,9 +4145,12 @@ function renderDash(){
     var pct=Math.round((paidTotal[i]/maxPaid)*100);
     var bal=nets[i];
     var balClr=bal>0.5?'var(--green)':bal<-0.5?'var(--red)':'var(--muted)';
-    var balStr=bal>0.5?'+'+bal.toFixed(0):bal<-0.5?'-'+Math.abs(bal).toFixed(0):'&#10003;';
+    // "$" para que se lea claro que es dinero (antes era solo "+167", sin
+    // contexto) — y la foto/inicial con color de cada quien en vez de una
+    // letra sola, porque Erick y Eduardo comparten la "E" y se confundían.
+    var balStr=bal>0.5?'+$'+bal.toFixed(0):bal<-0.5?'-$'+Math.abs(bal).toFixed(0):'&#10003;';
     return '<div class="prow">'+
-      '<span class="prow-init" style="color:'+PC[i]+'">'+p.charAt(0).toUpperCase()+'</span>'+
+      avatarHtml(i, 16, 8)+
       '<div class="prow-track"><div class="prow-fill" style="width:'+pct+'%;background:'+PC[i]+'"></div></div>'+
       '<span class="prow-amt">$'+paidTotal[i].toLocaleString('es-MX',{minimumFractionDigits:0})+'</span>'+
       '<span class="prow-bal" style="color:'+balClr+'">'+balStr+'</span>'+
@@ -6109,7 +6110,7 @@ function renderOps(){
   var spendHTML = persons.map(function(p,i){
     var pct=(paidTotal[i]/maxPaid*100).toFixed(0);
     return '<div class="ops-prow">'+
-      '<span class="ops-prow-init" style="color:'+PC[i]+'">'+p.charAt(0).toUpperCase()+'</span>'+
+      avatarHtml(i, 14, 7)+
       '<div class="ops-prow-track"><div class="ops-prow-fill" style="width:'+pct+'%;background:'+PC[i]+'"></div></div>'+
       '<span class="ops-prow-amt">$'+paidTotal[i].toLocaleString('es-MX')+'</span>'+
       '</div>';
