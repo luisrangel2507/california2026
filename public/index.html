@@ -181,15 +181,15 @@
     #geo-bar.show { display: flex; }
     #geo-bar .geo-icon { font-size: 13px; }
 
-    /* ── FIRE ALERT BAR ── */
-    #fire-bar {
+    /* ── HAZARD ALERT BAR (incendios, huracanes, inundaciones, tormentas...) ── */
+    #hazard-bar {
       position: relative; z-index: 1; display: none; align-items: center;
       gap: 8px; padding: 7px 16px;
       background: rgba(255,90,50,.1); border-bottom: 1px solid rgba(255,90,50,.3);
       font-size: 11px; color: #FF7A50; cursor: pointer;
     }
-    #fire-bar.show { display: flex; }
-    #fire-bar .fire-icon { font-size: 13px; }
+    #hazard-bar.show { display: flex; }
+    #hazard-bar .hazard-icon { font-size: 13px; }
 
     /* ── ARRIVAL BANNER ── */
     #arrival-banner {
@@ -2342,10 +2342,10 @@
   <button class="reset-notif" onclick="resetNotified()" style="margin-left:auto">Resetear alertas</button>
 </div>
 
-<!-- FIRE ALERT BAR -->
-<div id="fire-bar" onclick="goToFireOnMap()">
-  <span class="fire-icon">🔥</span>
-  <span id="fire-txt">—</span>
+<!-- HAZARD ALERT BAR -->
+<div id="hazard-bar" onclick="goToHazardOnMap()">
+  <span class="hazard-icon" id="hazard-icon">⚠️</span>
+  <span id="hazard-txt">—</span>
 </div>
 
 <!-- NAV -->
@@ -3531,90 +3531,93 @@ function renderPlaceMarkers(){
 }
 
 // ── ALERTAS DE INCENDIOS (CAL FIRE) — cerca de dónde estamos o vamos a estar ──
-var FIRE_ALERTS = [];
-var fireMarkers = [];
+// ── ALERTAS DE CLIMA/DESASTRE (NWS) — incendios, huracanes, inundaciones,
+// tormentas eléctricas, calor extremo... cerca de dónde estamos o vamos a
+// estar. Cada alerta trae la zona afectada real (polígono), no solo un pin.
+var HAZARD_ALERTS = [];
+var hazardZones = [];
 
-async function loadFireAlerts(){
+async function loadHazardAlerts(){
   try{
-    var r = await fetch('/api/fire-alerts',{cache:'no-store'});
+    var r = await fetch('/api/hazard-alerts',{cache:'no-store'});
     if(!r.ok) return;
     var j = await r.json();
-    FIRE_ALERTS = j.nearby || [];
+    HAZARD_ALERTS = j.nearby || [];
   }catch(e){ return; /* sin conexión — se queda con lo último que había */ }
-  renderFireBar();
-  safeCall(renderFireMarkers, 'renderFireMarkers');
+  renderHazardBar();
+  safeCall(renderHazardZones, 'renderHazardZones');
 }
 
-function renderFireBar(){
-  var bar = document.getElementById('fire-bar');
+function renderHazardBar(){
+  var bar = document.getElementById('hazard-bar');
   if(!bar) return;
-  if(!FIRE_ALERTS.length){ bar.classList.remove('show'); return; }
-  var txt = FIRE_ALERTS.length===1
-    ? FIRE_ALERTS[0].name+' · ~'+FIRE_ALERTS[0].distanceKm+' km de '+FIRE_ALERTS[0].nearLabel
-    : FIRE_ALERTS.length+' incendios activos cerca de la ruta — toca para ver en el mapa';
-  document.getElementById('fire-txt').textContent = txt;
+  if(!HAZARD_ALERTS.length){ bar.classList.remove('show'); return; }
+  var first = HAZARD_ALERTS[0];
+  var txt = HAZARD_ALERTS.length===1
+    ? first.label+' cerca de '+first.nearLabel
+    : HAZARD_ALERTS.length+' alertas activas cerca de la ruta — toca para ver en el mapa';
+  document.getElementById('hazard-icon').textContent = first.emoji || '⚠️';
+  document.getElementById('hazard-txt').textContent = txt;
   bar.classList.add('show');
 }
 
-function renderFireMarkers(){
+function renderHazardZones(){
   if(!mapObj) return;
-  fireMarkers.forEach(function(m){ mapObj.removeLayer(m); });
-  fireMarkers = [];
-  FIRE_ALERTS.forEach(function(f){
-    var icon = L.divIcon({
-      className:'',
-      html:'<div style="position:relative;width:30px;height:30px">'+
-        '<div style="position:absolute;inset:0;border-radius:50%;background:#FF3B1F;border:2px solid #fff;box-shadow:0 0 0 5px rgba(255,59,31,.25),0 3px 10px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:15px">🔥</div>'+
-        '</div>',
-      iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-18],
+  hazardZones.forEach(function(z){ mapObj.removeLayer(z); });
+  hazardZones = [];
+  HAZARD_ALERTS.forEach(function(h){
+    var expiresStr = h.expires ? new Date(h.expires).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+    (h.polygons||[]).forEach(function(rings){
+      var poly = L.polygon(rings,{
+        color:h.color||'#FF9A40', weight:2, opacity:.8,
+        fillColor:h.color||'#FF9A40', fillOpacity:.18,
+      }).addTo(mapObj).bindPopup(
+        '<div class="pop-name">'+(h.emoji||'⚠️')+' '+esc(h.label||h.event)+'</div>'+
+        '<div class="pop-day">'+esc(h.headline||h.event)+'</div>'+
+        (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
+        '<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>'
+      );
+      hazardZones.push(poly);
     });
-    var contained = f.contained!=null ? f.contained+'% contenido' : 'contención desconocida';
-    var acres = f.acres!=null ? f.acres.toLocaleString('es-MX')+' acres · ' : '';
-    var marker = L.marker([f.lat,f.lon],{icon:icon,zIndexOffset:2000}).addTo(mapObj).bindPopup(
-      '<div class="pop-name">🔥 '+esc(f.name)+'</div>'+
-      '<div class="pop-day">'+acres+esc(contained)+'</div>'+
-      '<div class="pop-day">~'+f.distanceKm+' km de '+esc(f.nearLabel)+(f.county?' · '+esc(f.county):'')+'</div>'+
-      (f.url?'<div class="pop-actions"><a class="pop-maps" href="'+esc(f.url)+'" target="_blank">Ver en CAL FIRE</a></div>':'')
-    );
-    fireMarkers.push(marker);
   });
 }
 
-function goToFireOnMap(){
+function goToHazardOnMap(){
   var mapTab = document.querySelector('.nav-tab[onclick*="\'map\'"]');
   if(mapTab) go('map', mapTab);
-  if(mapObj && FIRE_ALERTS.length){
-    mapObj.setView([FIRE_ALERTS[0].lat, FIRE_ALERTS[0].lon], 8);
+  if(mapObj && hazardZones.length){
+    var group = L.featureGroup(hazardZones);
+    mapObj.fitBounds(group.getBounds(), {padding:[30,30]});
   }
 }
 
 // Botón de admin en Mi Perfil — revisa ahora mismo, sin esperar el cron del
-// servidor (cada 30 min) ni un incendio real cerca para comprobar que la
-// integración con CAL FIRE sigue viva.
-async function testFireAlerts(){
-  var btn = document.getElementById('fire-test-btn');
+// servidor (cada 20 min) ni una alerta real cerca para comprobar que la
+// integración con NWS sigue viva.
+async function testHazardAlerts(){
+  var btn = document.getElementById('hazard-test-btn');
   if(btn) btn.textContent = 'Revisando…';
   try{
     var who = persons[parseInt(meIndex)];
-    var r = await fetch('/api/fire-alerts/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
+    var r = await fetch('/api/hazard-alerts/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
     if(!r.ok){ toast('No se pudo revisar — ¿eres admin?','error'); return; }
     var j = await r.json();
-    FIRE_ALERTS = j.nearby || [];
-    renderFireBar();
-    safeCall(renderFireMarkers, 'renderFireMarkers');
+    HAZARD_ALERTS = j.nearby || [];
+    renderHazardBar();
+    safeCall(renderHazardZones, 'renderHazardZones');
     // Diagnóstico completo en un alert (no un toast) para poder mandar
-    // screenshot — es la única forma de ver, desde producción, si CAL FIRE
+    // screenshot — es la única forma de ver, desde producción, si NWS
     // respondió bien y si el parseo de sus campos sigue coincidiendo.
     var d = j.debug || {};
     var lines = [
       'Puntos vigilados: '+(d.pointsCount!=null?d.pointsCount:'?')+' · Tramos de ruta: '+(d.segmentsCount!=null?d.segmentsCount:'?'),
-      'CAL FIRE respondió: '+(d.status!=null?('HTTP '+d.status):'—'),
-      'Incidentes crudos: '+(d.rawCount!=null?d.rawCount:'—')+' · Pasaron el parseo: '+(d.parsedCount!=null?d.parsedCount:'—'),
-      'El más cercano quedó a: '+(d.closestFireKm!=null?d.closestFireKm+' km':'—')+' (umbral: 80 km)',
+      'NWS respondió: '+(d.status!=null?('HTTP '+d.status):'—'),
+      'Alertas activas en CA: '+(d.rawCount!=null?d.rawCount:'—')+' · Con zona usable: '+(d.parsedCount!=null?d.parsedCount:'—'),
+      'De esas, tocan tu ruta: '+(d.matchedCount!=null?d.matchedCount:'—'),
     ];
     if(d.error) lines.push('⚠️ '+d.error);
-    alert('🔥 Revisión de incendios\n\n'+lines.join('\n')+'\n\nDentro del radio: '+FIRE_ALERTS.length);
-    toast(FIRE_ALERTS.length ? FIRE_ALERTS.length+' incendio(s) cerca de la ruta' : 'Sin incendios cerca por ahora ✓','success');
+    alert('⚠️ Revisión de alertas\n\n'+lines.join('\n')+'\n\nActivas cerca de la ruta: '+HAZARD_ALERTS.length);
+    toast(HAZARD_ALERTS.length ? HAZARD_ALERTS.length+' alerta(s) cerca de la ruta' : 'Sin alertas cerca por ahora ✓','success');
   }catch(e){ toast('No se pudo revisar — revisa tu conexión.','error'); }
   finally{ if(btn) btn.textContent = 'Revisar ahora'; }
 }
@@ -4045,8 +4048,8 @@ async function sendTestPush(){
 }
 
 function updateNotifStatus(){
-  var fireRow=document.getElementById('fire-test-row');
-  if(fireRow) fireRow.style.display=isAdmin()?'':'none';
+  var hazardRow=document.getElementById('hazard-test-row');
+  if(hazardRow) hazardRow.style.display=isAdmin()?'':'none';
   var lbl=document.getElementById('ntfy-label');
   var ic=document.getElementById('ntfy-icon');
   if(!('Notification' in window)){
@@ -6543,7 +6546,7 @@ function go(name,el){
   if(dashTimer){ clearInterval(dashTimer); dashTimer=null; }
 
   if(name!=='decide') dcReset();
-  if(name==='map'&&mapObj){ setTimeout(function(){mapObj.invalidateSize();},80); loadFireAlerts(); }
+  if(name==='map'&&mapObj){ setTimeout(function(){mapObj.invalidateSize();},80); loadHazardAlerts(); }
   if(name==='dash'){
     renderDash(); renderOps();
     dashTimer=setInterval(renderDash,60000);
@@ -7508,8 +7511,8 @@ async function init(){
   updateNotifStatus();
   loadAllWeather();
   loadCurrentWeatherFallback();
-  loadFireAlerts();
-  setInterval(loadFireAlerts, 10*60*1000);
+  loadHazardAlerts();
+  setInterval(loadHazardAlerts, 10*60*1000);
   loadFx();
   seedReservations().then(loadReservations).then(renderItin);
   loadCarLoc();
@@ -7809,12 +7812,12 @@ if('serviceWorker' in navigator){
       </div>
       <button class="btn-ntfy" id="push-test-btn" onclick="sendTestPush()">Probar</button>
     </div>
-    <div class="ntfy-row" id="fire-test-row" style="display:none">
+    <div class="ntfy-row" id="hazard-test-row" style="display:none">
       <div class="ntfy-status">
-        <span>🔥</span>
-        <span>Revisar alertas de incendios (CAL FIRE)</span>
+        <span>⚠️</span>
+        <span>Revisar alertas de clima/desastre (NWS)</span>
       </div>
-      <button class="btn-ntfy" id="fire-test-btn" onclick="testFireAlerts()">Revisar ahora</button>
+      <button class="btn-ntfy" id="hazard-test-btn" onclick="testHazardAlerts()">Revisar ahora</button>
     </div>
 
     <div class="ntfy-row">
