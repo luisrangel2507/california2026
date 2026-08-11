@@ -5440,7 +5440,7 @@ async function addExpReceipt(ev,expId){
   }
   if(failed) toast(failed+' archivo'+(failed>1?'s':'')+' no se pudo'+(failed>1?'ieron':'')+' subir — revisa tu conexión.','error');
   ev.target.value='';
-  renderExps();
+  safeCall(renderExps, 'renderExps');
 }
 
 async function delExpReceipt(expId,rid){
@@ -5455,7 +5455,7 @@ async function delExpReceipt(expId,rid){
   var exp=expenses.find(function(e){return String(e.id)===String(expId);});
   if(exp&&exp.receipts) exp.receipts=exp.receipts.filter(function(r){return String(r.id)!==String(rid);});
   closeOv(null,1);
-  renderExps();
+  safeCall(renderExps, 'renderExps');
 }
 
 function expOpenOv(expId,idx){
