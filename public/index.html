@@ -3602,6 +3602,18 @@ async function testFireAlerts(){
     FIRE_ALERTS = j.nearby || [];
     renderFireBar();
     safeCall(renderFireMarkers, 'renderFireMarkers');
+    // Diagnóstico completo en un alert (no un toast) para poder mandar
+    // screenshot — es la única forma de ver, desde producción, si CAL FIRE
+    // respondió bien y si el parseo de sus campos sigue coincidiendo.
+    var d = j.debug || {};
+    var lines = [
+      'Puntos vigilados: '+(d.pointsCount!=null?d.pointsCount:'?')+' · Tramos de ruta: '+(d.segmentsCount!=null?d.segmentsCount:'?'),
+      'CAL FIRE respondió: '+(d.status!=null?('HTTP '+d.status):'—'),
+      'Incidentes crudos: '+(d.rawCount!=null?d.rawCount:'—')+' · Pasaron el parseo: '+(d.parsedCount!=null?d.parsedCount:'—'),
+      'El más cercano quedó a: '+(d.closestFireKm!=null?d.closestFireKm+' km':'—')+' (umbral: 80 km)',
+    ];
+    if(d.error) lines.push('⚠️ '+d.error);
+    alert('🔥 Revisión de incendios\n\n'+lines.join('\n')+'\n\nDentro del radio: '+FIRE_ALERTS.length);
     toast(FIRE_ALERTS.length ? FIRE_ALERTS.length+' incendio(s) cerca de la ruta' : 'Sin incendios cerca por ahora ✓','success');
   }catch(e){ toast('No se pudo revisar — revisa tu conexión.','error'); }
   finally{ if(btn) btn.textContent = 'Revisar ahora'; }

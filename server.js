@@ -1032,17 +1032,25 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 // CAL FIRE no publica documentación formal de este endpoint (es el que usa
 // su propio mapa de incidentes en fire.ca.gov), así que el parseo es
 // defensivo por si algún nombre de campo cambia — si no reconoce nada,
-// regresa una lista vacía en vez de tronar.
+// regresa una lista vacía en vez de tronar. También junta un diagnóstico
+// (status HTTP, cuántos incidentes trajo crudo, error si lo hubo) porque la
+// única forma real de confirmar que el parseo coincide con la respuesta de
+// verdad es viéndolo correr en producción — este sandbox no tiene salida a
+// fire.ca.gov para probarlo antes.
 async function fetchActiveFires() {
+  const debug = { ok: false, status: null, rawCount: null, parsedCount: null, error: null };
   try {
     const r = await fetch('https://www.fire.ca.gov/api/incidents', {
       signal: AbortSignal.timeout(15000),
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AltaVibraTripApp/1.0)' },
     });
-    if (!r.ok) return [];
+    debug.status = r.status;
+    if (!r.ok) { debug.error = 'HTTP ' + r.status; return { fires: [], debug }; }
     const j = await r.json();
     const list = Array.isArray(j) ? j : (Array.isArray(j.Incidents) ? j.Incidents : []);
-    return list
+    debug.rawCount = list.length;
+    if (!list.length) debug.error = 'La respuesta no trajo un arreglo de incidentes reconocible — revisa el shape real (keys: ' + Object.keys(j || {}).join(',') + ')';
+    const fires = list
       .map((inc) => ({
         id: String(inc.UniqueId ?? inc.Id ?? inc.id ?? inc.Name ?? inc.name ?? ''),
         name: inc.Name || inc.name || 'Incendio sin nombre',
@@ -1055,9 +1063,16 @@ async function fetchActiveFires() {
         url: inc.Url || inc.url || '',
       }))
       .filter((f) => f.id && f.active && Number.isFinite(f.lat) && Number.isFinite(f.lon));
+    debug.parsedCount = fires.length;
+    debug.ok = true;
+    if (list.length && !fires.length) {
+      debug.error = 'Trajo ' + list.length + ' incidentes pero ninguno pasó el parseo — los nombres de campo (Latitude/Longitude/IsActive/etc.) no coinciden con lo esperado. Primer incidente crudo: ' + JSON.stringify(list[0]).slice(0, 400);
+    }
+    return { fires, debug };
   } catch (e) {
+    debug.error = e.message;
     console.error('fetchActiveFires:', e.message);
-    return [];
+    return { fires: [], debug };
   }
 }
 
@@ -1129,11 +1144,15 @@ function distanceToSegmentKm(plat, plon, aLat, aLon, bLat, bLon) {
 async function checkFireAlerts() {
   const points = gatherFireWatchPoints();
   const segments = gatherFireRouteSegments();
+  fireStore.debug = { pointsCount: points.length, segmentsCount: segments.length };
   if (!points.length && !segments.length) {
+    fireStore.debug.error = 'No hay ni una parada del itinerario con coordenada, ni ubicación en vivo, ni carro — nada contra qué medir distancia.';
     fireStore.nearby = []; fireStore.lastCheck = Date.now(); persistFire(); return;
   }
-  const fires = await fetchActiveFires();
+  const { fires, debug } = await fetchActiveFires();
+  fireStore.debug = Object.assign(fireStore.debug, debug);
   const nearby = [];
+  let closestKm = null;
   for (const fire of fires) {
     let best = null;
     for (const p of points) {
@@ -1144,6 +1163,7 @@ async function checkFireAlerts() {
       const d = distanceToSegmentKm(fire.lat, fire.lon, seg.a.lat, seg.a.lon, seg.b.lat, seg.b.lon);
       if (!best || d < best.distanceKm) best = { distanceKm: d, label: 'la carretera hacia ' + seg.b.label };
     }
+    if (best && (closestKm === null || best.distanceKm < closestKm)) closestKm = best.distanceKm;
     if (best && best.distanceKm <= FIRE_ALERT_RADIUS_KM) {
       nearby.push({ ...fire, distanceKm: Math.round(best.distanceKm), nearLabel: best.label });
       if (!fireStore.notifiedIds.includes(fire.id)) {
@@ -1157,6 +1177,7 @@ async function checkFireAlerts() {
       }
     }
   }
+  fireStore.debug.closestFireKm = closestKm === null ? null : Math.round(closestKm);
   // Si un incendio ya no sale cerca (se contuvo, se cayó de la lista de CAL
   // FIRE, o nos alejamos), se olvida — así si reaparece se vuelve a avisar.
   fireStore.notifiedIds = fireStore.notifiedIds.filter((id) => nearby.some((f) => f.id === id));
@@ -1170,12 +1191,15 @@ app.get('/api/fire-alerts', (req, res) => {
 });
 
 // Revisión manual (botón de admin) — no hay que esperar el cron ni un
-// incendio real cerca para comprobar que la integración sigue viva.
+// incendio real cerca para comprobar que la integración sigue viva. Regresa
+// el diagnóstico completo (debug) para poder ver EN PRODUCCIÓN, sin
+// adivinarle, si CAL FIRE respondió bien, cuántos incidentes trajo crudo, y
+// qué tan cerca quedó el más cercano aunque no haya cruzado el umbral.
 app.post('/api/fire-alerts/check', async (req, res) => {
   const who = req.body && req.body.who;
   if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
   await checkFireAlerts();
-  res.json({ ok: true, nearby: fireStore.nearby });
+  res.json({ ok: true, nearby: fireStore.nearby, debug: fireStore.debug });
 });
 
 // Primer chequeo a los pocos segundos de arrancar (no hay que esperar 30
