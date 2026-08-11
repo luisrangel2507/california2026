@@ -3567,16 +3567,26 @@ function renderHazardZones(){
   hazardZones = [];
   HAZARD_ALERTS.forEach(function(h){
     var expiresStr = h.expires ? new Date(h.expires).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+    var popupHtml =
+      '<div class="pop-name">'+(h.emoji||'⚠️')+' '+esc(h.label||h.event)+'</div>'+
+      '<div class="pop-day">'+esc(h.headline||h.event)+'</div>'+
+      (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
+      '<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>';
+    if(h.shapeType==='circle' && h.lat!=null && h.lon!=null){
+      // Incendios activos con nombre (WFIGS) traen un punto, no un polígono
+      // — se aproxima la zona quemada con un círculo del tamaño del acreaje.
+      var circle = L.circle([h.lat,h.lon],{
+        radius:h.radiusM||800, color:h.color||'#FF3B1F', weight:2, opacity:.8,
+        fillColor:h.color||'#FF3B1F', fillOpacity:.22,
+      }).addTo(mapObj).bindPopup(popupHtml);
+      hazardZones.push(circle);
+      return;
+    }
     (h.polygons||[]).forEach(function(rings){
       var poly = L.polygon(rings,{
         color:h.color||'#FF9A40', weight:2, opacity:.8,
         fillColor:h.color||'#FF9A40', fillOpacity:.18,
-      }).addTo(mapObj).bindPopup(
-        '<div class="pop-name">'+(h.emoji||'⚠️')+' '+esc(h.label||h.event)+'</div>'+
-        '<div class="pop-day">'+esc(h.headline||h.event)+'</div>'+
-        (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
-        '<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>'
-      );
+      }).addTo(mapObj).bindPopup(popupHtml);
       hazardZones.push(poly);
     });
   });
@@ -3611,12 +3621,14 @@ async function testHazardAlerts(){
     var d = j.debug || {};
     var lines = [
       'Puntos vigilados: '+(d.pointsCount!=null?d.pointsCount:'?')+' · Tramos de ruta: '+(d.segmentsCount!=null?d.segmentsCount:'?'),
-      'NWS respondió: '+(d.status!=null?('HTTP '+d.status):'—'),
-      'Alertas activas en CA: '+(d.rawCount!=null?d.rawCount:'—')+' · Con zona usable: '+(d.parsedCount!=null?d.parsedCount:'—'),
-      'Zonas resueltas aparte: '+(d.zonesResolved!=null?d.zonesResolved:'—'),
-      'De esas, tocan tu ruta: '+(d.matchedCount!=null?d.matchedCount:'—'),
+      'NWS (clima) respondió: '+(d.status!=null?('HTTP '+d.status):'—'),
+      'Alertas de clima en CA: '+(d.rawCount!=null?d.rawCount:'—')+' · Con zona usable: '+(d.parsedCount!=null?d.parsedCount:'—')+' · Zonas resueltas aparte: '+(d.zonesResolved!=null?d.zonesResolved:'—'),
+      'WFIGS (incendios activos) respondió: '+(d.fireStatus!=null?('HTTP '+d.fireStatus):'—'),
+      'Incendios con nombre en CA: '+(d.fireRawCount!=null?d.fireRawCount:'—')+' · Usables: '+(d.fireParsedCount!=null?d.fireParsedCount:'—'),
+      'De todo lo anterior, toca tu ruta: '+(d.matchedCount!=null?d.matchedCount:'—'),
     ];
-    if(d.error) lines.push('⚠️ '+d.error);
+    if(d.error) lines.push('⚠️ Clima: '+d.error);
+    if(d.fireError) lines.push('⚠️ Incendios: '+d.fireError);
     alert('⚠️ Revisión de alertas\n\n'+lines.join('\n')+'\n\nActivas cerca de la ruta: '+HAZARD_ALERTS.length);
     toast(HAZARD_ALERTS.length ? HAZARD_ALERTS.length+' alerta(s) cerca de la ruta' : 'Sin alertas cerca por ahora ✓','success');
   }catch(e){ toast('No se pudo revisar — revisa tu conexión.','error'); }

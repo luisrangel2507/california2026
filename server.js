@@ -1156,7 +1156,7 @@ async function fetchActiveHazards() {
         id, event: p.event || 'Alerta', headline: p.headline || p.event || '',
         severity: p.severity || 'Unknown', areaDesc: p.areaDesc || '', expires: p.expires || null,
         category: cat.key, emoji: cat.emoji, label: cat.label, color: cat.color,
-        geometries,
+        shapeType: 'polygon', geometries,
       });
     }
     debug.parsedCount = hazards.length;
@@ -1170,6 +1170,81 @@ async function fetchActiveHazards() {
     console.error('fetchActiveHazards:', e.message);
     return { hazards: [], debug };
   }
+}
+
+// NWS solo avisa CONDICIONES de riesgo ("Red Flag Warning" = clima propicio
+// para que un incendio se propague), no dice si ya hay un fuego real
+// ardiendo con nombre (como el "Timber Fire" que preguntó el usuario). Para
+// eso hace falta el catálogo de incidentes activos de verdad, que llevan las
+// agencias de manejo de incendios de EEUU vía su servicio público WFIGS
+// (Wildland Fire Interagency Geospatial Services, operado por NIFC) — es un
+// ArcGIS Feature Service estándar, sin llave, ampliamente usado por mapas de
+// incendios públicos.
+function acresToRadiusMeters(acres) {
+  if (!acres || acres <= 0) return 800; // tamaño mínimo visible si no hay dato de acres
+  return Math.sqrt((acres * 4046.86) / Math.PI);
+}
+async function fetchActiveFireIncidents() {
+  const debug = { ok: false, status: null, rawCount: null, parsedCount: null, error: null };
+  try {
+    const url = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/' +
+      'WFIGS_Incident_Locations_Current/FeatureServer/0/query?' +
+      'where=' + encodeURIComponent("POOState='US-CA'") + '&outFields=*&f=geojson';
+    const r = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': '(Alta Vibra trip app, contacto en el perfil de Railway)' } });
+    debug.status = r.status;
+    if (!r.ok) { debug.error = 'HTTP ' + r.status; return { incidents: [], debug }; }
+    const j = await r.json();
+    const features = Array.isArray(j.features) ? j.features : [];
+    debug.rawCount = features.length;
+    const incidents = features
+      .map((f) => {
+        const p = f.properties || {};
+        const geom = f.geometry;
+        const lat = geom && geom.type === 'Point' ? geom.coordinates[1] : null;
+        const lon = geom && geom.type === 'Point' ? geom.coordinates[0] : null;
+        const acres = p.DailyAcres ?? p.GISAcres ?? p.IncidentSize ?? null;
+        return {
+          id: String(p.UniqueFireIdentifier || p.IrwinID || p.OBJECTID || p.IncidentName || ''),
+          event: 'Incendio activo',
+          headline: (p.IncidentName || 'Incendio sin nombre') +
+            (acres != null ? ' · ' + Math.round(acres).toLocaleString('es-MX') + ' acres' : '') +
+            (p.PercentContained != null ? ' · ' + p.PercentContained + '% contenido' : ''),
+          severity: 'Severe', areaDesc: p.POOCounty || '', expires: null,
+          category: 'fire', emoji: '🔥', label: 'Incendio activo', color: '#FF3B1F',
+          shapeType: 'circle', lat, lon, radiusM: acresToRadiusMeters(acres),
+        };
+      })
+      .filter((h) => h.id && Number.isFinite(h.lat) && Number.isFinite(h.lon));
+    debug.parsedCount = incidents.length;
+    debug.ok = true;
+    if (features.length && !incidents.length) {
+      debug.error = 'Trajo ' + features.length + ' incidentes pero ninguno con coordenada usable — primero crudo: ' + JSON.stringify(features[0]).slice(0, 400);
+    }
+    return { incidents, debug };
+  } catch (e) {
+    debug.error = e.message;
+    console.error('fetchActiveFireIncidents:', e.message);
+    return { incidents: [], debug };
+  }
+}
+
+// Un incendio de 2,500 acres mide apenas ~1.8km de radio si se aproxima como
+// círculo — pero lo que le importa a alguien de road trip no es si su
+// coordenada exacta cae dentro del área quemada, sino si el fuego está lo
+// bastante cerca como para joder la ruta (caminos cerrados, humo, avisos de
+// evacuación). Por eso el radio de "esto me toca" lleva un colchón extra
+// sobre el radio real de la quemazón — el radio real (sin colchón) es el que
+// se manda al cliente para dibujar el círculo en el mapa.
+const FIRE_MATCH_BUFFER_M = 50000; // 50km
+
+// Despacha la comprobación de "¿este punto cae dentro de la alerta?" según
+// la forma que tenga — polígono (NWS) o círculo (WFIGS, centro + radio
+// aproximado a partir del acreaje, más el colchón de arriba).
+function hazardContainsPoint(hz, lat, lon) {
+  if (hz.shapeType === 'circle') {
+    return haversineKm(lat, lon, hz.lat, hz.lon) * 1000 <= (hz.radiusM + FIRE_MATCH_BUFFER_M);
+  }
+  return pointInAnyGeometry(lat, lon, hz.geometries || []);
 }
 
 // Puntos contra los que se mide si una alerta nos toca: cada parada del
@@ -1217,19 +1292,26 @@ async function checkHazardAlerts() {
     hazardStore.debug.error = 'No hay ni una parada del itinerario con coordenada, ni ubicación en vivo, ni carro — nada contra qué revisar.';
     hazardStore.nearby = []; hazardStore.lastCheck = Date.now(); persistHazard(); return;
   }
-  const { hazards, debug } = await fetchActiveHazards();
-  hazardStore.debug = Object.assign(hazardStore.debug, debug);
+  const [{ hazards, debug }, { incidents, debug: fireDebug }] = await Promise.all([
+    fetchActiveHazards(),
+    fetchActiveFireIncidents(),
+  ]);
+  hazardStore.debug = Object.assign(hazardStore.debug, debug, {
+    fireStatus: fireDebug.status, fireRawCount: fireDebug.rawCount,
+    fireParsedCount: fireDebug.parsedCount, fireError: fireDebug.error,
+  });
+  const allHazards = hazards.concat(incidents);
   const nearby = [];
-  for (const hz of hazards) {
-    // ¿Algún punto vigilado cae DENTRO de alguna de las geometrías de la alerta?
-    let matchLabel = (points.find((p) => pointInAnyGeometry(p.lat, p.lon, hz.geometries)) || {}).label || null;
+  for (const hz of allHazards) {
+    // ¿Algún punto vigilado cae DENTRO de la alerta (polígono o círculo)?
+    let matchLabel = (points.find((p) => hazardContainsPoint(hz, p.lat, p.lon)) || {}).label || null;
     // Si no, ¿algún tramo de carretera pasa por ahí? (muestreado)
     if (!matchLabel) {
       for (const seg of segments) {
-        let hit = pointInAnyGeometry(seg.a.lat, seg.a.lon, hz.geometries);
+        let hit = hazardContainsPoint(hz, seg.a.lat, seg.a.lon);
         for (let i = 1; i <= 20 && !hit; i++) {
           const t = i / 20;
-          hit = pointInAnyGeometry(seg.a.lat + (seg.b.lat - seg.a.lat) * t, seg.a.lon + (seg.b.lon - seg.a.lon) * t, hz.geometries);
+          hit = hazardContainsPoint(hz, seg.a.lat + (seg.b.lat - seg.a.lat) * t, seg.a.lon + (seg.b.lon - seg.a.lon) * t);
         }
         if (hit) { matchLabel = 'la carretera hacia ' + seg.b.label; break; }
       }
@@ -1239,7 +1321,8 @@ async function checkHazardAlerts() {
       // "polygons" ya convertido; mandar ambos duplicaría el payload en
       // zonas grandes con muchos vértices (litorales de condado, etc).
       const { geometries, ...hzWithoutGeom } = hz;
-      nearby.push({ ...hzWithoutGeom, nearLabel: matchLabel, polygons: geometriesToLatLngPolygons(geometries) });
+      const shapeExtra = hz.shapeType === 'polygon' ? { polygons: geometriesToLatLngPolygons(geometries) } : {};
+      nearby.push({ ...hzWithoutGeom, nearLabel: matchLabel, ...shapeExtra });
       if (!hazardStore.notifiedIds.includes(hz.id)) {
         hazardStore.notifiedIds.push(hz.id);
         await sendPushToAll({
@@ -1249,7 +1332,7 @@ async function checkHazardAlerts() {
       }
     }
   }
-  hazardStore.debug.checkedCount = hazards.length;
+  hazardStore.debug.checkedCount = allHazards.length;
   hazardStore.debug.matchedCount = nearby.length;
   // Si una alerta ya no toca la ruta (expiró, se movió, o nos alejamos), se
   // olvida — así si vuelve a tocar se avisa de nuevo.
