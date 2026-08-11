@@ -5158,8 +5158,8 @@ async function markPaid(from,to,amt){
     settlements.push(data.settlement);
   }catch(e){ toast('No se pudo registrar el pago — revisa tu conexión.','error'); return; }
   toast(persons[from]+' → '+persons[to]+' · $'+amt.toFixed(2)+' registrado ✓');
-  renderExps();
-  renderDash(); renderOps();
+  safeCall(renderExps, 'renderExps');
+  safeCall(renderDash, 'renderDash'); safeCall(renderOps, 'renderOps');
 }
 
 async function delSettle(id){
@@ -5170,8 +5170,8 @@ async function delSettle(id){
     if(!r.ok){ toast('No se pudo deshacer el pago.','error'); return; }
   }catch(e){ toast('No se pudo deshacer el pago — revisa tu conexión.','error'); return; }
   settlements=settlements.filter(function(s){return String(s.id)!==String(id);});
-  renderExps();
-  renderDash(); renderOps();
+  safeCall(renderExps, 'renderExps');
+  safeCall(renderDash, 'renderDash'); safeCall(renderOps, 'renderOps');
 }
 
 async function saveExp(){
@@ -5185,6 +5185,7 @@ async function saveExp(){
   var payload={desc:desc,amt:amt,who:parseInt(who),split:split,cat:cat};
   try{
     var r=await fetch('/api/expenses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!r.ok){ toast('No se pudo guardar el gasto.','error'); return; }
     var data=await r.json();
     expenses.push(data.expense);
   }catch(e){ toast('No se pudo guardar el gasto — revisa tu conexión.','error'); return; }
@@ -5193,8 +5194,8 @@ async function saveExp(){
   document.getElementById('ef-who').value='';
   document.getElementById('ef-cat').value='food';
   toggleEF();
-  renderExps();
-  renderDash(); renderOps();
+  safeCall(renderExps, 'renderExps');
+  safeCall(renderDash, 'renderDash'); safeCall(renderOps, 'renderOps');
 }
 
 async function delExp(id){
@@ -5207,8 +5208,8 @@ async function delExp(id){
     if(!r.ok){ toast('No se pudo eliminar el gasto.','error'); return; }
   }catch(e){ toast('No se pudo eliminar el gasto — revisa tu conexión.','error'); return; }
   expenses=expenses.filter(function(e){return String(e.id)!==String(id);});
-  renderExps();
-  renderDash(); renderOps();
+  safeCall(renderExps, 'renderExps');
+  safeCall(renderDash, 'renderDash'); safeCall(renderOps, 'renderOps');
 }
 
 // Compute net balances across all expenses
