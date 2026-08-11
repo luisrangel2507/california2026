@@ -3568,12 +3568,17 @@ function renderHazardBar(){
   bar.classList.add('show');
 }
 
-function hazardPopupHtml(h){
+// Nuestro parseo de fuentes como Caltrans es defensivo (mejor esfuerzo, sin
+// forma de verificarlo en vivo) — un link directo a Google Maps en esa
+// misma coordenada deja comprobar con el tráfico/cierres en vivo de Google
+// en vez de solo confiar en lo que trae el feed.
+function hazardPopupHtml(h, lat, lon){
   var expiresStr = h.expires ? new Date(h.expires).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
   return '<div class="pop-name">'+(h.emoji||'⚠️')+' '+esc(h.label||h.event)+'</div>'+
     '<div class="pop-day">'+esc(h.headline||h.event)+'</div>'+
     (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
-    (h.nearLabel?'<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>':'');
+    (h.nearLabel?'<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>':'')+
+    (lat!=null&&lon!=null?'<div class="pop-actions"><a class="pop-maps" href="https://maps.google.com/?q='+lat+','+lon+'" target="_blank">Ver en Google Maps</a></div>':'');
 }
 
 function renderHazardZones(){
@@ -3588,7 +3593,7 @@ function renderHazardZones(){
     var circle = L.circle([h.lat,h.lon],{
       radius:h.radiusM||800, color:h.color||'#FF3B1F', weight:2, opacity:.8,
       fillColor:h.color||'#FF3B1F', fillOpacity:.22,
-    }).addTo(mapObj).bindPopup(hazardPopupHtml(h));
+    }).addTo(mapObj).bindPopup(hazardPopupHtml(h, h.lat, h.lon));
     hazardZones.push(circle);
   });
 
@@ -3602,15 +3607,23 @@ function renderHazardZones(){
       var circle = L.circle([h.lat,h.lon],{
         radius:h.radiusM||1500, color:h.color||'#FFB000', weight:2, opacity:.8,
         fillColor:h.color||'#FFB000', fillOpacity:.22,
-      }).addTo(mapObj).bindPopup(hazardPopupHtml(h));
+      }).addTo(mapObj).bindPopup(hazardPopupHtml(h, h.lat, h.lon));
       hazardZones.push(circle);
       return;
     }
     (h.polygons||[]).forEach(function(rings){
+      // Sin un solo lat/lon (es un polígono, no un punto) — se aproxima con
+      // el centroide del anillo exterior, nada más para el link de Maps.
+      var outer = rings[0]||[], cLat=null, cLon=null;
+      if(outer.length){
+        cLat=0; cLon=0;
+        outer.forEach(function(pt){ cLat+=pt[0]; cLon+=pt[1]; });
+        cLat/=outer.length; cLon/=outer.length;
+      }
       var poly = L.polygon(rings,{
         color:h.color||'#FF9A40', weight:2, opacity:.8,
         fillColor:h.color||'#FF9A40', fillOpacity:.18,
-      }).addTo(mapObj).bindPopup(hazardPopupHtml(h));
+      }).addTo(mapObj).bindPopup(hazardPopupHtml(h, cLat, cLon));
       hazardZones.push(poly);
     });
   });
