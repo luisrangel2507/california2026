@@ -181,6 +181,16 @@
     #geo-bar.show { display: flex; }
     #geo-bar .geo-icon { font-size: 13px; }
 
+    /* ── FIRE ALERT BAR ── */
+    #fire-bar {
+      position: relative; z-index: 1; display: none; align-items: center;
+      gap: 8px; padding: 7px 16px;
+      background: rgba(255,90,50,.1); border-bottom: 1px solid rgba(255,90,50,.3);
+      font-size: 11px; color: #FF7A50; cursor: pointer;
+    }
+    #fire-bar.show { display: flex; }
+    #fire-bar .fire-icon { font-size: 13px; }
+
     /* ── ARRIVAL BANNER ── */
     #arrival-banner {
       display: none;
@@ -2332,6 +2342,12 @@
   <button class="reset-notif" onclick="resetNotified()" style="margin-left:auto">Resetear alertas</button>
 </div>
 
+<!-- FIRE ALERT BAR -->
+<div id="fire-bar" onclick="goToFireOnMap()">
+  <span class="fire-icon">🔥</span>
+  <span id="fire-txt">—</span>
+</div>
+
 <!-- NAV -->
 <div class="nav">
   <div class="nav-tab active" onclick="go('dash',this)">
@@ -3514,6 +3530,83 @@ function renderPlaceMarkers(){
   routeLine = L.polyline(routePts,{color:'#2E6BE6',weight:2,opacity:.55,dashArray:'6,8'}).addTo(mapObj);
 }
 
+// ── ALERTAS DE INCENDIOS (CAL FIRE) — cerca de dónde estamos o vamos a estar ──
+var FIRE_ALERTS = [];
+var fireMarkers = [];
+
+async function loadFireAlerts(){
+  try{
+    var r = await fetch('/api/fire-alerts',{cache:'no-store'});
+    if(!r.ok) return;
+    var j = await r.json();
+    FIRE_ALERTS = j.nearby || [];
+  }catch(e){ return; /* sin conexión — se queda con lo último que había */ }
+  renderFireBar();
+  safeCall(renderFireMarkers, 'renderFireMarkers');
+}
+
+function renderFireBar(){
+  var bar = document.getElementById('fire-bar');
+  if(!bar) return;
+  if(!FIRE_ALERTS.length){ bar.classList.remove('show'); return; }
+  var txt = FIRE_ALERTS.length===1
+    ? FIRE_ALERTS[0].name+' · ~'+FIRE_ALERTS[0].distanceKm+' km de '+FIRE_ALERTS[0].nearLabel
+    : FIRE_ALERTS.length+' incendios activos cerca de la ruta — toca para ver en el mapa';
+  document.getElementById('fire-txt').textContent = txt;
+  bar.classList.add('show');
+}
+
+function renderFireMarkers(){
+  if(!mapObj) return;
+  fireMarkers.forEach(function(m){ mapObj.removeLayer(m); });
+  fireMarkers = [];
+  FIRE_ALERTS.forEach(function(f){
+    var icon = L.divIcon({
+      className:'',
+      html:'<div style="position:relative;width:30px;height:30px">'+
+        '<div style="position:absolute;inset:0;border-radius:50%;background:#FF3B1F;border:2px solid #fff;box-shadow:0 0 0 5px rgba(255,59,31,.25),0 3px 10px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:15px">🔥</div>'+
+        '</div>',
+      iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-18],
+    });
+    var contained = f.contained!=null ? f.contained+'% contenido' : 'contención desconocida';
+    var acres = f.acres!=null ? f.acres.toLocaleString('es-MX')+' acres · ' : '';
+    var marker = L.marker([f.lat,f.lon],{icon:icon,zIndexOffset:2000}).addTo(mapObj).bindPopup(
+      '<div class="pop-name">🔥 '+esc(f.name)+'</div>'+
+      '<div class="pop-day">'+acres+esc(contained)+'</div>'+
+      '<div class="pop-day">~'+f.distanceKm+' km de '+esc(f.nearLabel)+(f.county?' · '+esc(f.county):'')+'</div>'+
+      (f.url?'<div class="pop-actions"><a class="pop-maps" href="'+esc(f.url)+'" target="_blank">Ver en CAL FIRE</a></div>':'')
+    );
+    fireMarkers.push(marker);
+  });
+}
+
+function goToFireOnMap(){
+  var mapTab = document.querySelector('.nav-tab[onclick*="\'map\'"]');
+  if(mapTab) go('map', mapTab);
+  if(mapObj && FIRE_ALERTS.length){
+    mapObj.setView([FIRE_ALERTS[0].lat, FIRE_ALERTS[0].lon], 8);
+  }
+}
+
+// Botón de admin en Mi Perfil — revisa ahora mismo, sin esperar el cron del
+// servidor (cada 30 min) ni un incendio real cerca para comprobar que la
+// integración con CAL FIRE sigue viva.
+async function testFireAlerts(){
+  var btn = document.getElementById('fire-test-btn');
+  if(btn) btn.textContent = 'Revisando…';
+  try{
+    var who = persons[parseInt(meIndex)];
+    var r = await fetch('/api/fire-alerts/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:who})});
+    if(!r.ok){ toast('No se pudo revisar — ¿eres admin?','error'); return; }
+    var j = await r.json();
+    FIRE_ALERTS = j.nearby || [];
+    renderFireBar();
+    safeCall(renderFireMarkers, 'renderFireMarkers');
+    toast(FIRE_ALERTS.length ? FIRE_ALERTS.length+' incendio(s) cerca de la ruta' : 'Sin incendios cerca por ahora ✓','success');
+  }catch(e){ toast('No se pudo revisar — revisa tu conexión.','error'); }
+  finally{ if(btn) btn.textContent = 'Revisar ahora'; }
+}
+
 // Dibuja o mueve el punto azul de "aquí estoy". Antes vivía sólo dentro de
 // startGeo(); se separa para que centerMe() también pueda ponerlo de
 // inmediato, sin esperar a que el seguimiento en vivo haga su primer fix.
@@ -3940,6 +4033,8 @@ async function sendTestPush(){
 }
 
 function updateNotifStatus(){
+  var fireRow=document.getElementById('fire-test-row');
+  if(fireRow) fireRow.style.display=isAdmin()?'':'none';
   var lbl=document.getElementById('ntfy-label');
   var ic=document.getElementById('ntfy-icon');
   if(!('Notification' in window)){
@@ -6436,7 +6531,7 @@ function go(name,el){
   if(dashTimer){ clearInterval(dashTimer); dashTimer=null; }
 
   if(name!=='decide') dcReset();
-  if(name==='map'&&mapObj) setTimeout(function(){mapObj.invalidateSize();},80);
+  if(name==='map'&&mapObj){ setTimeout(function(){mapObj.invalidateSize();},80); loadFireAlerts(); }
   if(name==='dash'){
     renderDash(); renderOps();
     dashTimer=setInterval(renderDash,60000);
@@ -7401,6 +7496,8 @@ async function init(){
   updateNotifStatus();
   loadAllWeather();
   loadCurrentWeatherFallback();
+  loadFireAlerts();
+  setInterval(loadFireAlerts, 10*60*1000);
   loadFx();
   seedReservations().then(loadReservations).then(renderItin);
   loadCarLoc();
@@ -7699,6 +7796,13 @@ if('serviceWorker' in navigator){
         <span>Probar notificación push</span>
       </div>
       <button class="btn-ntfy" id="push-test-btn" onclick="sendTestPush()">Probar</button>
+    </div>
+    <div class="ntfy-row" id="fire-test-row" style="display:none">
+      <div class="ntfy-status">
+        <span>🔥</span>
+        <span>Revisar alertas de incendios (CAL FIRE)</span>
+      </div>
+      <button class="btn-ntfy" id="fire-test-btn" onclick="testFireAlerts()">Revisar ahora</button>
     </div>
 
     <div class="ntfy-row">

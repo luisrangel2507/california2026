@@ -1003,6 +1003,141 @@ app.delete('/api/car', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Alertas de incendios cerca de la ruta (CAL FIRE, sin API key) ──────────
+// Revisa los incendios activos que reporta CAL FIRE contra dónde está el
+// grupo ahorita (ubicación en vivo / el carro) y contra cada parada del
+// itinerario (incluidas las que todavía faltan) — si alguno cae cerca,
+// manda push a todos y lo deja disponible para pintar en el mapa.
+const FIRE_ALERT_RADIUS_KM = 80; // ~50 millas
+const FIRE_FILE = path.join(DATA_DIR, 'fire-alerts.json');
+let fireStore = { notifiedIds: [], nearby: [], lastCheck: 0 };
+try {
+  const loaded = JSON.parse(fs.readFileSync(FIRE_FILE, 'utf8'));
+  if (loaded && typeof loaded === 'object') fireStore = Object.assign(fireStore, loaded);
+} catch (e) {}
+function persistFire() {
+  try { fs.writeFileSync(FIRE_FILE, JSON.stringify(fireStore)); } catch (e) {}
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// CAL FIRE no publica documentación formal de este endpoint (es el que usa
+// su propio mapa de incidentes en fire.ca.gov), así que el parseo es
+// defensivo por si algún nombre de campo cambia — si no reconoce nada,
+// regresa una lista vacía en vez de tronar.
+async function fetchActiveFires() {
+  try {
+    const r = await fetch('https://www.fire.ca.gov/api/incidents', {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AltaVibraTripApp/1.0)' },
+    });
+    if (!r.ok) return [];
+    const j = await r.json();
+    const list = Array.isArray(j) ? j : (Array.isArray(j.Incidents) ? j.Incidents : []);
+    return list
+      .map((inc) => ({
+        id: String(inc.UniqueId ?? inc.Id ?? inc.id ?? inc.Name ?? inc.name ?? ''),
+        name: inc.Name || inc.name || 'Incendio sin nombre',
+        county: inc.County || inc.county || '',
+        acres: inc.AcresBurned ?? inc.acres ?? null,
+        contained: inc.PercentContained ?? inc.percentContained ?? null,
+        lat: parseFloat(inc.Latitude ?? inc.latitude),
+        lon: parseFloat(inc.Longitude ?? inc.longitude),
+        active: inc.IsActive !== undefined ? !!inc.IsActive : true,
+        url: inc.Url || inc.url || '',
+      }))
+      .filter((f) => f.id && f.active && Number.isFinite(f.lat) && Number.isFinite(f.lon));
+  } catch (e) {
+    console.error('fetchActiveFires:', e.message);
+    return [];
+  }
+}
+
+// Puntos contra los que se mide cercanía: cada parada del itinerario (ya
+// visitada o todavía por venir — un incendio cerca de algo que viene en
+// camino importa igual o más que uno cerca de donde ya estuvimos) más la
+// ubicación en vivo de cada quien y la del carro, si son recientes.
+function gatherFireWatchPoints() {
+  const points = [];
+  Object.values(itinStore).forEach((day) => {
+    (day.acts || []).forEach((a) => {
+      if (Array.isArray(a.c) && a.c.length === 2) {
+        points.push({ lat: a.c[0], lon: a.c[1], label: a.n || day.city || 'itinerario' });
+      }
+    });
+  });
+  const freshMs = 2 * 60 * 60 * 1000;
+  Object.entries(liveLocStore).forEach(([who, loc]) => {
+    if (loc && Date.now() - loc.ts < freshMs) {
+      points.push({ lat: loc.lat, lon: loc.lon, label: who + ' ahorita' });
+    }
+  });
+  if (carLoc && Date.now() - carLoc.ts < freshMs) {
+    points.push({ lat: carLoc.lat, lon: carLoc.lon, label: 'el carro' });
+  }
+  return points;
+}
+
+async function checkFireAlerts() {
+  const points = gatherFireWatchPoints();
+  if (!points.length) { fireStore.nearby = []; fireStore.lastCheck = Date.now(); persistFire(); return; }
+  const fires = await fetchActiveFires();
+  const nearby = [];
+  for (const fire of fires) {
+    let best = null;
+    for (const p of points) {
+      const d = haversineKm(fire.lat, fire.lon, p.lat, p.lon);
+      if (!best || d < best.distanceKm) best = { distanceKm: d, label: p.label };
+    }
+    if (best && best.distanceKm <= FIRE_ALERT_RADIUS_KM) {
+      nearby.push({ ...fire, distanceKm: Math.round(best.distanceKm), nearLabel: best.label });
+      if (!fireStore.notifiedIds.includes(fire.id)) {
+        fireStore.notifiedIds.push(fire.id);
+        const parts = [fire.name];
+        if (fire.contained != null) parts.push(fire.contained + '% contenido');
+        await sendPushToAll({
+          title: '🔥 Incendio cerca de ' + best.label,
+          body: parts.join(' · ') + ' · ~' + Math.round(best.distanceKm) + ' km',
+        });
+      }
+    }
+  }
+  // Si un incendio ya no sale cerca (se contuvo, se cayó de la lista de CAL
+  // FIRE, o nos alejamos), se olvida — así si reaparece se vuelve a avisar.
+  fireStore.notifiedIds = fireStore.notifiedIds.filter((id) => nearby.some((f) => f.id === id));
+  fireStore.nearby = nearby;
+  fireStore.lastCheck = Date.now();
+  persistFire();
+}
+
+app.get('/api/fire-alerts', (req, res) => {
+  res.json({ nearby: fireStore.nearby, lastCheck: fireStore.lastCheck });
+});
+
+// Revisión manual (botón de admin) — no hay que esperar el cron ni un
+// incendio real cerca para comprobar que la integración sigue viva.
+app.post('/api/fire-alerts/check', async (req, res) => {
+  const who = req.body && req.body.who;
+  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  await checkFireAlerts();
+  res.json({ ok: true, nearby: fireStore.nearby });
+});
+
+// Primer chequeo a los pocos segundos de arrancar (no hay que esperar 30
+// min tras cada redeploy para que el mapa tenga datos), y luego cada 30 min.
+setTimeout(() => { checkFireAlerts().catch((e) => console.error('checkFireAlerts:', e.message)); }, 15000);
+cron.schedule('*/30 * * * *', () => {
+  checkFireAlerts().catch((e) => console.error('checkFireAlerts:', e.message));
+});
+
 // ── Reservaciones (con horario, fecha y ubicación) ─────────────────────────
 // Combina las que salen del itinerario (auto-sembradas por el cliente, ya
 // que el server no interpreta el arreglo DAYS del front) con las que agregue
