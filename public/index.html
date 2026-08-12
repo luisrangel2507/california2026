@@ -71,6 +71,15 @@
       overflow: hidden;
     }
 
+    /* iOS hace zoom automático al enfocar cualquier campo con font-size
+       menor a 16px — pasa en TODOS los inputs de la app (11-13.5px, por el
+       look compacto). No siempre des-zoomea bien al cerrar el teclado, y
+       como el body no scrollea (overflow:hidden arriba), el resultado es
+       que la página se queda movida con el contenido por debajo de la
+       barra de estado. Subir el tamaño solo mientras está enfocado evita
+       el zoom sin tocar cómo se ve el campo en reposo. */
+    input:focus, textarea:focus, select:focus { font-size: 16px !important; }
+
     /* ── SUBTLE NOISE TEXTURE ── */
     body::before {
       content: '';
