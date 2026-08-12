@@ -67,9 +67,14 @@
     :root[data-theme="light"] {
       --bg:     #E9E0CC;
       --panel:  #F8F3E6;
-      --glass:  rgba(80,62,32,.05);
-      --border: rgba(80,62,32,.13);
-      --border2:rgba(80,62,32,.22);
+      /* En oscuro, --glass es blanco a baja opacidad sobre un fondo casi
+         negro — se nota bien. Ese mismo truco sobre un fondo beige claro se
+         ve plano (poco contraste), así que en claro --glass es una tarjeta
+         casi opaca de por sí — más "tarjeta blanca de verdad" que "tinte
+         translúcido". */
+      --glass:  rgba(255,253,246,.88);
+      --border: rgba(80,62,32,.16);
+      --border2:rgba(80,62,32,.26);
       --text:   #2E2415;
       --muted:  #7A6A4E;
       --cyan:   #0084B8;
@@ -427,6 +432,10 @@
     .geo-fix-btn:active { transform: scale(.98); background:rgba(245,166,35,.18); }
     .geo-fix-btn + .geo-fix-btn { margin-top:8px; }
     .geo-check-btn { background:rgba(245,166,35,.06); font-weight:600; }
+    /* El mismo tinte translúcido que en oscuro se ve bien se ve plano sobre
+       el fondo beige claro — se sube la opacidad solo en modo claro. */
+    :root[data-theme="light"] .geo-fix-btn { background:rgba(245,166,35,.16); }
+    :root[data-theme="light"] .geo-check-btn { background:rgba(245,166,35,.11); }
     .day-edit {
       background:rgba(0,200,255,.1); border:1px solid rgba(0,200,255,.28);
       color:var(--cyan); border-radius:8px; width:30px; height:26px;
@@ -1275,7 +1284,7 @@
     /* Section blocks */
     .dash-section {
       margin: 10px 14px 0; padding:16px;
-      background: rgba(var(--surface-rgb),.04);
+      background: var(--glass);
       border: 1px solid rgba(var(--surface-rgb),.08);
       border-radius: 18px;
     }
@@ -5646,12 +5655,16 @@ function renderPersonSummary(){
   var net=computeNets();
   var paidTotal=new Array(persons.length).fill(0);
   expenses.forEach(function(e){ paidTotal[e.who]+=e.amt; });
+  // El mismo tinte del color de cada quien a baja opacidad se nota bien
+  // sobre el fondo casi negro de oscuro, pero se ve plano sobre el beige
+  // claro — en claro se sube la opacidad (alpha hex más alto).
+  var bgA = isLightTheme() ? '26' : '10';
 
   document.getElementById('person-summary').innerHTML=persons.map(function(p,i){
     var bal=net[i];
     var balColor=bal>0.01?'var(--green)':bal<-0.01?'var(--red)':'var(--muted)';
     var balStr=bal>0.01?'+$'+bal.toFixed(0):bal<-0.01?'-$'+Math.abs(bal).toFixed(0):'✓ par';
-    return '<div class="ps-card" style="background:'+PC[i]+'10;border-color:'+PC[i]+'30">'+
+    return '<div class="ps-card" style="background:'+PC[i]+bgA+';border-color:'+PC[i]+'30">'+
       '<div style="margin:0 auto 5px;width:38px">'+avatarHtml(i, 38, 16)+'</div>'+
       '<div class="ps-name" style="color:'+PC[i]+'">'+esc(p)+'</div>'+
       '<div class="ps-paid" style="color:var(--text)">$'+paidTotal[i].toFixed(0)+'</div>'+
