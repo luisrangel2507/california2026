@@ -1990,7 +1990,11 @@
       background: linear-gradient(135deg, #F5A623 0%, #FFD66B 35%, #7DE8FF 70%, #00C8FF 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       background-clip: text;
-      filter: drop-shadow(0 2px 14px rgba(245,166,35,.4)) drop-shadow(0 2px 14px rgba(0,200,255,.3));
+      /* text-shadow, no filter:drop-shadow — combinar drop-shadow con
+         background-clip:text rompe en Safari/iOS: en vez de seguir el
+         contorno de las letras, a veces pinta el rectángulo del gradiente
+         completo sin recortar, dejando una mancha de "neón" de fondo. */
+      text-shadow: 0 2px 14px rgba(245,166,35,.4), 0 2px 14px rgba(0,200,255,.3);
       margin-bottom: 0;
     }
     .pick-trip .cy { -webkit-text-fill-color: transparent; }
