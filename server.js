@@ -1012,7 +1012,7 @@ app.delete('/api/car', (req, res) => {
 // alerta trae la geometría (polígono) real de la zona afectada, así que se
 // puede pintar el área en el mapa en vez de solo un pin.
 const HAZARD_FILE = path.join(DATA_DIR, 'hazard-alerts.json');
-let hazardStore = { notifiedIds: [], nearby: [], allFires: [], lastCheck: 0 };
+let hazardStore = { notifiedIds: [], nearby: [], lastCheck: 0 };
 try {
   const loaded = JSON.parse(fs.readFileSync(HAZARD_FILE, 'utf8'));
   if (loaded && typeof loaded === 'object') hazardStore = Object.assign(hazardStore, loaded);
@@ -1359,16 +1359,6 @@ async function checkHazardAlerts() {
     closureError: closureDebug.error, closureSample: closureDebug.sample,
   });
 
-  // El mapa muestra TODOS los incendios activos de California en rojo/
-  // naranja, toquen o no la ruta — es la vista de "panorama completo", no
-  // solo lo que nos afecta directo. Las notificaciones push (abajo) sí se
-  // quedan limitadas a lo relevante — tanto para incendios como para
-  // cierres de carretera — para no saturar con cosas lejanas.
-  hazardStore.allFires = incidents.map((f) => {
-    const { geometries, ...rest } = f;
-    return rest;
-  });
-
   const allHazards = hazards.concat(incidents).concat(closures);
   const nearby = [];
   if (!points.length && !segments.length) {
@@ -1416,7 +1406,7 @@ async function checkHazardAlerts() {
 }
 
 app.get('/api/hazard-alerts', (req, res) => {
-  res.json({ nearby: hazardStore.nearby, allFires: hazardStore.allFires || [], lastCheck: hazardStore.lastCheck });
+  res.json({ nearby: hazardStore.nearby, lastCheck: hazardStore.lastCheck });
 });
 
 // Revisión manual (botón de admin) — regresa el diagnóstico completo para
@@ -1426,7 +1416,7 @@ app.post('/api/hazard-alerts/check', async (req, res) => {
   const who = req.body && req.body.who;
   if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
   await checkHazardAlerts();
-  res.json({ ok: true, nearby: hazardStore.nearby, allFires: hazardStore.allFires || [], debug: hazardStore.debug });
+  res.json({ ok: true, nearby: hazardStore.nearby, debug: hazardStore.debug });
 });
 
 // Primer chequeo a los pocos segundos de arrancar (no hay que esperar el
