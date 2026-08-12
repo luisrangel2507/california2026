@@ -3212,6 +3212,10 @@ async function openMyProfile(){
     var personSel = document.getElementById('me-phrases-person');
     personSel.innerHTML = persons.map(function(p){return '<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
     loadPhrasesForPersonSel();
+
+    var photoSel = document.getElementById('me-admin-photo-person');
+    photoSel.innerHTML = persons.map(function(p){return '<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
+    loadAdminPhotoPreview();
   }
 
   updateShareLocBtn();
@@ -3293,6 +3297,58 @@ async function removeMyPhoto(){
     PROFILE_DATA[i]=Object.assign({}, PROFILE_DATA[i], {photo:''});
     document.getElementById('me-photo-preview').innerHTML=avatarHtml(i, 64, 26);
     updateHeroProfile();
+  }catch(e){ toast('No se pudo quitar la foto — revisa tu conexión.','error'); }
+}
+
+// Admin — poner/quitar la foto de CUALQUIER persona del grupo (no solo la
+// propia), para cuando a alguien se le complica subirla desde su teléfono.
+function loadAdminPhotoPreview(){
+  var sel = document.getElementById('me-admin-photo-person');
+  if(!sel) return;
+  var i = persons.indexOf(sel.value);
+  document.getElementById('me-admin-photo-preview').innerHTML = avatarHtml(i, 52, 20);
+}
+
+// Si la foto que se acaba de subir es la de quien tiene la sesión abierta,
+// refresca también su propio preview/avatar arriba en el sheet y en el header.
+function syncPhotoIfSelf(i){
+  if(i === parseInt(meIndex)){
+    document.getElementById('me-photo-preview').innerHTML = avatarHtml(i, 64, 26);
+    updateHeroProfile();
+  }
+}
+
+async function uploadPersonPhoto(input){
+  var file = input.files && input.files[0];
+  if(!file) return;
+  var sel = document.getElementById('me-admin-photo-person');
+  var i = persons.indexOf(sel.value);
+  var preview = document.getElementById('me-admin-photo-preview');
+  preview.style.opacity = '.5';
+  try{
+    var photo = await compressAvatarImage(file);
+    await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:{photo:photo}})});
+    PROFILE_DATA[i] = Object.assign({}, PROFILE_DATA[i], {photo:photo});
+    preview.innerHTML = avatarHtml(i, 52, 20);
+    syncPhotoIfSelf(i);
+    toast('Foto de '+persons[i]+' actualizada.','success');
+  }catch(e){
+    toast('No se pudo subir la foto — revisa tu conexión.','error');
+  }finally{
+    preview.style.opacity = '';
+    input.value = '';
+  }
+}
+
+async function removePersonPhoto(){
+  var sel = document.getElementById('me-admin-photo-person');
+  var i = persons.indexOf(sel.value);
+  try{
+    await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:{photo:''}})});
+    PROFILE_DATA[i] = Object.assign({}, PROFILE_DATA[i], {photo:''});
+    document.getElementById('me-admin-photo-preview').innerHTML = avatarHtml(i, 52, 20);
+    syncPhotoIfSelf(i);
+    toast('Foto de '+persons[i]+' quitada.','success');
   }catch(e){ toast('No se pudo quitar la foto — revisa tu conexión.','error'); }
 }
 
@@ -8050,6 +8106,18 @@ if('serviceWorker' in navigator){
       </div>
       <input type="file" id="me-restore-file" accept="application/json" style="display:none" onchange="restoreItinFromFile(this)">
       <div class="me-wipe-note">El servidor puede perder el itinerario si Railway lo redespliega sin un disco permanente. Descarga un respaldo de vez en cuando — es un archivo que puedes guardar donde quieras y restaurar aquí mismo si algún día el itinerario aparece vacío.</div>
+
+      <div class="settings-section-title" style="margin-top:16px">Fotos del grupo</div>
+      <div class="me-wipe-note">Si a alguien se le complica subir su propia foto, aquí se la puedes poner tú.</div>
+      <select class="ef-s" id="me-admin-photo-person" style="margin-bottom:8px" onchange="loadAdminPhotoPreview()"></select>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="me-admin-photo-preview" style="width:52px;height:52px;flex-shrink:0"></div>
+        <label class="me-backup-btn" style="display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:none;cursor:pointer">
+          📷 Cambiar foto
+          <input type="file" accept="image/*" style="display:none" onchange="uploadPersonPhoto(this)">
+        </label>
+        <button class="me-backup-btn" style="flex:none;background:transparent;border-color:var(--border)" onclick="removePersonPhoto()">Quitar</button>
+      </div>
 
       <div class="settings-section-title" style="margin-top:16px">Frases de la cuenta regresiva</div>
       <div class="me-wipe-note">Se van rotando día con día en Inicio mientras falta para el viaje — cada quien ve solo las suyas. Elige a quién le vas a armar la lista, una frase por línea. El número de días aparece solo justo antes de donde escribas "día" o "días", no hace falta poner nada especial. Déjalo en blanco para que a esa persona le salgan las de siempre.</div>
