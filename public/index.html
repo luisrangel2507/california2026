@@ -21,7 +21,7 @@
   <meta name="theme-color" content="#020B16" id="meta-theme-color">
   <script>
     if(document.documentElement.getAttribute('data-theme')==='light'){
-      document.getElementById('meta-theme-color').setAttribute('content','#F4F1EA');
+      document.getElementById('meta-theme-color').setAttribute('content','#E9E0CC');
     }
   </script>
 
@@ -65,18 +65,18 @@
       --ease-spring: cubic-bezier(.34,1.56,.64,1);
     }
     :root[data-theme="light"] {
-      --bg:     #F4F1EA;
-      --panel:  #FFFFFF;
-      --glass:  rgba(15,25,40,.04);
-      --border: rgba(15,25,40,.1);
-      --border2:rgba(15,25,40,.18);
-      --text:   #16202E;
-      --muted:  #5C6B80;
+      --bg:     #E9E0CC;
+      --panel:  #F8F3E6;
+      --glass:  rgba(80,62,32,.05);
+      --border: rgba(80,62,32,.13);
+      --border2:rgba(80,62,32,.22);
+      --text:   #2E2415;
+      --muted:  #7A6A4E;
       --cyan:   #0084B8;
-      --gold:   #B36A00;
+      --gold:   #A8620A;
       --green:  #00875F;
-      --red:    #D62E2E;
-      --surface-rgb: 15,25,40;
+      --red:    #C62F2F;
+      --surface-rgb: 80,62,32;
     }
 
     /* ── PRESS FEEDBACK (motion) ── */
@@ -3998,7 +3998,7 @@ function toggleTheme(){
   if(light) document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
   var metaTheme = document.getElementById('meta-theme-color');
-  if(metaTheme) metaTheme.setAttribute('content', light ? '#F4F1EA' : '#020B16');
+  if(metaTheme) metaTheme.setAttribute('content', light ? '#E9E0CC' : '#020B16');
   updateThemeToggle();
 }
 
