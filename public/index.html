@@ -21,7 +21,7 @@
   <meta name="theme-color" content="#020B16" id="meta-theme-color">
   <script>
     if(document.documentElement.getAttribute('data-theme')==='light'){
-      document.getElementById('meta-theme-color').setAttribute('content','#ACD7E8');
+      document.getElementById('meta-theme-color').setAttribute('content','#9FCFE3');
     }
   </script>
 
@@ -65,29 +65,29 @@
       --ease-spring: cubic-bezier(.34,1.56,.64,1);
     }
     :root[data-theme="light"] {
-      /* Paleta "atardecer" — el fondo es el degradado real de un atardecer,
-         en orden (azul de cielo → dorado → naranja → coral → rosa →
-         morado), no un solo tono durazno. Tarjetas color crema dorada
-         encima; los acentos se oscurecieron lo justo para pasar 4.5:1 de
-         contraste contra el fondo (validado con la fórmula de contraste
-         de WCAG). */
-      --bg:     linear-gradient(180deg, #ACD7E8 0%, #FDE0A8 20%, #FAC08C 40%, #F5A090 60%, #E68DA0 80%, #C084AC 100%);
-      --panel:  #FFEBD6;
+      /* Paleta "costera" — cielo/mar azul arriba, arena abajo, como las
+         fotos reales del viaje (PCH, Big Sur) en vez de un tema de color
+         inventado. Tarjetas color arena clara encima; los acentos se
+         oscurecieron lo justo para pasar 4.5:1 de contraste contra el
+         punto más flojo del degradado (validado con la fórmula de
+         contraste de WCAG, no a ojo). */
+      --bg:     linear-gradient(180deg, #9FCFE3 0%, #C6DED2 40%, #E4D6AC 75%, #EDE0BE 100%);
+      --panel:  #FBF6E8;
       /* En oscuro, --glass es blanco a baja opacidad sobre un fondo casi
          negro — se nota bien. Ese mismo truco sobre un fondo claro se ve
          plano (poco contraste), así que en claro --glass es una tarjeta
          casi opaca de por sí — más "tarjeta de verdad" que "tinte
          translúcido". */
-      --glass:  rgba(255,241,224,.9);
-      --border: rgba(120,55,35,.16);
-      --border2:rgba(120,55,35,.26);
-      --text:   #3D1F12;
-      --muted:  #7B4F36;
-      --cyan:   #00607C;
-      --gold:   #914408;
-      --green:  #106443;
-      --red:    #A52C24;
-      --surface-rgb: 120,55,35;
+      --glass:  rgba(255,251,240,.9);
+      --border: rgba(20,50,60,.16);
+      --border2:rgba(20,50,60,.26);
+      --text:   #16283A;
+      --muted:  #40575D;
+      --cyan:   #005A74;
+      --gold:   #6F4C08;
+      --green:  #0B6040;
+      --red:    #912F24;
+      --surface-rgb: 20,50,60;
     }
 
     /* ── PRESS FEEDBACK (motion) ── */
@@ -4074,7 +4074,7 @@ function toggleTheme(){
   if(light) document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
   var metaTheme = document.getElementById('meta-theme-color');
-  if(metaTheme) metaTheme.setAttribute('content', light ? '#ACD7E8' : '#020B16');
+  if(metaTheme) metaTheme.setAttribute('content', light ? '#9FCFE3' : '#020B16');
   updateThemeToggle();
 }
 
