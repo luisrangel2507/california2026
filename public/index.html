@@ -21,7 +21,7 @@
   <meta name="theme-color" content="#020B16" id="meta-theme-color">
   <script>
     if(document.documentElement.getAttribute('data-theme')==='light'){
-      document.getElementById('meta-theme-color').setAttribute('content','#F3C9A3');
+      document.getElementById('meta-theme-color').setAttribute('content','#FDE0A8');
     }
   </script>
 
@@ -65,10 +65,12 @@
       --ease-spring: cubic-bezier(.34,1.56,.64,1);
     }
     :root[data-theme="light"] {
-      /* Paleta "atardecer" — coral/durazno de fondo, tarjetas color crema
-         dorada, acentos oscurecidos lo justo para pasar 4.5:1 de contraste
-         contra el fondo (validado con la fórmula de contraste de WCAG). */
-      --bg:     #F3C9A3;
+      /* Paleta "atardecer" — el fondo es el degradado real de un atardecer,
+         en orden (dorado → naranja → coral → rosa → morado), no un solo
+         tono durazno. Tarjetas color crema dorada encima; los acentos se
+         oscurecieron lo justo para pasar 4.5:1 de contraste contra el
+         fondo (validado con la fórmula de contraste de WCAG). */
+      --bg:     linear-gradient(180deg, #FDE0A8 0%, #FAC08C 25%, #F5A090 50%, #E68DA0 75%, #C084AC 100%);
       --panel:  #FFEBD6;
       /* En oscuro, --glass es blanco a baja opacidad sobre un fondo casi
          negro — se nota bien. Ese mismo truco sobre un fondo claro se ve
@@ -135,7 +137,11 @@
     /* ── APP HEADER ── */
     .app-header {
       position: relative; z-index: 2; flex-shrink: 0;
-      background: var(--bg);
+      /* Transparente, no var(--bg): en oscuro es lo mismo a simple vista
+         (el body de abajo es el mismo color sólido), pero en claro --bg es
+         un degradado — si el header pintara su propia copia encimada se
+         vería una costura en vez de fluir junto con el fondo de abajo. */
+      background: transparent;
       padding: max(14px, env(safe-area-inset-top, 14px)) 18px 12px;
       border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
@@ -4067,7 +4073,7 @@ function toggleTheme(){
   if(light) document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
   var metaTheme = document.getElementById('meta-theme-color');
-  if(metaTheme) metaTheme.setAttribute('content', light ? '#F3C9A3' : '#020B16');
+  if(metaTheme) metaTheme.setAttribute('content', light ? '#FDE0A8' : '#020B16');
   updateThemeToggle();
 }
 
