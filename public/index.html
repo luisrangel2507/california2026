@@ -2018,8 +2018,13 @@
          hacía falta (no había nada detrás al primer login), pero ahora esta
          misma pantalla también se reusa como bloqueo por inactividad, con
          el dashboard ya pintado detrás: sin esto, cualquier tropiezo del
-         video deja ver el contenido de fondo por completo. */
-      background: var(--bg);
+         video deja ver el contenido de fondo por completo.
+         Color fijo, NO var(--bg): esta pantalla vive sobre una foto/video
+         con overlay oscuro sin importar el tema (ver .pin-key, .pick-card,
+         etc., todos con blanco fijo) — con --bg de modo claro (un
+         degradado de colores) cualquier tropiezo del video se veía como un
+         parche de color enorme en vez de pasar casi inadvertido. */
+      background: #08090F;
     }
     .pick-screen.show { display: flex; }
     .pick-bg-video {
