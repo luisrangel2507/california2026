@@ -179,7 +179,7 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
     /* ── DASHBOARD PHOTO HERO ── */
     .dash-photo-hero {
-      margin: 0; border-radius: 0 0 28px 28px; overflow: hidden;
+      margin: 0; border-radius: 0; overflow: hidden;
       position: relative; height: min(62vh, 440px); flex-shrink: 0;
       background: url('trip-bg.jpg') center 30%/cover no-repeat;
     }
@@ -1186,12 +1186,13 @@
     .dash-pre-band {
       position:relative; overflow:hidden; flex-shrink:0;
       padding:28px 20px; text-align:center;
-      margin: 14px 14px 0;
+      margin: 0;
       background:
         radial-gradient(circle at 86% 14%, rgba(255,250,222,.95) 0%, rgba(255,229,140,.6) 11%, rgba(255,229,140,.18) 22%, transparent 42%),
         linear-gradient(180deg, #3E9EE0 0%, #7FC4EE 45%, #FCE7B0 100%);
       border: 1px solid rgba(255,255,255,.35);
-      border-radius: 18px;
+      border-left: none; border-right: none;
+      border-radius: 0;
     }
     .dash-pre-sky { position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
     .dash-pre-sky::before, .dash-pre-sky::after {

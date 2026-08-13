@@ -1,4 +1,4 @@
-const CACHE = 'av26-v178';
+const CACHE = 'av26-v179';
 
 const PRECACHE = [
   '/',
