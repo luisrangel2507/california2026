@@ -21,7 +21,7 @@
   <meta name="theme-color" content="#020B16" id="meta-theme-color">
   <script>
     if(document.documentElement.getAttribute('data-theme')==='light'){
-      document.getElementById('meta-theme-color').setAttribute('content','#E9E0CC');
+      document.getElementById('meta-theme-color').setAttribute('content','#F3C9A3');
     }
   </script>
 
@@ -65,23 +65,26 @@
       --ease-spring: cubic-bezier(.34,1.56,.64,1);
     }
     :root[data-theme="light"] {
-      --bg:     #E9E0CC;
-      --panel:  #F8F3E6;
+      /* Paleta "atardecer" — coral/durazno de fondo, tarjetas color crema
+         dorada, acentos oscurecidos lo justo para pasar 4.5:1 de contraste
+         contra el fondo (validado con la fórmula de contraste de WCAG). */
+      --bg:     #F3C9A3;
+      --panel:  #FFEBD6;
       /* En oscuro, --glass es blanco a baja opacidad sobre un fondo casi
-         negro — se nota bien. Ese mismo truco sobre un fondo beige claro se
-         ve plano (poco contraste), así que en claro --glass es una tarjeta
-         casi opaca de por sí — más "tarjeta blanca de verdad" que "tinte
+         negro — se nota bien. Ese mismo truco sobre un fondo claro se ve
+         plano (poco contraste), así que en claro --glass es una tarjeta
+         casi opaca de por sí — más "tarjeta de verdad" que "tinte
          translúcido". */
-      --glass:  rgba(255,253,246,.88);
-      --border: rgba(80,62,32,.16);
-      --border2:rgba(80,62,32,.26);
-      --text:   #2E2415;
-      --muted:  #7A6A4E;
-      --cyan:   #0084B8;
-      --gold:   #A8620A;
-      --green:  #00875F;
-      --red:    #C62F2F;
-      --surface-rgb: 80,62,32;
+      --glass:  rgba(255,241,224,.9);
+      --border: rgba(120,55,35,.16);
+      --border2:rgba(120,55,35,.26);
+      --text:   #3D1F12;
+      --muted:  #7B4F36;
+      --cyan:   #00607C;
+      --gold:   #914408;
+      --green:  #106443;
+      --red:    #A52C24;
+      --surface-rgb: 120,55,35;
     }
 
     /* ── PRESS FEEDBACK (motion) ── */
@@ -4064,7 +4067,7 @@ function toggleTheme(){
   if(light) document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
   var metaTheme = document.getElementById('meta-theme-color');
-  if(metaTheme) metaTheme.setAttribute('content', light ? '#E9E0CC' : '#020B16');
+  if(metaTheme) metaTheme.setAttribute('content', light ? '#F3C9A3' : '#020B16');
   updateThemeToggle();
 }
 
