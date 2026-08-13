@@ -21,7 +21,7 @@
   <meta name="theme-color" content="#020B16" id="meta-theme-color">
   <script>
     if(document.documentElement.getAttribute('data-theme')==='light'){
-      document.getElementById('meta-theme-color').setAttribute('content','#FDE0A8');
+      document.getElementById('meta-theme-color').setAttribute('content','#ACD7E8');
     }
   </script>
 
@@ -66,11 +66,12 @@
     }
     :root[data-theme="light"] {
       /* Paleta "atardecer" — el fondo es el degradado real de un atardecer,
-         en orden (dorado → naranja → coral → rosa → morado), no un solo
-         tono durazno. Tarjetas color crema dorada encima; los acentos se
-         oscurecieron lo justo para pasar 4.5:1 de contraste contra el
-         fondo (validado con la fórmula de contraste de WCAG). */
-      --bg:     linear-gradient(180deg, #FDE0A8 0%, #FAC08C 25%, #F5A090 50%, #E68DA0 75%, #C084AC 100%);
+         en orden (azul de cielo → dorado → naranja → coral → rosa →
+         morado), no un solo tono durazno. Tarjetas color crema dorada
+         encima; los acentos se oscurecieron lo justo para pasar 4.5:1 de
+         contraste contra el fondo (validado con la fórmula de contraste
+         de WCAG). */
+      --bg:     linear-gradient(180deg, #ACD7E8 0%, #FDE0A8 20%, #FAC08C 40%, #F5A090 60%, #E68DA0 80%, #C084AC 100%);
       --panel:  #FFEBD6;
       /* En oscuro, --glass es blanco a baja opacidad sobre un fondo casi
          negro — se nota bien. Ese mismo truco sobre un fondo claro se ve
@@ -4073,7 +4074,7 @@ function toggleTheme(){
   if(light) document.documentElement.setAttribute('data-theme','light');
   else document.documentElement.removeAttribute('data-theme');
   var metaTheme = document.getElementById('meta-theme-color');
-  if(metaTheme) metaTheme.setAttribute('content', light ? '#FDE0A8' : '#020B16');
+  if(metaTheme) metaTheme.setAttribute('content', light ? '#ACD7E8' : '#020B16');
   updateThemeToggle();
 }
 
