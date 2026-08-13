@@ -1385,7 +1385,12 @@ async function checkHazardAlerts() {
         const { geometries, ...hzWithoutGeom } = hz;
         const shapeExtra = hz.shapeType === 'polygon' ? { polygons: geometriesToLatLngPolygons(geometries) } : {};
         nearby.push({ ...hzWithoutGeom, nearLabel: matchLabel, ...shapeExtra });
-        if (!hazardStore.notifiedIds.includes(hz.id)) {
+        // Incendios e inundaciones se siguen viendo en el mapa/barra, pero
+        // ya no mandan notificación push — cubre tanto el riesgo de
+        // incendio de NWS (Red Flag Warning) como los incendios activos de
+        // WFIGS, ambos con category:'fire'.
+        const skipPush = hz.category === 'fire' || hz.category === 'flood';
+        if (!skipPush && !hazardStore.notifiedIds.includes(hz.id)) {
           hazardStore.notifiedIds.push(hz.id);
           await sendPushToAll({
             title: hz.emoji + ' ' + hz.label + ' cerca de ' + matchLabel,
