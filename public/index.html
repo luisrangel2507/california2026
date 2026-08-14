@@ -2035,22 +2035,14 @@
       background: #08090F;
     }
     .pick-screen.show { display: flex; }
-    .pick-bg-video {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-      transform: scale(1.04);
-    }
+    /* Foto estática, no video — un video de fondo que se pausa/tropieza al
+       volver de inactividad (recarga, autoplay bloqueado, etc.) es peor que
+       una foto fija, que nunca se traba. */
     .pick-bg-img {
-      display: none;
+      display: block;
       position: absolute; inset: 0;
       background: url('trip-bg.jpg') center/cover no-repeat;
       transform: scale(1.04);
-    }
-    /* Desktop: foto estática, sin video */
-    @media (min-width: 768px) {
-      .pick-bg-video { display: none; }
-      .pick-bg-img   { display: block; }
     }
     .pick-overlay {
       position: absolute; inset: 0;
@@ -2379,9 +2371,6 @@
 
 <!-- PROFILE / LOGIN SCREEN -->
 <div class="pick-screen" id="pick-screen">
-  <video class="pick-bg-video" id="pick-bg-video" autoplay loop muted playsinline webkit-playsinline disablepictureinpicture preload="auto">
-    <source src="login-bg.mp4" type="video/mp4">
-  </video>
   <div class="pick-bg-img"></div>
   <div class="pick-overlay"></div>
   <div class="pick-title-block">
@@ -3047,7 +3036,6 @@ function lockForInactivity(){
   renderPickCards();
   showPickWho();
   pickEl.classList.add('show');
-  if(typeof trBgVideo !== 'undefined') trBgVideo.play();
   toast('Pasaron 5 minutos — vuelve a entrar');
 }
 ['touchstart','mousedown','keydown','scroll','wheel'].forEach(function(evt){
@@ -3080,8 +3068,6 @@ function showProfileScreen(){
   renderPickCards();
   showPickWho();
   document.getElementById('pick-screen').classList.add('show');
-  // El video de fondo solo corre aquí (ver nota sobre la sesión de audio)
-  if(typeof trBgVideo !== 'undefined') trBgVideo.play();
 }
 
 function doLogin(i, isNew){
@@ -3089,9 +3075,6 @@ function doLogin(i, isNew){
   localStorage.setItem('ca26_me', meIndex);
   isInactivityUnlock=false; // sesión nueva de verdad — ya no es un desbloqueo
   document.getElementById('pick-screen').classList.remove('show');
-  // Ya dentro de la app el video queda oculto: se pausa para no quedarnos con
-  // la sesión de audio del sistema y cortarle la música al usuario.
-  if(typeof trBgVideo !== 'undefined') trBgVideo.pause();
   updateHeroProfile();
   showWelcome(i);
   renderDash(); renderOps(); renderBudget();
@@ -7844,11 +7827,6 @@ async function init(){
     if(meIndex===null){
       renderPickCards();
       document.getElementById('pick-screen').classList.add('show');
-      // init() es async y esta parte corre después de un await, o sea
-      // después de que el script terminó de ejecutarse de corrido y ya se
-      // definió trBgVideo (var de nivel superior, más abajo en el archivo),
-      // así que aquí sí se puede arrancar.
-      if(typeof trBgVideo !== 'undefined') trBgVideo.play();
     }
   }, 'mostrar picker de login');
   // Antes de pintar cualquier avatar (header, dashboard, picker de login)
@@ -7938,59 +7916,6 @@ init().catch(function(err){
   console.error('init() falló:', err);
   showFatalError('init() falló: '+((err&&err.message)||err));
 });
-
-// ── LOGIN BG VIDEO — forzar autoplay siempre, sin botón de play ────────────
-// Ojo: en iOS un <video> reproduciéndose le quita la sesión de audio al
-// sistema y pausa lo que estés oyendo (Spotify, etc.). Por eso el video solo
-// corre mientras la pantalla de login está a la vista, y se pausa en cuanto
-// se entra a la app. Además se le quitó la pista de audio al archivo.
-function isPickScreenVisible(){
-  var s = document.getElementById('pick-screen');
-  return !!s && s.classList.contains('show');
-}
-
-var trBgVideo = (function(){
-  var v = document.getElementById('pick-bg-video');
-  if(!v) return { play:function(){}, pause:function(){} };
-  // Silenciado desde el arranque, no solo al reproducir
-  v.muted = true;
-  v.volume = 0;
-
-  function tryPlay(){
-    // Solo tiene sentido si el login está visible; si no, no tocamos el audio
-    // del sistema para nada.
-    if(!isPickScreenVisible()) return;
-    v.muted = true;      // por si acaso, aunque ya viene en el atributo
-    v.volume = 0;
-    var p = v.play();
-    if(p && p.catch) p.catch(function(){});
-  }
-  function pause(){
-    try{ v.pause(); }catch(e){}
-  }
-
-  v.addEventListener('loadeddata', tryPlay);
-  v.addEventListener('canplay', tryPlay);
-  // Si venía en caché, loadeddata/canplay ya pasaron y no volverían a dispararse
-  if(v.readyState >= 2) tryPlay();
-  document.addEventListener('visibilitychange', function(){
-    // Al volver a la app solo se reanuda si seguimos en el login. Antes se
-    // reanudaba siempre, así que regresar de Spotify le cortaba la música.
-    if(document.hidden) pause();
-    else tryPlay();
-  });
-  // Si el navegador bloqueó el autoplay, el primer toque en cualquier parte
-  // lo reactiva de forma silenciosa (sin mostrar ningún botón de play).
-  ['touchstart','click'].forEach(function(evt){
-    document.addEventListener(evt, function retryOnce(){
-      if(v.paused) tryPlay();
-    }, {once:true, passive:true});
-  });
-
-  return { play: tryPlay, pause: pause };
-})();
-
-trBgVideo.play();
 
 // ── SERVICE WORKER ─────────────────────────────────────────────────────────
 if('serviceWorker' in navigator){
