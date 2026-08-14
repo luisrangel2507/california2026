@@ -257,6 +257,30 @@ app.delete('/api/expenses/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Editar un gasto ya registrado — cualquiera puede corregir un error (mismo
+// criterio que agregar gastos, no solo el admin). Si el monto cambia, se
+// guarda el monto anterior en "history" antes de sobreescribirlo, para que
+// quede rastro de que hubo un cambio de precio (quién lo pagó/con quién se
+// divide se puede corregir sin dejar rastro, eso no es un "cambio de precio").
+app.patch('/api/expenses/:id', (req, res) => {
+  const idx = expStore.findIndex((e) => e.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'not found' });
+  const prev = expStore[idx];
+  const { desc, amt, who, split, cat, editedBy } = req.body;
+  const next = { ...prev };
+  if (typeof desc === 'string' && desc.trim()) next.desc = desc.trim();
+  if (typeof who === 'number') next.who = who;
+  if (Array.isArray(split)) next.split = split;
+  if (typeof cat === 'string' && cat) next.cat = cat;
+  if (typeof amt === 'number' && amt > 0 && amt !== prev.amt) {
+    next.history = (prev.history || []).concat([{ amt: prev.amt, ts: Date.now(), by: editedBy || null }]);
+    next.amt = amt;
+  }
+  expStore[idx] = next;
+  persistExp();
+  res.json({ ok: true, expense: next });
+});
+
 // Comprobantes (foto o archivo) adjuntos a un gasto, como evidencia del pago
 app.post('/api/expenses/:id/receipts', (req, res) => {
   const { photo, name, type } = req.body;
