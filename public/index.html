@@ -65,13 +65,15 @@
       --ease-spring: cubic-bezier(.34,1.56,.64,1);
     }
     :root[data-theme="light"] {
-      /* Paleta "costera" — cielo/mar azul arriba, arena abajo, como las
-         fotos reales del viaje (PCH, Big Sur) en vez de un tema de color
-         inventado. Tarjetas color arena clara encima; los acentos se
-         oscurecieron lo justo para pasar 4.5:1 de contraste contra el
-         punto más flojo del degradado (validado con la fórmula de
-         contraste de WCAG, no a ojo). */
-      --bg:     linear-gradient(180deg, #9FCFE3 0%, #C6DED2 40%, #E4D6AC 75%, #EDE0BE 100%);
+      /* Paleta "costera" — arena de fondo (color sólido: un degradado en
+         --bg se repetía sin conectar en cada vista que scrollea con poco
+         contenido, dejando parches enormes de color donde no había nada
+         que mostrar). El degradado azul→arena solo vive en el header fijo
+         (.app-header, ver más abajo), que siempre tiene contenido encima y
+         nunca deja un hueco. Tarjetas color arena clara encima del fondo;
+         los acentos se oscurecieron lo justo para pasar 4.5:1 de contraste
+         (validado con la fórmula de contraste de WCAG, no a ojo). */
+      --bg:     #EDE0BE;
       --panel:  #FBF6E8;
       /* En oscuro, --glass es blanco a baja opacidad sobre un fondo casi
          negro — se nota bien. Ese mismo truco sobre un fondo claro se ve
@@ -138,14 +140,16 @@
     /* ── APP HEADER ── */
     .app-header {
       position: relative; z-index: 2; flex-shrink: 0;
-      /* Transparente, no var(--bg): en oscuro es lo mismo a simple vista
-         (el body de abajo es el mismo color sólido), pero en claro --bg es
-         un degradado — si el header pintara su propia copia encimada se
-         vería una costura en vez de fluir junto con el fondo de abajo. */
-      background: transparent;
+      background: var(--bg);
       padding: max(14px, env(safe-area-inset-top, 14px)) 18px 12px;
       border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
+    }
+    /* El toque de color "costero" vive solo aquí — una franja de altura
+       fija que siempre tiene contenido encima, nunca un hueco vacío que
+       deje ver un degradado a medias. */
+    :root[data-theme="light"] .app-header {
+      background: linear-gradient(180deg, #9FCFE3 0%, #C6DED2 60%, #EDE0BE 100%);
     }
     .app-greeting {
       font-size: 26px; font-weight: 700; color: var(--text);
