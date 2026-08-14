@@ -762,6 +762,14 @@
     .ex-am { font-family:'Space Mono',monospace; font-size: 13px; font-weight: 700; color: var(--gold); }
     .ex-pp { font-size: 10px; color: var(--muted); font-family:'Space Mono',monospace; }
     .ex-del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 4px; margin-top: 2px; }
+    .ex-edit { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 4px; margin-top: 2px; }
+    .ex-hist-toggle {
+      background: rgba(245,166,35,.1); border: 1px solid rgba(245,166,35,.3); color: var(--gold);
+      font-size: 9px; font-weight: 700; padding: 1px 7px; border-radius: 10px; cursor: pointer;
+      font-family: 'Space Mono', monospace; letter-spacing: .3px;
+    }
+    .ex-hist-list { margin-top: 6px; padding-left: 2px; border-left: 2px solid rgba(245,166,35,.3); }
+    .ex-hist-row { font-size: 10px; color: var(--muted); padding: 2px 0 2px 8px; font-family: 'Space Mono', monospace; }
     /* balance section */
     .bal-hdr { padding: 8px 13px 4px; border-top: 1px solid var(--border); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; font-family:'Space Mono',monospace; }
     .bal-row-wrap { border-top: 1px solid rgba(var(--surface-rgb),.04); }
@@ -2656,7 +2664,7 @@
         </div>
         <div class="ef-btns">
           <button class="btn-c" onclick="toggleEF()">Cancelar</button>
-          <button class="btn-sv" onclick="saveExp()">Guardar</button>
+          <button class="btn-sv" id="ef-save-btn" onclick="saveExp()">Guardar</button>
         </div>
       </div>
 
@@ -3488,6 +3496,8 @@ if(persons.indexOf('Graham')!==-1){
 }
 document.documentElement.style.setProperty('--person-cols', persons.length);
 let expenses = []; // compartido entre todos via /api/expenses
+let editingExpId = null; // null = el form de gastos está agregando uno nuevo; si no, id del que se está editando
+let expHistoryOpen = {}; // id -> bool, qué historial de precio quedó desplegado
 let settlements = []; // pagos entre personas para liquidar deudas, via /api/settlements
 let notified = new Set(JSON.parse(localStorage.getItem('ca26_notif') || '[]'));
 let photos = {};
@@ -5557,13 +5567,46 @@ function updateP(i,v){
 function toggleEF(){
   var ef=document.getElementById('ef');
   ef.classList.toggle('show');
-  // Reset split chips to all-on when opening
+  // Este toggle es siempre para "agregar" (el botón + Agregar, o Cancelar) —
+  // editar uno existente pasa por openEditExp(), que no llama esto.
+  editingExpId=null;
+  document.getElementById('ef-save-btn').textContent='Guardar';
+  // Reset split chips to all-on, y limpia los campos, cuando se abre
   if(ef.classList.contains('show')){
     persons.forEach(function(_,i){
       var el=document.getElementById('sc'+i);
       if(el) el.classList.add('on');
     });
+    document.getElementById('ef-desc').value='';
+    document.getElementById('ef-amt').value='';
+    document.getElementById('ef-who').value='';
+    document.getElementById('ef-cat').value='food';
   }
+}
+
+// Reusa el mismo form de "+ Agregar" para editar un gasto ya registrado —
+// lo llena con sus valores actuales en vez de abrirlo en blanco.
+function openEditExp(id){
+  var e=expenses.find(function(x){return String(x.id)===String(id);});
+  if(!e) return;
+  editingExpId=id;
+  document.getElementById('ef-desc').value=e.desc;
+  document.getElementById('ef-amt').value=e.amt;
+  document.getElementById('ef-who').value=e.who;
+  document.getElementById('ef-cat').value=e.cat||'other';
+  document.getElementById('ef-save-btn').textContent='Guardar cambios';
+  var split=e.split||persons.map(function(_,i){return i;});
+  persons.forEach(function(_,i){
+    var el=document.getElementById('sc'+i);
+    if(el) el.classList.toggle('on', split.indexOf(i)!==-1);
+  });
+  document.getElementById('ef').classList.add('show');
+  document.getElementById('ef-desc').scrollIntoView({block:'center',behavior:'smooth'});
+}
+
+function toggleExpHistory(id){
+  expHistoryOpen[id]=!expHistoryOpen[id];
+  safeCall(renderExps, 'renderExps');
 }
 
 async function loadExpenses(){
@@ -5615,12 +5658,25 @@ async function saveExp(){
   if(!desc||isNaN(amt)||amt<=0||who===''){toast('Completa todos los campos','error');return;}
   if(!split.length){toast('Selecciona al menos una persona para dividir','error');return;}
   var cat=document.getElementById('ef-cat').value||'other';
+  var editId=editingExpId;
   var payload={desc:desc,amt:amt,who:parseInt(who),split:split,cat:cat};
   try{
-    var r=await fetch('/api/expenses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    if(!r.ok){ toast('No se pudo guardar el gasto.','error'); return; }
-    var data=await r.json();
-    expenses.push(data.expense);
+    var r;
+    if(editId){
+      var priceChanged=(function(){ var e=expenses.find(function(x){return String(x.id)===String(editId);}); return e&&e.amt!==amt; })();
+      payload.editedBy=meIndex!==null?persons[parseInt(meIndex)]:null;
+      r=await fetch('/api/expenses/'+encodeURIComponent(editId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok){ toast('No se pudo guardar el cambio.','error'); return; }
+      var data2=await r.json();
+      var idx=expenses.findIndex(function(x){return String(x.id)===String(editId);});
+      if(idx!==-1) expenses[idx]=data2.expense;
+      toast(priceChanged?'Gasto actualizado — se guardó el precio anterior.':'Gasto actualizado.','success');
+    } else {
+      r=await fetch('/api/expenses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok){ toast('No se pudo guardar el gasto.','error'); return; }
+      var data=await r.json();
+      expenses.push(data.expense);
+    }
   }catch(e){ toast('No se pudo guardar el gasto — revisa tu conexión.','error'); return; }
   document.getElementById('ef-desc').value='';
   document.getElementById('ef-amt').value='';
@@ -5720,13 +5776,27 @@ function renderExps(){
         ? '<div class="ex-rcpt-thumb" onclick="expOpenOv('+eidj+','+ri+')"><img src="'+r.photo+'" loading="lazy"></div>'
         : '<div class="ex-rcpt-file" onclick="expOpenOv('+eidj+','+ri+')" title="'+esc(r.name||'archivo')+'">📄</div>';
     }).join('');
+    var hist=e.history||[];
+    var histOpen=!!expHistoryOpen[e.id];
+    var histHtml=hist.length
+      ? '<button class="ex-hist-toggle" onclick="toggleExpHistory('+eidj+')">✏️ editado · '+(histOpen?'ocultar':'ver antes')+'</button>'
+      : '';
+    var histListHtml=(histOpen&&hist.length)
+      ? '<div class="ex-hist-list">'+hist.slice().reverse().map(function(h){
+          return '<div class="ex-hist-row">antes: $'+h.amt.toLocaleString('es-MX',{minimumFractionDigits:2})+
+            ' · '+new Date(h.ts).toLocaleDateString('es-MX',{day:'numeric',month:'short'})+
+            (h.by?' · '+esc(h.by):'')+'</div>';
+        }).join('')+'</div>'
+      : '';
     return '<div class="ex-it">'+
       '<div style="flex-shrink:0;margin-top:1px">'+avatarHtml(e.who, 30, 12)+'</div>'+
       '<div class="ex-mid">'+
         '<div class="ex-d">'+esc(e.desc)+'</div>'+
         '<div class="ex-meta">Pagó '+esc(persons[e.who]||'?')+' · '+splitAvatars+
           '<span class="cat-badge" style="background:'+catObj.color+'20;color:'+catObj.color+';margin-left:6px">'+esc(catObj.label)+'</span>'+
+          histHtml+
         '</div>'+
+        histListHtml+
         '<div class="ex-receipts">'+rcptHTML+
           '<label class="ex-receipt-add" title="Adjuntar comprobante">'+
             '<input type="file" accept="image/*,application/pdf" multiple onchange="addExpReceipt(event,'+eidj+')">'+
@@ -5737,6 +5807,7 @@ function renderExps(){
       '<div class="ex-right">'+
         '<div class="ex-am">$'+e.amt.toLocaleString('es-MX',{minimumFractionDigits:2})+'</div>'+
         '<div class="ex-pp">$'+share.toFixed(2)+' c/u</div>'+
+        '<button class="ex-edit" onclick="openEditExp('+eidj+')" title="Editar">✏️</button>'+
         (admin?'<button class="ex-del" onclick="delExp('+esc(JSON.stringify(e.id))+')" title="Eliminar">×</button>':'')+
       '</div>'+
       '</div>';
