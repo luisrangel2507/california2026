@@ -111,7 +111,18 @@
       font-family: 'Space Grotesk', sans-serif;
       background: var(--bg);
       color: var(--text);
-      height: 100dvh;
+      /* 100dvh asume que el body puede scrollear y así hacer que Safari
+         esconda su barra de URL/herramientas — pero body tiene
+         overflow:hidden (el scroll real vive en contenedores internos),
+         así que esa barra nunca se llega a esconder y dvh se queda
+         calculando una altura más alta que lo que en verdad se ve,
+         dejando contenido tapado debajo de la barra del navegador. 100svh
+         (small viewport height) asume la barra siempre visible — mismo
+         resultado que dvh en la app instalada (sin barra), pero correcto
+         también dentro del navegador normal. vh queda de respaldo para
+         navegadores viejos sin soporte de svh. */
+      height: 100vh;
+      height: 100svh;
       max-width: 500px;
       margin: 0 auto;
       position: relative;
@@ -1367,7 +1378,7 @@
     /* Pantalla completa: el modo conversación necesita las dos mitades
        completas, si no se ve cortado con la app asomándose atrás. */
     .bottom-sheet.bs-full {
-      top:0; height:100dvh; max-height:100dvh; border-radius:0;
+      top:0; height:100vh; height:100svh; max-height:100vh; max-height:100svh; border-radius:0;
       padding-top: env(safe-area-inset-top, 0px);
     }
     .bottom-sheet.bs-full .bs-grab-bar { display:none; }
