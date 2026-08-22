@@ -7949,11 +7949,14 @@ if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('/sw.js').then(function(reg){
       // Se pregunta al servidor al abrir y cada media hora, por si la app se
-      // quedó abierta en segundo plano durante el viaje.
-      reg.update();
-      setInterval(function(){ reg.update(); }, 30*60*1000);
+      // quedó abierta en segundo plano durante el viaje. Con datos móviles
+      // esto puede fallar por señal débil — no es un error real de la app,
+      // así que se ignora en vez de dejar la promesa sin atrapar (eso
+      // disparaba el banner rojo de "Promesa rechazada" en pantalla).
+      reg.update().catch(function(){});
+      setInterval(function(){ reg.update().catch(function(){}); }, 30*60*1000);
       document.addEventListener('visibilitychange', function(){
-        if(document.visibilityState === 'visible') reg.update();
+        if(document.visibilityState === 'visible') reg.update().catch(function(){});
       });
     }).catch(function(){});
   });
