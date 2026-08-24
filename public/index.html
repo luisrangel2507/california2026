@@ -6896,6 +6896,19 @@ function go(name,el){
   if(name==='decide') dcReset();
 }
 
+// El timer de arriba (dashTimer, cada 60s) sigue corriendo aunque Safari
+// mande la pestaña a segundo plano — y ahí es exactamente donde Safari se
+// queda sin repintar el contenido nuevo de Inicio hasta que alguien toca la
+// pantalla (la franja en negro bajo el contador que ya se documentó dentro
+// de renderDash()). En vez de solo forzar el repintado DESPUÉS de cada
+// render a ciegas, aquí se vuelve a renderizar Inicio justo al regresar a
+// primer plano — que es el momento real en que hace falta.
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible' && document.getElementById('view-dash').classList.contains('active')){
+    renderDash();
+  }
+});
+
 // ── UTILS ──────────────────────────────────────────────────────────────────
 function esc(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
