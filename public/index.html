@@ -1363,18 +1363,23 @@
       position:absolute; bottom:0; left:0; right:0;
       background:var(--panel); border-top:1px solid var(--border2);
       border-radius:20px 20px 0 0; z-index:8001;
-      display:flex; flex-direction:column; max-height:88vh;
+      display:none; flex-direction:column; max-height:88vh;
       transform:translateY(100%);
-      visibility:hidden;
-      transition:transform .32s cubic-bezier(.32,.72,0,1), visibility 0s linear .32s;
+      transition:transform .32s cubic-bezier(.32,.72,0,1), display .32s allow-discrete;
     }
-    /* visibility:hidden (además de translateY) es lo que de verdad evita que
-       un sheet "cerrado" se alcance a asomar por debajo de otro si algo sale
-       raro con el layout (p.ej. otro sheet quedó abierto atrás) — sin esto,
-       translateY(100%) por sí solo puede dejar un pixel colado. El retraso
-       en la transición de visibility es para no cortar en seco la animación
-       de cierre. */
-    .bottom-sheet.show { transform:translateY(0); visibility:visible; transition-delay:0s; }
+    /* display:none de verdad (no solo transform+visibility) para que un sheet
+       cerrado no siga ocupando su alto real en el documento — con varios
+       sheets de pantalla completa en el DOM eso duplicaba
+       document.body.scrollHeight, y herramientas que miden el alto de la
+       página (como "página completa" al capturar en Safari) mostraban una
+       pantalla extra en blanco debajo del contenido real, aunque nadie lo
+       notara scrolleando a mano (body ya tiene overflow:hidden). La
+       transición de display con allow-discrete + @starting-style de abajo
+       hace que igual se pueda animar el según-corresponda: se vuelve
+       visible ANTES de animar la entrada, y solo se esconde DESPUÉS de
+       terminar de animar la salida. */
+    .bottom-sheet.show { display:flex; transform:translateY(0); }
+    @starting-style { .bottom-sheet.show { transform:translateY(100%); } }
     /* Pantalla completa: el modo conversación necesita las dos mitades
        completas, si no se ve cortado con la app asomándose atrás. */
     .bottom-sheet.bs-full {
