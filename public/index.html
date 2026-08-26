@@ -1296,6 +1296,21 @@
     .flip-rivet-l { left:-3px; }
     .flip-rivet-r { right:-3px; }
 
+    /* Días : horas : minutos — misma pieza mecánica de arriba, en 3 grupos
+       más chicos para que quepan los 6 dígitos en una pantalla angosta. */
+    .flip-counter-groups { display:flex; justify-content:center; align-items:flex-start; gap:10px; }
+    .flip-group { display:flex; flex-direction:column; align-items:center; gap:6px; }
+    .flip-counter-sm .flip-digit { width:36px; height:50px; border-radius:6px; }
+    .flip-counter-sm .flip-digit-face { font-size:22px; }
+    .flip-group-lbl {
+      font-size:9px; color:rgba(27,42,61,.65); text-transform:uppercase;
+      letter-spacing:2px; font-family:'Space Mono',monospace;
+    }
+    .flip-sep {
+      font-family:'Space Mono',monospace; font-size:22px; font-weight:700;
+      color:#1B2A3D; opacity:.4; padding-top:12px;
+    }
+
     /* Days strip */
     .dash-days-strip {
       display:flex; align-items:center; padding:11px 18px; gap:0;
@@ -4425,7 +4440,9 @@ async function savePhrases(){
 // esto casi nunca anima (correcto: no debe voltear en cada refresco), salvo
 // la primera vez que se pinta en la sesión, donde se fuerza el volteo de
 // todos los dígitos como gesto de "encendido".
-var dashFlipPrevVal = null;
+var dashFlipPrevDays = null;
+var dashFlipPrevHours = null;
+var dashFlipPrevMins = null;
 
 function flipDigitHtml(d){
   return '<div class="flip-digit"><span class="flip-rivet flip-rivet-l"></span><span class="flip-rivet flip-rivet-r"></span><div class="flip-digit-face">'+d+'</div></div>';
@@ -4477,17 +4494,32 @@ function renderDash(){
     '</div>';
 
   // ── Activity / countdown band
+  // tripStart (medianoche) sigue siendo el límite que reparte actividades
+  // por día de calendario más abajo — no se toca. tripStartAt9 es la hora
+  // real de salida: mientras no haya llegado, se muestra el contador en vez
+  // de "AHORA: [actividad]" (antes ese cambio pasaba a medianoche, mostrando
+  // ya la actividad del día 1 desde las 12am aunque el viaje saliera hasta
+  // las 9am).
   var tripStart = new Date('2026-09-02');
+  var tripStartAt9 = new Date('2026-09-02T09:00:00');
   var tripEnd   = new Date('2026-09-12');
   var actHTML = '';
-  var dLeftStr = null;
+  var dLeftStr = null, hLeftStr = null, mLeftStr = null;
 
-  if(now < tripStart){
-    var dLeft = Math.ceil((tripStart-now)/(1000*60*60*24));
+  if(now < tripStartAt9){
+    var msLeft = Math.max(0, tripStartAt9-now);
+    var totalMinsLeft = Math.floor(msLeft/60000);
+    var dLeft = Math.floor(totalMinsLeft/1440);
+    var hLeft = Math.floor((totalMinsLeft%1440)/60);
+    var mLeft = totalMinsLeft%60;
     dLeftStr = String(dLeft).padStart(2,'0');
+    hLeftStr = String(hLeft).padStart(2,'0');
+    mLeftStr = String(mLeft).padStart(2,'0');
     // Arranca mostrando el valor anterior (si lo hay); animateFlipCounterTo()
     // lo voltea al valor nuevo justo después de insertarse en el DOM.
-    var startDigits = (dashFlipPrevVal && dashFlipPrevVal.length===dLeftStr.length) ? dashFlipPrevVal : dLeftStr;
+    var startDaysDigits  = (dashFlipPrevDays  && dashFlipPrevDays.length===dLeftStr.length)  ? dashFlipPrevDays  : dLeftStr;
+    var startHoursDigits = (dashFlipPrevHours && dashFlipPrevHours.length===hLeftStr.length) ? dashFlipPrevHours : hLeftStr;
+    var startMinsDigits  = (dashFlipPrevMins  && dashFlipPrevMins.length===mLeftStr.length)  ? dashFlipPrevMins  : mLeftStr;
     var myPersonPhrases = (phrasesStore && meIndex!==null) ? phrasesStore[persons[parseInt(meIndex)]] : null;
     var phraseList = (myPersonPhrases && myPersonPhrases.length) ? myPersonPhrases : DEFAULT_PRE_TRIP_PHRASES;
     var phrase = splitPhraseTemplate(phraseList[dLeft % phraseList.length]);
@@ -4496,7 +4528,22 @@ function renderDash(){
         '<div class="dash-pre-sky"></div>'+
         '<div class="dash-pre-content">'+
           '<div class="dash-pre-phrase">'+esc(phrase.before)+'</div>'+
-          '<div class="flip-counter" id="dash-flip-counter">'+startDigits.split('').map(flipDigitHtml).join('')+'</div>'+
+          '<div class="flip-counter-groups">'+
+            '<div class="flip-group">'+
+              '<div class="flip-counter flip-counter-sm" id="dash-flip-days">'+startDaysDigits.split('').map(flipDigitHtml).join('')+'</div>'+
+              '<div class="flip-group-lbl">D&Iacute;AS</div>'+
+            '</div>'+
+            '<div class="flip-sep">:</div>'+
+            '<div class="flip-group">'+
+              '<div class="flip-counter flip-counter-sm" id="dash-flip-hours">'+startHoursDigits.split('').map(flipDigitHtml).join('')+'</div>'+
+              '<div class="flip-group-lbl">HRS</div>'+
+            '</div>'+
+            '<div class="flip-sep">:</div>'+
+            '<div class="flip-group">'+
+              '<div class="flip-counter flip-counter-sm" id="dash-flip-mins">'+startMinsDigits.split('').map(flipDigitHtml).join('')+'</div>'+
+              '<div class="flip-group-lbl">MIN</div>'+
+            '</div>'+
+          '</div>'+
           '<div class="dash-pre-lbl">'+esc(phrase.after)+'</div>'+
         '</div>'+
       '</div>';
@@ -4617,9 +4664,13 @@ function renderDash(){
   var dashBodyEl = document.getElementById('dash-body');
   dashBodyEl.innerHTML = ambientHTML+actHTML+daysHTML+spendHTML+progressHTML+catHTML;
   if(dLeftStr!==null){
-    animateFlipCounterTo('dash-flip-counter', dLeftStr, dashFlipPrevVal===null);
+    animateFlipCounterTo('dash-flip-days', dLeftStr, dashFlipPrevDays===null);
+    animateFlipCounterTo('dash-flip-hours', hLeftStr, dashFlipPrevHours===null);
+    animateFlipCounterTo('dash-flip-mins', mLeftStr, dashFlipPrevMins===null);
   }
-  dashFlipPrevVal = dLeftStr;
+  dashFlipPrevDays = dLeftStr;
+  dashFlipPrevHours = hLeftStr;
+  dashFlipPrevMins = mLeftStr;
   // Si este panel se reemplaza mientras no es el que se está viendo (p. ej.
   // al guardar algo desde Mi Perfil, que tapa todo con un sheet encima),
   // Safari a veces se queda sin repintar el contenido nuevo hasta que el
