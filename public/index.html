@@ -3565,11 +3565,18 @@ async function loadPhotos(){
 // ── MAP ────────────────────────────────────────────────────────────────────
 // Estilos de mapa — es preferencia de cada teléfono (localStorage), no
 // estado del viaje: no tiene sentido guardarlo en el servidor.
+// CARTO cerró el acceso anónimo a sus basemaps (ahora piden API key,
+// registrada o no — se veía la marca de agua "API KEY REQUIRED" tapando el
+// mapa). Se cambió "Calles"/"Oscuro" a los tiles estándar de OpenStreetMap,
+// que sí siguen siendo gratis y sin llave. OSM no tiene una variante oscura
+// propia sin registrarse en otro proveedor, así que "Oscuro" usa los mismos
+// tiles con un filtro CSS que invierte los colores (truco común para tener
+// un mapa oscuro gratis sin depender de un servicio con llave).
 var MAP_STYLES = {
   calles: {
     label:'Calles', icon:'🗺️', grad:'linear-gradient(135deg,#eef1f5,#c9d3dd)',
-    url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd',
+    url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution:'© OpenStreetMap contributors', maxZoom:19, subdomains:'',
   },
   satelite: {
     label:'Satélite', icon:'🛰️', grad:'linear-gradient(135deg,#3f5c34,#7a6a45)',
@@ -3583,8 +3590,9 @@ var MAP_STYLES = {
   },
   oscuro: {
     label:'Oscuro', icon:'🌙', grad:'linear-gradient(135deg,#0d1420,#1b2a3d)',
-    url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution:'© OpenStreetMap contributors © CARTO', maxZoom:19, subdomains:'abcd',
+    url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution:'© OpenStreetMap contributors', maxZoom:19, subdomains:'',
+    filter:'invert(1) hue-rotate(180deg) brightness(.95) contrast(.9)',
   },
 };
 var curMapStyle = localStorage.getItem('ca26_map_style') || 'calles';
@@ -3603,6 +3611,8 @@ function addTileLayer(styleKey){
   mapTileLayer = L.tileLayer(s.url, {
     attribution:s.attribution, maxZoom:s.maxZoom, subdomains:s.subdomains||'abc'
   }).addTo(mapObj);
+  var cont = mapTileLayer.getContainer();
+  if(cont) cont.style.filter = s.filter || '';
 }
 
 function initMap(){
