@@ -261,18 +261,39 @@
     #geo-bar.show { display: flex; }
     #geo-bar .geo-icon { font-size: 13px; }
 
-    /* ── HAZARD ALERT BAR (incendios, huracanes, inundaciones, tormentas...) ──
-       Vive dentro de #view-map, no arriba de todo — solo se ve en la
-       pestaña Mapa, no encima del resto de la app. */
-    #hazard-bar {
-      position: absolute; top: 0; left: 0; right: 0; z-index: 500;
-      display: none; align-items: center;
-      gap: 8px; padding: 10px 16px;
-      background: rgba(20,10,8,.88); border-bottom: 1px solid rgba(255,90,50,.4);
-      font-size: 11px; color: #FF7A50; cursor: pointer;
+    /* ── BOTÓN DE ALERTAS (incendios, huracanes, inundaciones, tormentas...) ──
+       Antes era una barra fija tapando la parte de arriba del mapa todo el
+       tiempo que hubiera alertas — con temporada de incendios activa eso
+       podía ser 40+ alertas y la barra no dejaba ver nada. Ahora es un botón
+       más del stack de la derecha (mismo estilo que GPS/auto/estilo de
+       mapa): solo un numerito si hay alertas, y al tocarlo se abre la lista
+       completa en un sheet — nada se tapa a la fuerza. */
+    .hazard-btn {
+      position: absolute; bottom: 286px; right: 14px; z-index: 500;
+      width: 42px; height: 42px; border-radius: 50%;
+      background: var(--panel); border: 1px solid var(--border2);
+      color: #FF7A50; font-size: 17px;
+      display: none; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 16px rgba(255,90,50,.25);
+      transition: transform .12s var(--ease);
     }
-    #hazard-bar.show { display: flex; }
-    #hazard-bar .hazard-icon { font-size: 13px; }
+    .hazard-btn.show { display: flex; }
+    .hazard-btn:active { transform: scale(.94); }
+    .hazard-btn-badge {
+      position: absolute; top: -4px; right: -4px;
+      min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+      background: #FF5A32; color: #fff; font-size: 10px; font-weight: 700;
+      font-family: 'Space Mono', monospace;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 0 2px var(--panel);
+    }
+    .hz-list { padding: 4px 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+    .hz-row { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: var(--glass); }
+    .hz-row-name { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .hz-row-detail { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+    .hz-row-link { font-size: 11px; color: var(--cyan); margin-top: 8px; display: inline-block; text-decoration: none; }
+    .hz-empty { padding: 30px 20px; text-align: center; color: var(--muted); font-size: 13px; }
 
     /* ── ARRIVAL BANNER ── */
     #arrival-banner {
@@ -2568,10 +2589,9 @@
 <!-- MAP -->
 <div id="view-map" class="view">
   <div id="map"></div>
-  <!-- HAZARD ALERT BAR — solo dentro del mapa, no en las demás pestañas -->
-  <div id="hazard-bar" onclick="goToHazardOnMap()">
-    <span class="hazard-icon" id="hazard-icon">⚠️</span>
-    <span id="hazard-txt">—</span>
+  <!-- BOTÓN DE ALERTAS — solo dentro del mapa, no en las demás pestañas -->
+  <div class="hazard-btn" id="hazard-btn" onclick="openHazardSheet()">
+    ⚠️<span class="hazard-btn-badge" id="hazard-btn-badge" style="display:none">0</span>
   </div>
   <div class="ops-map-chip" id="ops-map-chip" style="display:none">
     <div class="ops-chip-dot"></div>
@@ -3789,21 +3809,49 @@ async function loadHazardAlerts(){
     var j = await r.json();
     HAZARD_ALERTS = j.nearby || [];
   }catch(e){ return; /* sin conexión — se queda con lo último que había */ }
-  renderHazardBar();
+  updateHazardButton();
   safeCall(renderHazardZones, 'renderHazardZones');
 }
 
-function renderHazardBar(){
-  var bar = document.getElementById('hazard-bar');
-  if(!bar) return;
-  if(!HAZARD_ALERTS.length){ bar.classList.remove('show'); return; }
-  var first = HAZARD_ALERTS[0];
-  var txt = HAZARD_ALERTS.length===1
-    ? first.label+' cerca de '+first.nearLabel
-    : HAZARD_ALERTS.length+' alertas activas cerca de la ruta — toca para verlas todas';
-  document.getElementById('hazard-icon').textContent = first.emoji || '⚠️';
-  document.getElementById('hazard-txt').textContent = txt;
-  bar.classList.add('show');
+function updateHazardButton(){
+  var btn = document.getElementById('hazard-btn');
+  var badge = document.getElementById('hazard-btn-badge');
+  if(!btn) return;
+  if(!HAZARD_ALERTS.length){ btn.classList.remove('show'); return; }
+  badge.textContent = HAZARD_ALERTS.length>99 ? '99+' : String(HAZARD_ALERTS.length);
+  badge.style.display = 'flex';
+  btn.classList.add('show');
+  if(document.getElementById('hazard-sheet').classList.contains('show')) renderHazardSheetList();
+}
+
+function openHazardSheet(){
+  renderHazardSheetList();
+  document.getElementById('hazard-overlay').classList.add('show');
+  document.getElementById('hazard-sheet').classList.add('show');
+}
+function closeHazardSheet(){
+  document.getElementById('hazard-overlay').classList.remove('show');
+  document.getElementById('hazard-sheet').classList.remove('show');
+}
+function renderHazardSheetList(){
+  var list = document.getElementById('hz-list');
+  if(!list) return;
+  if(!HAZARD_ALERTS.length){
+    list.innerHTML = '<div class="hz-empty">Sin alertas activas cerca de la ruta por ahora.</div>';
+    return;
+  }
+  list.innerHTML = HAZARD_ALERTS.map(function(h){
+    var c = hazardCenterOf(h);
+    var expiresStr = h.expires ? new Date(h.expires).toLocaleString('es-MX',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+    return '<div class="hz-row">'+
+      '<div class="hz-row-name">'+(h.emoji||'⚠️')+' '+esc(h.label||h.event)+'</div>'+
+      '<div class="hz-row-detail">'+esc(h.headline||h.event)+
+        (h.nearLabel?'<br>Toca '+esc(h.nearLabel):'')+
+        (expiresStr?' · hasta '+expiresStr:'')+
+      '</div>'+
+      (c ? '<a class="hz-row-link" href="https://www.google.com/maps/search/?api=1&query='+c.lat+','+c.lon+'" target="_blank">Ver en Google Maps</a>' : '')+
+      '</div>';
+  }).join('');
 }
 
 // Nuestro parseo de fuentes como Caltrans es defensivo (mejor esfuerzo, sin
@@ -3817,6 +3865,17 @@ function hazardPopupHtml(h, lat, lon){
     (h.areaDesc?'<div class="pop-day">'+esc(h.areaDesc)+'</div>':'')+
     (h.nearLabel?'<div class="pop-day">Toca '+esc(h.nearLabel)+(expiresStr?' · hasta '+expiresStr:'')+'</div>':'')+
     (lat!=null&&lon!=null?'<div class="pop-actions"><a class="pop-maps" href="https://www.google.com/maps/search/?api=1&query='+lat+','+lon+'" target="_blank">Ver en Google Maps</a></div>':'');
+}
+
+// Centro aproximado de una alerta para el link de Maps — círculo: su propio
+// centro; polígono: centroide del anillo exterior (no hay un solo punto).
+function hazardCenterOf(h){
+  if(h.shapeType==='circle' && h.lat!=null && h.lon!=null) return {lat:h.lat, lon:h.lon};
+  var outer = (h.polygons||[])[0] && (h.polygons||[])[0][0];
+  if(!outer || !outer.length) return null;
+  var cLat=0, cLon=0;
+  outer.forEach(function(pt){ cLat+=pt[0]; cLon+=pt[1]; });
+  return {lat:cLat/outer.length, lon:cLon/outer.length};
 }
 
 function renderHazardZones(){
@@ -3837,30 +3896,14 @@ function renderHazardZones(){
       return;
     }
     (h.polygons||[]).forEach(function(rings){
-      // Sin un solo lat/lon (es un polígono, no un punto) — se aproxima con
-      // el centroide del anillo exterior, nada más para el link de Maps.
-      var outer = rings[0]||[], cLat=null, cLon=null;
-      if(outer.length){
-        cLat=0; cLon=0;
-        outer.forEach(function(pt){ cLat+=pt[0]; cLon+=pt[1]; });
-        cLat/=outer.length; cLon/=outer.length;
-      }
+      var c = hazardCenterOf(h);
       var poly = L.polygon(rings,{
         color:h.color||'#FF9A40', weight:2, opacity:.8,
         fillColor:h.color||'#FF9A40', fillOpacity:.18,
-      }).addTo(mapObj).bindPopup(hazardPopupHtml(h, cLat, cLon));
+      }).addTo(mapObj).bindPopup(hazardPopupHtml(h, c&&c.lat, c&&c.lon));
       hazardZones.push(poly);
     });
   });
-}
-
-function goToHazardOnMap(){
-  // La barra ya vive dentro de la pestaña Mapa (no hace falta cambiar de
-  // vista) — solo centra el mapa en las alertas activas.
-  if(mapObj && hazardZones.length){
-    var group = L.featureGroup(hazardZones);
-    mapObj.fitBounds(group.getBounds(), {padding:[30,30]});
-  }
 }
 
 // Botón de admin en Mi Perfil — revisa ahora mismo, sin esperar el cron del
@@ -3875,7 +3918,7 @@ async function testHazardAlerts(){
     if(!r.ok){ toast('No se pudo revisar — ¿eres admin?','error'); return; }
     var j = await r.json();
     HAZARD_ALERTS = j.nearby || [];
-    renderHazardBar();
+    updateHazardButton();
     safeCall(renderHazardZones, 'renderHazardZones');
     // Diagnóstico completo en un alert (no un toast) para poder mandar
     // screenshot — es la única forma de ver, desde producción, si NWS
@@ -8402,6 +8445,20 @@ if('serviceWorker' in navigator){
     <button class="bs-close" onclick="closeMapStyle()">&#10005;</button>
   </div>
   <div class="ms-grid" id="ms-grid"></div>
+</div>
+
+<!-- ALERTAS BOTTOM SHEET -->
+<div class="bs-overlay" id="hazard-overlay" onclick="closeHazardSheet()"></div>
+<div class="bottom-sheet" id="hazard-sheet">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title">Alertas cerca de la ruta</div>
+      <div class="bs-sub">Incendios, cierres de carretera y clima</div>
+    </div>
+    <button class="bs-close" onclick="closeHazardSheet()">&#10005;</button>
+  </div>
+  <div class="hz-list" id="hz-list"></div>
 </div>
 
 <!-- COMPARTIR APP BOTTOM SHEET -->
