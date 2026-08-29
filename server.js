@@ -1163,6 +1163,11 @@ async function fetchActiveHazards() {
       const p = f.properties || {};
       const id = String(p.id || f.id || '');
       if (!id) continue;
+      // El calor extremo no afecta la ruta en sí (no cierra caminos ni es un
+      // riesgo del viaje como incendio/inundación) — se descarta antes de
+      // gastar tiempo resolviendo su geometría.
+      const cat = categorizeHazard(p.event);
+      if (cat.key === 'heat') continue;
       let geometries = [];
       if (f.geometry) {
         geometries = [f.geometry];
@@ -1175,7 +1180,6 @@ async function fetchActiveHazards() {
         debug.zonesResolved += geometries.length;
       }
       if (!geometries.length) continue;
-      const cat = categorizeHazard(p.event);
       hazards.push({
         id, event: p.event || 'Alerta', headline: p.headline || p.event || '',
         severity: p.severity || 'Unknown', areaDesc: p.areaDesc || '', expires: p.expires || null,
