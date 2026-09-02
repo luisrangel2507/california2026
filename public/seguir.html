@@ -104,6 +104,7 @@ body {
 
 .sg-legend-item.sg-mine { font-weight:700; }
 .sg-mine-tag { font-size:10.5px; color:var(--accent); font-weight:600; }
+.sg-contact-call { color:var(--accent); text-decoration:none; font-weight:600; }
 
 /* ── GALERÍA ESTILO POLAROID: para que se sienta a álbum, no a grid ── */
 .ap-grid {
@@ -207,9 +208,12 @@ body {
       <div class="sg-km-track"><div class="sg-km-bar" id="sg-km-bar"><span class="sg-km-plane">✈️</span></div></div>
     </div>
 
-    <div class="sg-section-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg> Dónde andan</div>
+    <div class="sg-section-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/></svg> ¿Dónde andan?</div>
     <div class="sg-map-frame"><div id="sg-map"></div></div>
     <div class="sg-legend" id="sg-legend"></div>
+
+    <div class="sg-section-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.362 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> Contactos de emergencia</div>
+    <div class="sg-legend" id="sg-contacts"></div>
 
     <div class="sg-section-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Recuerdos del viaje</div>
     <div class="ap-grid" id="sg-gallery"></div>
@@ -515,6 +519,32 @@ async function refreshLocations(){
   }catch(e){ /* sin conexión */ }
 }
 
+// Contacto de emergencia de cada quien — el mismo dato que ya ve el grupo en
+// "Mi Perfil" dentro de la app, pero servido por un endpoint aparte y más
+// angosto (solo nombre/teléfono/sangre) para no exponer cumpleaños ni
+// dirección de nadie en un enlace que se comparte con familia/amigos.
+async function refreshContacts(){
+  try{
+    var r = await fetch('/api/public-contacts',{cache:'no-store'});
+    var data = await r.json();
+    var el = document.getElementById('sg-contacts');
+    var html = '';
+    PERSONS_DEFAULT.forEach(function(name, idx){
+      var c = data[idx];
+      if(!c || (!c.ecName && !c.ecPhone)) return;
+      var color = colorFor(name);
+      var telHref = c.ecPhone ? 'tel:'+(c.ecPhoneCode||'')+c.ecPhone.replace(/\s+/g,'') : null;
+      html += '<div class="sg-legend-item">'+
+        '<span class="sg-dot" style="background:'+color+'"></span>'+
+        '<b>'+esc(name)+'</b>'+(c.blood?' <span class="sg-legend-when">'+esc(c.blood)+'</span>':'')+
+        ' · '+esc(c.ecName||'contacto')+
+        (telHref?' · <a class="sg-contact-call" href="'+telHref+'">'+esc((c.ecPhoneCode||'')+' '+c.ecPhone).trim()+'</a>':'')+
+        '</div>';
+    });
+    el.innerHTML = html || '<div class="sg-empty-mini">Nadie ha registrado un contacto de emergencia todavía.</div>';
+  }catch(e){ /* sin conexión */ }
+}
+
 var SG_PHOTOS = [];
 async function refreshPhotos(){
   try{
@@ -602,6 +632,7 @@ async function init(){
   renderStatus();
   try{ initMap(); }catch(e){ /* Leaflet no cargó (sin conexión al CDN) — se sigue sin mapa */ }
   await refreshLocations();
+  await refreshContacts();
   await refreshPhotos();
 
   setInterval(function(){ renderStatus(); refreshLocations(); }, 20000);

@@ -375,6 +375,19 @@ app.post('/api/profiles', (req, res) => {
   res.json({ ok: true });
 });
 
+// Versión mínima para la página pública de "seguir en vivo" — nada de
+// cumpleaños ni dirección de nadie, solo lo que hace falta para que
+// familia/amigos puedan llamar al contacto de emergencia de cada quien.
+app.get('/api/public-contacts', (req, res) => {
+  const out = {};
+  Object.keys(profStore).forEach((idx) => {
+    const p = profStore[idx] || {};
+    if (!p.ecName && !p.ecPhone) return;
+    out[idx] = { ecName: p.ecName || '', ecPhoneCode: p.ecPhoneCode || '', ecPhone: p.ecPhone || '', blood: p.blood || '' };
+  });
+  res.json(out);
+});
+
 // ── Traductor ──────────────────────────────────────────────────────────────
 // Se proxea por aquí en vez de llamar desde el navegador: evita problemas de
 // CORS y permite tener un segundo proveedor de respaldo si el primero falla o
