@@ -721,9 +721,20 @@
     .ps-name { font-size: 10px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ps-paid { font-family:'Space Mono',monospace; font-size: 11px; font-weight: 700; }
     .ps-bal { font-size: 10px; margin-top: 2px; font-weight: 600; }
-    /* expense form */
-    .ef { display: none; flex-direction: column; gap: 9px; padding: 12px 13px; border-top: 1px solid var(--border); background: rgba(0,0,0,.2); }
-    .ef.show { display: flex; }
+    /* expense form — desplegable arriba de la lista de gastos.
+       El fondo era rgba(0,0,0,.2) fijo (pensado solo para modo oscuro) — en
+       modo claro esa capa negra encima del fondo crema se veía como un
+       bloque gris apagado, fuera de tono con el resto de la pantalla.
+       rgba(var(--surface-rgb),X) es el mismo truco que ya usa el resto de la
+       app para tintes que se adaptan solos al tema. */
+    .ef {
+      display: flex; flex-direction: column; gap: 9px; padding: 0 13px;
+      max-height: 0; opacity: 0; overflow: hidden;
+      border-top: 1px solid transparent;
+      background: rgba(var(--surface-rgb),.035);
+      transition: max-height .32s cubic-bezier(.32,.72,0,1), opacity .22s ease, padding .32s ease;
+    }
+    .ef.show { max-height: 640px; opacity: 1; padding: 12px 13px; border-top-color: var(--border); }
     .ef-row { display: flex; gap: 7px; }
     .ef-i, .ef-s {
       flex: 1; padding: 8px 10px;
