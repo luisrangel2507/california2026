@@ -336,12 +336,15 @@ function buildDays(itinStore){
   });
 }
 
-var TRIP_START = new Date('2026-09-02');
+// new Date(2026,8,2) — constructor numérico, NO string ISO ('2026-09-02'
+// se interpreta en UTC y comparado contra "now" en hora local puede caer
+// en el día de calendario equivocado según el huso horario).
+var TRIP_START = new Date(2026,8,2);
 
 function computeItinStatus(){
   var now = new Date();
   var tripStart = TRIP_START;
-  var tripEnd = new Date('2026-09-12');
+  var tripEnd = new Date(2026,8,12);
   if(now<tripStart) return {todayIdx:-1, curActIdx:-1};
   if(now>=tripEnd) return {todayIdx:DAYS.length, curActIdx:-1};
   var todayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);

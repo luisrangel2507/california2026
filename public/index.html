@@ -4363,9 +4363,9 @@ function renderDash(){
   // de "AHORA: [actividad]" (antes ese cambio pasaba a medianoche, mostrando
   // ya la actividad del día 1 desde las 12am aunque el viaje saliera hasta
   // las 9am).
-  var tripStart = new Date('2026-09-02');
+  var tripStart = new Date(2026,8,2);
   var tripStartAt9 = new Date('2026-09-02T09:00:00');
-  var tripEnd   = new Date('2026-09-12');
+  var tripEnd   = new Date(2026,8,12);
   var actHTML = '';
   var dLeftStr = null, hLeftStr = null, mLeftStr = null;
 
@@ -4442,14 +4442,19 @@ function renderDash(){
   var today = now;
   var todayDayIdx = -1;
   var segs = DAYS.map(function(_,i){
-    var dn=i+2; var ds='2026-09-'+(dn<10?'0'+dn:dn); var dd=new Date(ds);
+    // new Date(2026,8,dn) — constructor numérico, NO string ISO tipo
+    // '2026-09-0X' (esa forma se interpreta en UTC, y comparada contra
+    // "today" en hora local puede caer en el día de calendario equivocado
+    // según el huso horario — es justo el bug que causaba que el número de
+    // día mostrado no coincidiera con la cuenta regresiva de arriba).
+    var dn=i+2; var dd=new Date(2026,8,dn);
     var isDone=today>dd&&today.toDateString()!==dd.toDateString();
     var isToday=today.toDateString()===dd.toDateString();
     if(isToday) todayDayIdx=i;
     return '<div class="dash-day-seg'+(isDone?' done':isToday?' today':' future')+'"></div>';
   }).join('');
   var dayLbl = todayDayIdx>=0
-    ? (todayDayIdx+2)+'/'+DAYS.length
+    ? (todayDayIdx+1)+'/'+DAYS.length
     : (today<tripStart?'Pre':'Fin');
   var daysHTML =
     '<div class="dash-days-strip">'+segs+'<span class="dash-days-lbl">D&Iacute;A '+esc(dayLbl)+'</span></div>';
@@ -4722,7 +4727,7 @@ function maybeUpdateCurrentWeather(lat, lon){
 function loadCurrentWeatherFallback(){
   if(CUR_WX && (Date.now()-CUR_WX.ts)<30*60*1000) return;
   var now=new Date();
-  var tripStart=new Date('2026-09-02');
+  var tripStart=new Date(2026,8,2);
   var dayIdx=Math.max(0, Math.min(DAYS.length-1, Math.floor((now-tripStart)/(1000*60*60*24))));
   var coord=dayCoordFor(dayIdx);
   if(coord) fetchCurrentWeatherAt(coord[0], coord[1]);
@@ -4780,8 +4785,8 @@ async function loadReservations(){
 
 function computeItinStatus(){
   var now = new Date();
-  var tripStart = new Date('2026-09-02');
-  var tripEnd = new Date('2026-09-12');
+  var tripStart = new Date(2026,8,2);
+  var tripEnd = new Date(2026,8,12);
   if(now<tripStart) return {todayIdx:-1, curActIdx:-1};
   if(now>=tripEnd) return {todayIdx:DAYS.length, curActIdx:-1};
   var todayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);
@@ -6280,8 +6285,8 @@ function sendItinNotif(title, body){
 function checkItinNotifs(){
   if(typeof Notification==='undefined'||Notification.permission!=='granted') return;
   var now = new Date();
-  var tripStart = new Date('2026-09-02');
-  var tripEnd   = new Date('2026-09-12');
+  var tripStart = new Date(2026,8,2);
+  var tripEnd   = new Date(2026,8,12);
   if(now<tripStart||now>=tripEnd) return;
 
   var dayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);
@@ -6325,7 +6330,7 @@ function checkItinNotifs(){
 function checkCountdownNotif(){
   if(typeof Notification==='undefined'||Notification.permission!=='granted') return;
   var now = new Date();
-  var tripStart = new Date('2026-09-02');
+  var tripStart = new Date(2026,8,2);
   if(now>=tripStart) return;
   if(now.getHours()!==10||now.getMinutes()!==0) return;
   var todayKey = now.toISOString().slice(0,10);
@@ -6510,7 +6515,7 @@ function renderOps(){
   if(window.innerWidth < 860) return;
   var cp = CHECKPOINTS[cpIndex] || CHECKPOINTS[0];
   var now = new Date();
-  var tripStart = new Date('2026-09-02');
+  var tripStart = new Date(2026,8,2);
   var dayIdx = Math.min(Math.max(Math.floor((now-tripStart)/(1000*60*60*24)),0),DAYS.length-1);
   var day = DAYS[dayIdx];
   var hh = now.getHours().toString().padStart(2,'0');
@@ -7478,8 +7483,8 @@ async function computeRecapStats(){
   var resDone = RES_LIST.filter(function(r){ return r.done; }).length;
 
   var now = new Date();
-  var tripStart = new Date('2026-09-02');
-  var tripEnd = new Date('2026-09-12');
+  var tripStart = new Date(2026,8,2);
+  var tripEnd = new Date(2026,8,12);
   var daysLbl;
   if(now<tripStart) daysLbl = '0/'+DAYS.length;
   else if(now>=tripEnd) daysLbl = DAYS.length+'/'+DAYS.length;
