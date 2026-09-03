@@ -522,7 +522,10 @@ async function refreshLocations(){
       Object.keys(markers).forEach(function(name){
         if(!seen[name]){ mapObj.removeLayer(markers[name]); delete markers[name]; }
       });
-      if(bounds.length) mapObj.fitBounds(bounds, {maxZoom:11, padding:[30,30]});
+      // maxZoom más bajo (antes 11) para que con un solo punto compartiendo
+      // ubicación el mapa no se meta a nivel de calle — se queda a nivel de
+      // "todo el estado", dando más contexto de en qué parte de la ruta va.
+      if(bounds.length) mapObj.fitBounds(bounds, {maxZoom:7, padding:[30,30]});
     }
   }catch(e){ /* sin conexión */ }
 }
