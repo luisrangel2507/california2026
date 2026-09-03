@@ -105,6 +105,7 @@ body {
 .sg-legend-item.sg-mine { font-weight:700; }
 .sg-mine-tag { font-size:10.5px; color:var(--accent); font-weight:600; }
 .sg-contact-call { color:var(--accent); text-decoration:none; font-weight:600; }
+.sg-legend-when.sg-stale { color:#B23B2E; font-weight:700; }
 
 /* ── GALERÍA ESTILO POLAROID: para que se sienta a álbum, no a grid ── */
 .ap-grid {
@@ -503,11 +504,18 @@ async function refreshLocations(){
         }catch(e){ /* el mapa no cargó, pero la lista de quién anda dónde sigue sirviendo */ }
       }
       var mins = Math.round((Date.now()-loc.ts)/60000);
+      // Un celular solo puede mandar su ubicación mientras la app está
+      // abierta en pantalla — en cuanto se bloquea o se cambia de app, iOS le
+      // corta el GPS por completo (ninguna página web puede rastrear en
+      // segundo plano). Pasada una hora sin actualizarse, ya no es
+      // información en vivo — se marca en rojo para que quede claro que ese
+      // punto en el mapa es de dónde estaba, no de dónde está ahorita.
+      var stale = mins>=60;
       var cuando = fresh ? 'en vivo ahora' : (mins<60 ? 'hace '+mins+' min' : 'hace '+Math.round(mins/60)+' h');
       var isMine = name===sharedBy;
       legendHtml += '<div class="sg-legend-item'+(isMine?' sg-mine':'')+'"><span class="sg-dot" style="background:'+color+'"></span>'+esc(name)+
         (isMine?' <span class="sg-mine-tag">· a quien sigues</span>':'')+
-        '<span class="sg-legend-when">· '+cuando+'</span></div>';
+        '<span class="sg-legend-when'+(stale?' sg-stale':'')+'">'+(stale?' · ⚠️ ':' · ')+cuando+(stale?' (no es su ubicación actual)':'')+'</span></div>';
     });
     legend.innerHTML = legendHtml;
     if(mapObj){
