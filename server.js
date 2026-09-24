@@ -607,7 +607,7 @@ async function sendPushToAll(trip, payload) {
 
 app.post('/api/send-test', async (req, res) => {
   const result = await sendPushToAll(req.trip, {
-    title: 'Alta Vibra · ' + req.trip.cfg.name,
+    title: 'Alta Vibra Travel · ' + req.trip.cfg.name,
     body: 'Esta es una notificación de prueba 🎉'
   });
   res.json({ ok: true, sent: result.ok, total: result.total, errors: result.errors });
@@ -1530,7 +1530,7 @@ cron.schedule('0 10 * * *', async () => {
     try {
       const subs = t.get('subscriptions', []);
       if (!subs.length) continue;
-      const title = 'Alta Vibra · ' + t.cfg.name;
+      const title = 'Alta Vibra Travel · ' + t.cfg.name;
       const tripStart = new Date(t.cfg.start + 'T00:00:00-06:00');
       if (now < tripStart) {
         const dLeft = Math.ceil((tripStart - now) / (1000 * 60 * 60 * 24));
@@ -1550,7 +1550,7 @@ cron.schedule('0 10 * * *', async () => {
       if (pending.length) {
         const names = pending.map((r) => r.title).join(', ');
         await sendPushToAll(t, {
-          title: 'Alta Vibra · Reservaciones pendientes',
+          title: 'Alta Vibra Travel · Reservaciones pendientes',
           body: `Faltan pocos días para: ${names}. ¡Resérvalo antes de que se ocupe!`
         });
       }
@@ -1560,4 +1560,4 @@ cron.schedule('0 10 * * *', async () => {
   }
 }, { timezone: 'America/Mexico_City' });
 
-app.listen(PORT, () => console.log(`Alta Vibra · puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Alta Vibra Travel · puerto ${PORT}`));

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Alta Vibra — En vivo</title>
+<title>Alta Vibra Travel — En vivo</title>
 <link rel="icon" type="image/png" href="/icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=Archivo+Black&family=Fraunces:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
@@ -179,8 +179,8 @@ body {
   </video>
   <div class="sg-intro-overlay"></div>
   <div class="sg-intro-content">
-    <img src="/logo-altavibra.png" class="sg-intro-logo" alt="Alta Vibra">
-    <div class="sg-intro-title">Alta Vibra</div>
+    <img src="/logo-altavibra.png" class="sg-intro-logo" alt="Alta Vibra Travel">
+    <div class="sg-intro-title">Alta Vibra Travel</div>
     <div class="sg-intro-sub" id="sg-intro-sub">En vivo</div>
   </div>
   <div class="sg-intro-hint" id="sg-intro-hint">Toca para continuar</div>
@@ -188,9 +188,9 @@ body {
 
 <div id="sg-content" style="display:none">
   <div class="sg-header">
-    <img src="/logo-altavibra.png" alt="Alta Vibra">
+    <img src="/logo-altavibra.png" alt="Alta Vibra Travel">
     <div>
-      <div class="sg-header-title" id="sg-header-title">Alta Vibra</div>
+      <div class="sg-header-title" id="sg-header-title">Alta Vibra Travel</div>
       <div class="sg-header-sub"><span class="sg-live-dot"></span><span id="sg-header-trip">En vivo</span></div>
     </div>
   </div>
@@ -219,7 +219,7 @@ body {
     <div class="sg-section-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Recuerdos del viaje</div>
     <div class="ap-grid" id="sg-gallery"></div>
 
-    <div class="sg-footer">Con cariño, para quien los sigue desde lejos 💛<br><span id="sg-footer-trip">Alta Vibra</span></div>
+    <div class="sg-footer">Con cariño, para quien los sigue desde lejos 💛<br><span id="sg-footer-trip">Alta Vibra Travel</span></div>
   </div>
 </div>
 
@@ -265,8 +265,8 @@ function setupTrip(info){
   if(info.id!=='california2026') GENERAL_FUN_FACTS = GENERIC_FUN_FACTS;
   document.getElementById('sg-intro-sub').textContent = info.name+' · en vivo';
   document.getElementById('sg-header-trip').textContent = info.name+' · en vivo';
-  document.getElementById('sg-footer-trip').textContent = 'Alta Vibra · '+info.name;
-  document.title = info.name+' en vivo — Alta Vibra';
+  document.getElementById('sg-footer-trip').textContent = 'Alta Vibra Travel · '+info.name;
+  document.title = info.name+' en vivo — Alta Vibra Travel';
 }
 
 var token = (function(){
@@ -673,7 +673,7 @@ async function init(){
   if(sharedBy){
     document.getElementById('sg-header-title').textContent = '¿Dónde está '+sharedBy+'?';
     document.getElementById('sg-intro-sub').textContent = '¿Dónde está '+sharedBy+'?';
-    document.title = '¿Dónde está '+sharedBy+'? — Alta Vibra';
+    document.title = '¿Dónde está '+sharedBy+'? — Alta Vibra Travel';
   }
   showIntro();
 

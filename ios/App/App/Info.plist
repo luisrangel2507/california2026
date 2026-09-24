@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Alta Vibra</string>
+        <string>Alta Vibra Travel</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -67,14 +67,14 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Alta Vibra usa la cámara para que puedas subir fotos al álbum del viaje y comprobantes de gastos.</string>
+	<string>Alta Vibra Travel usa la cámara para que puedas subir fotos al álbum del viaje y comprobantes de gastos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Alta Vibra necesita acceso a tus fotos para poder subirlas al álbum del viaje o como comprobante de un gasto.</string>
+	<string>Alta Vibra Travel necesita acceso a tus fotos para poder subirlas al álbum del viaje o como comprobante de un gasto.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Alta Vibra guarda aquí las fotos que decidas descargar del álbum del viaje.</string>
+	<string>Alta Vibra Travel guarda aquí las fotos que decidas descargar del álbum del viaje.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Alta Vibra usa tu ubicación para mostrarte en el mapa del viaje y avisarte cuando llegas a un lugar del itinerario.</string>
+	<string>Alta Vibra Travel usa tu ubicación para mostrarte en el mapa del viaje y avisarte cuando llegas a un lugar del itinerario.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Si activas "compartir mi ubicación", Alta Vibra la comparte con el resto del grupo del viaje para que puedan verse en el mapa, incluso si la app está en segundo plano.</string>
+	<string>Si activas "compartir mi ubicación", Alta Vibra Travel la comparte con el resto del grupo del viaje para que puedan verse en el mapa, incluso si la app está en segundo plano.</string>
 </dict>
 </plist>

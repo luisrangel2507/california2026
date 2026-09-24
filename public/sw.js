@@ -1,4 +1,4 @@
-const CACHE = 'av26-v204';
+const CACHE = 'av26-v205';
 
 const PRECACHE = [
   '/',
@@ -32,7 +32,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('push', e => {
   var data = {};
   try { data = e.data ? e.data.json() : {}; } catch (err) {}
-  var title = data.title || 'Alta Vibra';
+  var title = data.title || 'Alta Vibra Travel';
   var body = data.body || '';
   e.waitUntil(
     self.registration.showNotification(title, {

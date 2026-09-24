@@ -88,7 +88,7 @@
   <!-- iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Alta Vibra">
+  <meta name="apple-mobile-web-app-title" content="Alta Vibra Travel">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png">
 
@@ -96,7 +96,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
 
-  <title>Alta Vibra</title>
+  <title>Alta Vibra Travel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Fraunces:ital,wght@0,500;0,600;1,500&family=Archivo+Black&family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -2470,7 +2470,7 @@
   <div class="pick-bg-img"></div>
   <div class="pick-overlay"></div>
   <div class="pick-title-block">
-    <img class="pick-logo-img" src="logo-altavibra.png" alt="Alta Vibra">
+    <img class="pick-logo-img" src="logo-altavibra.png" alt="Alta Vibra Travel">
     <div class="pick-trip" id="pick-trip-name"></div>
     <div class="pick-trip-sub" id="pick-trip-sub"></div>
   </div>
@@ -2544,7 +2544,7 @@
   <img class="login-loading-bg" src="login-loading.jpg" alt="">
   <div class="login-loading-overlay"></div>
   <div class="login-loading-content">
-    <img class="login-loading-logo" src="logo-altavibra.png" alt="Alta Vibra">
+    <img class="login-loading-logo" src="logo-altavibra.png" alt="Alta Vibra Travel">
     <div class="login-loading-dots"><span></span><span></span><span></span></div>
     <div class="login-loading-text">Cargando…</div>
   </div>
@@ -2977,12 +2977,12 @@ function joinNames(list){
 
 // Textos fijos de la página que dependen del viaje
 function applyTripLabels(){
-  document.title = 'Alta Vibra — '+TRIP.name;
+  document.title = 'Alta Vibra Travel — '+TRIP.name;
   var set = function(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; };
   set('pick-trip-name', TRIP.name);
   set('pick-trip-sub', '✈️ '+(TRIP.subtitle ? TRIP.subtitle+' · ' : '')+tripMonthYearLabel());
   set('pick-trip-badge', tripRangeLabel()+(TRIP.subtitle ? ' · '+TRIP.subtitle.toUpperCase() : ''));
-  document.querySelectorAll('.trip-label').forEach(function(el){ el.textContent='Alta Vibra · '+TRIP.name; });
+  document.querySelectorAll('.trip-label').forEach(function(el){ el.textContent='Alta Vibra Travel · '+TRIP.name; });
   set('me-group-contacts-note', 'Visible para '+joinNames(persons)+' — por si algo pasa.');
 }
 
@@ -3101,9 +3101,9 @@ async function regenerateTripCode(){
 }
 function shareTripInvite(){
   var url = tripInviteUrl();
-  var text = 'Únete a nuestro viaje "'+TRIP.name+'" en Alta Vibra con el código '+(TRIP.code||TRIP_AUTH.code);
+  var text = 'Únete a nuestro viaje "'+TRIP.name+'" en Alta Vibra Travel con el código '+(TRIP.code||TRIP_AUTH.code);
   if(navigator.share){
-    navigator.share({title:'Alta Vibra · '+TRIP.name, text:text, url:url}).catch(function(){});
+    navigator.share({title:'Alta Vibra Travel · '+TRIP.name, text:text, url:url}).catch(function(){});
   } else if(navigator.clipboard){
     navigator.clipboard.writeText(text+'\n'+url).then(function(){ toast('Invitación copiada.','success'); });
   } else {
@@ -4580,7 +4580,7 @@ function renderDash(){
   var ambientHTML =
     '<div class="dash-photo-hero">'+
       '<div class="dash-photo-overlay"></div>'+
-      '<div class="dash-hero-logo"><img src="logo-altavibra.png" alt="Alta Vibra"></div>'+
+      '<div class="dash-hero-logo"><img src="logo-altavibra.png" alt="Alta Vibra Travel"></div>'+
       '<div class="dash-photo-content">'+
         '<div>'+
           '<div class="dash-photo-city">La hora es:</div>'+
@@ -6267,7 +6267,7 @@ function openPhotoAlbum(){
     '<div class="ap-header">'+
       '<button class="ap-back" onclick="closeAlbum()">‹</button>'+
       '<div class="ap-title-wrap">'+
-        '<div class="ap-title">Alta Vibra</div>'+
+        '<div class="ap-title">Alta Vibra Travel</div>'+
         '<div class="ap-sub">'+esc(TRIP.name)+' · '+data.totalPhotos+' foto'+(data.totalPhotos!==1?'s':'')+'</div>'+
       '</div>'+
       (data.totalPhotos?'<button class="ap-play" onclick="playAlbumSlideshow()">▶</button>':'')+
@@ -6356,7 +6356,7 @@ async function openBoardingPass(){
   var html=
     '<div class="bp-header">'+
       '<button class="bp-back" onclick="closeBoardingPass()">‹</button>'+
-      '<div class="bp-brand">ALTA VIBRA</div>'+
+      '<div class="bp-brand">ALTA VIBRA TRAVEL</div>'+
       '<div class="bp-route">'+
         '<span class="bp-route-code">'+esc(bpRouteCode(0))+'</span>'+
         '<span class="bp-route-line"></span>'+
@@ -6580,7 +6580,7 @@ function checkItinNotifs(){
         }
       }
 
-      sendItinNotif('Alta Vibra · '+day.date, body);
+      sendItinNotif('Alta Vibra Travel · '+day.date, body);
     }
   });
 }
@@ -6595,7 +6595,7 @@ function checkCountdownNotif(){
   if(localStorage.getItem('ca26_cd_notif')===todayKey) return;
   localStorage.setItem('ca26_cd_notif', todayKey);
   var dLeft = Math.ceil((tripStart-now)/(1000*60*60*24));
-  sendItinNotif('Alta Vibra · '+TRIP.name, 'Faltan '+dLeft+' día'+(dLeft===1?'':'s')+' para tu viaje');
+  sendItinNotif('Alta Vibra Travel · '+TRIP.name, 'Faltan '+dLeft+' día'+(dLeft===1?'':'s')+' para tu viaje');
 }
 
 // ── ITINERARY EDITOR ──────────────────────────────────────────────────────
@@ -6824,7 +6824,7 @@ function renderOps(){
   var L = document.getElementById('ops-left');
   if(L) L.innerHTML =
     '<div class="ops-logo-wrap">'+
-      '<img src="logo-altavibra.png" class="ops-logo" alt="Alta Vibra">'+
+      '<img src="logo-altavibra.png" class="ops-logo" alt="Alta Vibra Travel">'+
       '<div><div class="ops-clock">'+clockStr+'</div><div class="ops-date-lbl">'+dateStr+'</div></div>'+
     '</div>'+
     '<div class="ops-section">'+
@@ -7851,7 +7851,7 @@ async function buildRecapCanvas(){
     ctx.textAlign='center';
     ctx.fillStyle='#F5A623';
     ctx.font='700 56px "Space Grotesk", sans-serif';
-    ctx.fillText('Alta Vibra', W/2, afterGridY+56);
+    ctx.fillText('Alta Vibra Travel', W/2, afterGridY+56);
     afterGridY += 96;
   }
 
@@ -7907,7 +7907,7 @@ function shareRecapCardNative(){
     if(!blob) return;
     var file=new File([blob],'alta-vibra-resumen.png',{type:'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
-      try{ await navigator.share({files:[file], title:'Alta Vibra · '+TRIP.name}); }
+      try{ await navigator.share({files:[file], title:'Alta Vibra Travel · '+TRIP.name}); }
       catch(e){}
     } else {
       downloadRecapCard();
@@ -7985,7 +7985,7 @@ function copyLiveShareLink(){
 }
 function nativeLiveShare(){
   if(!liveShareUrl) return;
-  navigator.share({title:'Sigue nuestro viaje en vivo — Alta Vibra', url: liveShareUrl}).catch(function(){});
+  navigator.share({title:'Sigue nuestro viaje en vivo — Alta Vibra Travel', url: liveShareUrl}).catch(function(){});
 }
 async function regenerateLiveLink(){
   if(!confirm('¿Seguro? El enlace anterior dejará de funcionar para quien ya lo tenga.')) return;
@@ -8005,7 +8005,7 @@ function copyShareLink(){
   } else { toast('No se pudo copiar.','error'); }
 }
 function nativeShare(){
-  navigator.share({title:'Alta Vibra · '+TRIP.name, url: location.origin+'/'}).catch(function(){});
+  navigator.share({title:'Alta Vibra Travel · '+TRIP.name, url: location.origin+'/'}).catch(function(){});
 }
 
 // ── INIT ───────────────────────────────────────────────────────────────────
