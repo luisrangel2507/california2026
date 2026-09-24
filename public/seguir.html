@@ -181,7 +181,7 @@ body {
   <div class="sg-intro-content">
     <img src="/logo-altavibra.png" class="sg-intro-logo" alt="Alta Vibra">
     <div class="sg-intro-title">Alta Vibra</div>
-    <div class="sg-intro-sub" id="sg-intro-sub">California 2026 · en vivo</div>
+    <div class="sg-intro-sub" id="sg-intro-sub">En vivo</div>
   </div>
   <div class="sg-intro-hint" id="sg-intro-hint">Toca para continuar</div>
 </div>
@@ -191,7 +191,7 @@ body {
     <img src="/logo-altavibra.png" alt="Alta Vibra">
     <div>
       <div class="sg-header-title" id="sg-header-title">Alta Vibra</div>
-      <div class="sg-header-sub"><span class="sg-live-dot"></span>California 2026 · en vivo</div>
+      <div class="sg-header-sub"><span class="sg-live-dot"></span><span id="sg-header-trip">En vivo</span></div>
     </div>
   </div>
 
@@ -219,7 +219,7 @@ body {
     <div class="sg-section-title"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Recuerdos del viaje</div>
     <div class="ap-grid" id="sg-gallery"></div>
 
-    <div class="sg-footer">Con cariño, para quien los sigue desde lejos 💛<br>Alta Vibra · California 2026</div>
+    <div class="sg-footer">Con cariño, para quien los sigue desde lejos 💛<br><span id="sg-footer-trip">Alta Vibra</span></div>
   </div>
 </div>
 
@@ -236,23 +236,57 @@ function esc(s){
   });
 }
 
-var PERSONS_DEFAULT = ['Erick','Rafa','Eduardo'];
-var PC = ['#00C8FF','#FF6A50','#00E598','#F5A623','#B983FF','#FF4FA3','#4FD8FF','#FFD84F'];
-var DAYS_SKEL = [
-  {date:'2 Sep',wd:'Martes'},
-  {date:'3 Sep',wd:'Miércoles'},
-  {date:'4 Sep',wd:'Jueves'},
-  {date:'5 Sep',wd:'Viernes'},
-  {date:'6 Sep',wd:'Sábado'},
-  {date:'7 Sep',wd:'Domingo'},
-  {date:'8 Sep',wd:'Lunes'},
-  {date:'9 Sep',wd:'Martes'},
-  {date:'10 Sep',wd:'Miércoles'},
-];
+// Viajeros y fechas llegan del servidor junto con la validación del token
+// (ver init) — cada viaje tiene los suyos.
+var PERSONS_DEFAULT = [];
+var PC = ['#00C8FF','#FF6A50','#00E598','#F5A623','#B983FF','#FF4FA3','#4FD8FF','#FFD84F','#7CFF6B','#FF8F3F','#6B8CFF','#FF6BD6'];
+var DAYS_SKEL = [];
+var TRIP_INFO = null;
+var MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+var WEEKDAYS_ES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+// Constructor numérico, NO string ISO ('2026-09-02' se interpreta en UTC y
+// comparado contra "now" en hora local puede caer en el día de calendario
+// equivocado según el huso horario).
+function tripDate(off){
+  var s = TRIP_INFO.start;
+  return new Date(parseInt(s.slice(0,4),10), parseInt(s.slice(5,7),10)-1, parseInt(s.slice(8,10),10)+(off||0));
+}
+function setupTrip(info){
+  TRIP_INFO = info;
+  PERSONS_DEFAULT = (info.persons||[]).slice();
+  DAYS_SKEL = [];
+  for(var i=0;i<info.days;i++){
+    var d = tripDate(i);
+    DAYS_SKEL.push({date:d.getDate()+' '+MONTHS_ES[d.getMonth()], wd:WEEKDAYS_ES[d.getDay()]});
+  }
+  TRIP_START = tripDate(0);
+  // El viaje original daba un día de colchón (regreso) antes de darlo por terminado
+  TRIP_END = tripDate(info.days + (info.id==='california2026' ? 1 : 0));
+  if(info.id!=='california2026') GENERAL_FUN_FACTS = GENERIC_FUN_FACTS;
+  document.getElementById('sg-intro-sub').textContent = info.name+' · en vivo';
+  document.getElementById('sg-header-trip').textContent = info.name+' · en vivo';
+  document.getElementById('sg-footer-trip').textContent = 'Alta Vibra · '+info.name;
+  document.title = info.name+' en vivo — Alta Vibra';
+}
 
 var token = (function(){
   var m = location.pathname.match(/\/seguir\/([^\/]+)/);
   return m ? decodeURIComponent(m[1]).trim() : '';
+})();
+
+// El token va en cada petición a la API: con él el servidor sabe de qué
+// viaje es y deja leer solo lo que esta página muestra.
+(function(){
+  var _fetch = window.fetch;
+  window.fetch = function(input, init){
+    if(typeof input==='string' && input.indexOf('/api/')===0 && token){
+      init = init || {};
+      var h = new Headers(init.headers || {});
+      h.set('X-Viewer', token);
+      init.headers = h;
+    }
+    return _fetch.call(this, input, init);
+  };
 })();
 
 // ?p=Nombre — quién compartió el enlace, para personalizar la página
@@ -273,6 +307,14 @@ var GENERAL_FUN_FACTS = [
   'Death Valley tiene el récord de la temperatura más alta jamás registrada en la Tierra: 56.7 °C.',
   'California es, ella sola, una de las 5 economías más grandes del mundo.',
   'El letrero de Hollywood originalmente decía "HOLLYWOODLAND" y era un anuncio de bienes raíces de 1923.',
+];
+
+// Para viajes que no son por California
+var GENERIC_FUN_FACTS = [
+  'Viajar en grupo reparte los gastos… y multiplica las anécdotas.',
+  'Mandar una foto al día es la mejor forma de que la familia viaje con ustedes.',
+  'Casi todo viaje tiene un plan B que termina siendo lo mejor del viaje.',
+  'La maleta perfecta existe: es la que se hace un día antes y no la noche anterior.',
 ];
 
 var CITY_FUN_FACTS = {
@@ -341,15 +383,12 @@ function buildDays(itinStore){
   });
 }
 
-// new Date(2026,8,2) — constructor numérico, NO string ISO ('2026-09-02'
-// se interpreta en UTC y comparado contra "now" en hora local puede caer
-// en el día de calendario equivocado según el huso horario).
-var TRIP_START = new Date(2026,8,2);
+var TRIP_START = null, TRIP_END = null; // los llena setupTrip()
 
 function computeItinStatus(){
   var now = new Date();
   var tripStart = TRIP_START;
-  var tripEnd = new Date(2026,8,12);
+  var tripEnd = TRIP_END;
   if(now<tripStart) return {todayIdx:-1, curActIdx:-1};
   if(now>=tripEnd) return {todayIdx:DAYS.length, curActIdx:-1};
   var todayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);
@@ -626,7 +665,8 @@ async function init(){
   if(!token){ showInvalid(); return; }
   var check = { ok:false };
   try{ check = await (await fetch('/api/viewer-check/'+encodeURIComponent(token))).json(); }catch(e){}
-  if(!check.ok){ showInvalid(); return; }
+  if(!check.ok || !check.trip){ showInvalid(); return; }
+  setupTrip(check.trip);
 
   document.getElementById('sg-invalid').style.display = 'none';
 

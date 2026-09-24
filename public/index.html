@@ -13,6 +13,66 @@
       }catch(e){}
     })();
   </script>
+  <!-- VIAJE ACTUAL — cada grupo tiene su propio viaje (nombre, fechas,
+       viajeros, ruta). Se guarda en este teléfono al crear o unirse desde
+       /inicio.html; si no hay ninguno, se manda para allá. Va antes de todo
+       porque el resto del código arma DAYS, persons, etc. a partir de TRIP. -->
+  <script>
+    var TRIP = null, TRIP_AUTH = null;
+    try{
+      TRIP = JSON.parse(localStorage.getItem('tripapp_cfg')||'null');
+      TRIP_AUTH = JSON.parse(localStorage.getItem('tripapp_auth')||'null');
+    }catch(e){}
+    var TRIP_REDIRECTING = !TRIP || !TRIP_AUTH || !TRIP.start || TRIP.id!==TRIP_AUTH.id;
+    if(TRIP_REDIRECTING){
+      document.documentElement.style.visibility='hidden';
+      location.replace('/inicio.html');
+      // Config de relleno para que el script principal no truene mientras
+      // el navegador cambia de página.
+      TRIP = {id:'', name:'', subtitle:'', start:'2000-01-01', days:1, persons:[''], admin:'', checkpoints:[], budget:[]};
+      TRIP_AUTH = null;
+    }
+    var IS_LEGACY_TRIP = TRIP.id==='california2026';
+    (function(){
+      // Todo lo que la app guarda en este teléfono (PIN, sesión, lo que ya
+      // se marcó como hecho...) usa llaves "ca26_*". Para que dos viajes en
+      // el mismo teléfono no se pisen, cada viaje las guarda con su propio
+      // prefijo. El viaje original conserva las de siempre, así nadie pierde
+      // su PIN ni su sesión.
+      if(IS_LEGACY_TRIP || !TRIP.id) return;
+      var pre = 'trip_'+TRIP.id+':';
+      var S = Storage.prototype, g = S.getItem, st = S.setItem, rm = S.removeItem;
+      function k(key){ key = String(key); return key.indexOf('ca26_')===0 ? pre+key : key; }
+      S.getItem = function(key){ return g.call(this, k(key)); };
+      S.setItem = function(key, v){ return st.call(this, k(key), v); };
+      S.removeItem = function(key){ return rm.call(this, k(key)); };
+    })();
+    (function(){
+      // Cada petición a la API lleva el viaje y su código. Si el servidor
+      // dice que ya no es válido (el admin cambió el código, p. ej.), se
+      // regresa a la pantalla de inicio.
+      var _fetch = window.fetch;
+      window.fetch = function(input, init){
+        var url = typeof input==='string' ? input : '';
+        if(!TRIP_AUTH || url.indexOf('/api/')!==0) return _fetch.call(this, input, init);
+        init = init || {};
+        var h = new Headers(init.headers || {});
+        h.set('X-Trip', TRIP_AUTH.id);
+        h.set('X-Trip-Code', TRIP_AUTH.code);
+        init.headers = h;
+        return _fetch.call(this, input, init).then(function(res){
+          if(res.status===401 && res.headers.get('X-Trip-Invalid')){
+            try{
+              localStorage.removeItem('tripapp_auth');
+              localStorage.removeItem('tripapp_cfg');
+            }catch(e){}
+            location.replace('/inicio.html?invalid=1');
+          }
+          return res;
+        });
+      };
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
   <!-- PWA -->
@@ -36,7 +96,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
 
-  <title>Alta Vibra — California 2026</title>
+  <title>Alta Vibra</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Fraunces:ital,wght@0,500;0,600;1,500&family=Archivo+Black&family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -2149,6 +2209,9 @@
     }
     .pick-nm { font-size:13px; font-weight:600; color:#fff; }
 
+    /* ── MI VIAJE: código de invitación ── */
+    .trip-code { font-family:'Space Mono',monospace; font-size:18px; font-weight:700; letter-spacing:3px; color:var(--cyan); }
+
     /* ── PIN PAD ── */
     .pin-section { width:100%; display:flex; flex-direction:column; align-items:center; }
     .pin-person { font-size:22px; font-weight:700; margin-bottom:4px; }
@@ -2408,11 +2471,11 @@
   <div class="pick-overlay"></div>
   <div class="pick-title-block">
     <img class="pick-logo-img" src="logo-altavibra.png" alt="Alta Vibra">
-    <div class="pick-trip">California 2026</div>
-    <div class="pick-trip-sub">☀️ PCH Road Trip · Sep 2026</div>
+    <div class="pick-trip" id="pick-trip-name"></div>
+    <div class="pick-trip-sub" id="pick-trip-sub"></div>
   </div>
   <div class="pick-content">
-    <div class="pick-badge"><span class="dot"></span> 2–11 SEP · PCH ROAD TRIP</div>
+    <div class="pick-badge"><span class="dot"></span> <span id="pick-trip-badge"></span></div>
 
     <!-- WHO ARE YOU -->
     <div id="pick-who">
@@ -2423,7 +2486,7 @@
     <!-- PIN ENTRY (hidden until person selected) -->
     <div id="pick-pin" class="pin-section" style="display:none">
       <div class="pin-person" id="pin-pname">—</div>
-      <div class="pin-role">Alta Vibra · California 2026</div>
+      <div class="pin-role trip-label"></div>
       <div class="pin-dots" id="pin-dots">
         <div class="pin-dot" id="pd0"></div>
         <div class="pin-dot" id="pd1"></div>
@@ -2471,7 +2534,7 @@
 
 <!-- WELCOME BANNER -->
 <div class="welcome-bnr" id="welcome-bnr">
-  <div class="wb-pre">Alta Vibra — California 2026</div>
+  <div class="wb-pre trip-label"></div>
   <div class="wb-name" id="wb-name">—</div>
   <div class="wb-sub">Bienvenido al viaje</div>
 </div>
@@ -2866,6 +2929,191 @@ async function doInstallApp(){
   };
 })();
 
+// ── FECHAS DEL VIAJE ───────────────────────────────────────────────────────
+// Todo sale de TRIP.start ('YYYY-MM-DD') y TRIP.days. Siempre con el
+// constructor numérico new Date(y,m,d) — NO con strings ISO tipo
+// '2026-09-02' (esa forma se interpreta en UTC y, comparada contra la hora
+// local, puede caer en el día de calendario equivocado según el huso).
+var TRIP_Y = parseInt(TRIP.start.slice(0,4),10);
+var TRIP_M = parseInt(TRIP.start.slice(5,7),10)-1;
+var TRIP_D = parseInt(TRIP.start.slice(8,10),10);
+var TRIP_NDAYS = Math.max(1, parseInt(TRIP.days,10)||1);
+var MONTHS_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+var WEEKDAYS_ES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+function tripDate(dayOffset, h, m){
+  return new Date(TRIP_Y, TRIP_M, TRIP_D+(dayOffset||0), h||0, m||0, 0);
+}
+// Hora real de salida: 9am del primer día
+function tripDepartureDate(){ return tripDate(0, 9); }
+// Cuándo se da por terminado. El viaje original guardaba un día de colchón
+// (regreso) y así se queda para no cambiarle nada.
+function tripEndDate(){ return tripDate(TRIP_NDAYS + (IS_LEGACY_TRIP ? 1 : 0)); }
+function tripRangeLabel(){
+  var a = tripDate(0), b = tripDate(TRIP_NDAYS-1);
+  var mA = MONTHS_ES[a.getMonth()].toUpperCase(), mB = MONTHS_ES[b.getMonth()].toUpperCase();
+  return a.getMonth()===b.getMonth()
+    ? a.getDate()+'–'+b.getDate()+' '+mA
+    : a.getDate()+' '+mA+' – '+b.getDate()+' '+mB;
+}
+function tripMonthYearLabel(){
+  return MONTHS_ES[TRIP_M]+' '+TRIP_Y;
+}
+function tripSlug(){
+  return (TRIP.name||'viaje').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'') || 'viaje';
+}
+// Códigos de 3 letras del "pase de abordar" (salida / destino)
+function bpRouteCode(which){
+  if(IS_LEGACY_TRIP) return which ? 'SAN' : 'QRO';
+  var cp = which ? CHECKPOINTS[CHECKPOINTS.length-1] : CHECKPOINTS[0];
+  var lbl = cp ? cp.label : (which ? '' : TRIP.name);
+  var code = String(lbl||'').normalize('NFD').replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase();
+  return code || (which ? 'FIN' : 'SAL');
+}
+function joinNames(list){
+  if(list.length<=1) return list.join('');
+  return list.slice(0,-1).join(', ')+' y '+list[list.length-1];
+}
+
+// Textos fijos de la página que dependen del viaje
+function applyTripLabels(){
+  document.title = 'Alta Vibra — '+TRIP.name;
+  var set = function(id, txt){ var el=document.getElementById(id); if(el) el.textContent=txt; };
+  set('pick-trip-name', TRIP.name);
+  set('pick-trip-sub', '✈️ '+(TRIP.subtitle ? TRIP.subtitle+' · ' : '')+tripMonthYearLabel());
+  set('pick-trip-badge', tripRangeLabel()+(TRIP.subtitle ? ' · '+TRIP.subtitle.toUpperCase() : ''));
+  document.querySelectorAll('.trip-label').forEach(function(el){ el.textContent='Alta Vibra · '+TRIP.name; });
+  set('me-group-contacts-note', 'Visible para '+joinNames(persons)+' — por si algo pasa.');
+}
+
+// ── CONFIGURACIÓN DEL VIAJE (servidor) ─────────────────────────────────────
+// Se trae la versión más nueva: nombres y admin se actualizan al momento;
+// si cambiaron fechas, días, ruta o presupuesto (cosas que arman la página
+// desde el arranque) se recarga.
+function tripStructKey(t){
+  return JSON.stringify([t.start, t.days, t.checkpoints, t.budget]);
+}
+function applyTripConfig(fresh){
+  if(!fresh || fresh.id!==TRIP.id) return;
+  var needsReload = tripStructKey(fresh)!==tripStructKey(TRIP);
+  try{ localStorage.setItem('tripapp_cfg', JSON.stringify(fresh)); }catch(e){}
+  if(fresh.code && TRIP_AUTH && fresh.code!==TRIP_AUTH.code){
+    TRIP_AUTH.code = fresh.code;
+    try{ localStorage.setItem('tripapp_auth', JSON.stringify(TRIP_AUTH)); }catch(e){}
+  }
+  if(needsReload){ location.reload(); return; }
+  var namesChanged = JSON.stringify(fresh.persons)!==JSON.stringify(persons) || fresh.name!==TRIP.name ||
+    fresh.subtitle!==TRIP.subtitle || fresh.admin!==TRIP.admin;
+  TRIP = fresh;
+  if(!namesChanged) return;
+  persons.length = 0;
+  (fresh.persons||[]).forEach(function(p){ persons.push(p); });
+  document.documentElement.style.setProperty('--person-cols', persons.length);
+  safeCall(applyTripLabels, 'applyTripLabels');
+  safeCall(updateHeroProfile, 'updateHeroProfile');
+  safeCall(renderBudget, 'renderBudget');
+  safeCall(renderDash, 'renderDash');
+  var pick = document.getElementById('pick-screen');
+  if(pick && pick.classList.contains('show')) safeCall(renderPickCards, 'renderPickCards');
+}
+async function refreshTripConfig(){
+  try{
+    var r = await fetch('/api/trip',{cache:'no-store'});
+    if(!r.ok) return;
+    applyTripConfig(await r.json());
+  }catch(e){ /* sin conexión — se queda con la copia guardada */ }
+}
+async function patchTrip(changes){
+  var body = Object.assign({ who: meIndex!==null ? persons[parseInt(meIndex)] : '' }, changes);
+  var r = await fetch('/api/trip',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  var j = await r.json().catch(function(){ return {}; });
+  if(!r.ok) throw new Error(j.error||'No se pudo guardar');
+  applyTripConfig(j.trip);
+  return j.trip;
+}
+
+// ── MI VIAJE (en Mi Perfil) ────────────────────────────────────────────────
+function tripInviteUrl(){
+  return location.origin+'/inicio.html?code='+encodeURIComponent(TRIP.code||TRIP_AUTH.code);
+}
+function renderTripSettings(){
+  var el = document.getElementById('me-trip-sec');
+  if(!el) return;
+  var code = TRIP.code || (TRIP_AUTH && TRIP_AUTH.code) || '';
+  var html =
+    '<div class="settings-group">'+
+      '<div class="settings-row">'+
+        '<span class="settings-row-label">🧳 '+esc(TRIP.name)+'<br><span style="font-size:11px;color:var(--muted)">'+esc(tripRangeLabel())+' · '+persons.length+' viajero'+(persons.length!==1?'s':'')+'</span></span>'+
+      '</div>'+
+      '<div class="settings-row">'+
+        '<span class="settings-row-label">Código para invitar<br><span class="trip-code">'+esc(code)+'</span></span>'+
+        '<button class="settings-action" onclick="shareTripInvite()">Invitar</button>'+
+      '</div>'+
+      '<div class="settings-row">'+
+        '<span class="settings-row-label">🔀 Crear otro viaje o cambiar de viaje</span>'+
+        '<button class="settings-action" onclick="switchTrip()">Cambiar</button>'+
+      '</div>'+
+    '</div>';
+  if(isAdmin()){
+    html +=
+      '<div class="settings-group">'+
+        '<div class="settings-row-stack"><span class="settings-row-label">Nombre del viaje</span>'+
+          '<input class="settings-row-value" type="text" id="trip-ed-name" maxlength="60" value="'+esc(TRIP.name)+'"></div>'+
+        '<div class="settings-row-stack"><span class="settings-row-label">Descripción corta (opcional)</span>'+
+          '<input class="settings-row-value" type="text" id="trip-ed-sub" maxlength="80" placeholder="Ej. Road trip por la costa" value="'+esc(TRIP.subtitle||'')+'"></div>'+
+        '<div class="settings-row"><span class="settings-row-label">Primer día</span>'+
+          '<input class="settings-row-value" type="date" id="trip-ed-start" value="'+esc(TRIP.start)+'"></div>'+
+        '<div class="settings-row"><span class="settings-row-label">Número de días</span>'+
+          '<input class="settings-row-value" type="number" id="trip-ed-days" min="1" max="60" value="'+TRIP_NDAYS+'"></div>'+
+      '</div>'+
+      '<div class="me-backup-row">'+
+        '<button class="me-backup-btn" onclick="saveTripSettings()">Guardar datos del viaje</button>'+
+        '<button class="me-backup-btn" onclick="regenerateTripCode()">Cambiar código</button>'+
+      '</div>'+
+      '<div class="me-wipe-note">Si cambias el código, quien ya está en el viaje tendrá que volver a entrar con el nuevo.</div>';
+  }
+  el.innerHTML = html;
+}
+async function saveTripSettings(){
+  var changes = {
+    name: document.getElementById('trip-ed-name').value,
+    subtitle: document.getElementById('trip-ed-sub').value,
+    start: document.getElementById('trip-ed-start').value,
+    days: parseInt(document.getElementById('trip-ed-days').value,10),
+  };
+  if(changes.days < TRIP_NDAYS && !confirm('Vas a quitar días del final del viaje. Lo que esté en esos días no se va a ver. ¿Seguir?')) return;
+  try{
+    await patchTrip(changes);
+    toast('Viaje actualizado.','success');
+    renderTripSettings();
+  }catch(e){ toast(e.message,'error'); }
+}
+async function regenerateTripCode(){
+  if(!confirm('¿Seguro? El código anterior dejará de funcionar y todos tendrán que volver a entrar con el nuevo.')) return;
+  try{
+    var r = await fetch('/api/trip/code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({who:persons[parseInt(meIndex)]})});
+    var j = await r.json();
+    if(!r.ok) throw new Error(j.error||'No autorizado');
+    applyTripConfig(j.trip);
+    renderTripSettings();
+    toast('Código nuevo: '+j.trip.code,'success');
+  }catch(e){ toast(e.message,'error'); }
+}
+function shareTripInvite(){
+  var url = tripInviteUrl();
+  var text = 'Únete a nuestro viaje "'+TRIP.name+'" en Alta Vibra con el código '+(TRIP.code||TRIP_AUTH.code);
+  if(navigator.share){
+    navigator.share({title:'Alta Vibra · '+TRIP.name, text:text, url:url}).catch(function(){});
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(text+'\n'+url).then(function(){ toast('Invitación copiada.','success'); });
+  } else {
+    prompt('Copia este enlace:', url);
+  }
+}
+function switchTrip(){
+  location.href = '/inicio.html?switch=1';
+}
+
 // ── PALETTE PER DAY ────────────────────────────────────────────────────────
 const DC = [
   '#00C8FF','#10BEF0','#22B4E0',
@@ -2873,7 +3121,7 @@ const DC = [
   '#FF9A40','#FF7A40','#FF6A50','#FF5060'
 ];
 
-const PC = ['#00C8FF','#FF6A50','#00E598','#F5A623','#B983FF','#FF4FA3','#4FD8FF','#FFD84F']; // Erick, Rafa, Eduardo + spare colors for people the admin adds
+const PC = ['#00C8FF','#FF6A50','#00E598','#F5A623','#B983FF','#FF4FA3','#4FD8FF','#FFD84F','#7CFF6B','#FF8F3F','#6B8CFF','#FF6BD6']; // un color por viajero (hasta 12)
 
 // Foto de perfil si la subió, si no las iniciales de siempre con su color.
 // PROFILE_DATA se llena en loadProfiles() (ver init) — si todavía no carga,
@@ -3149,7 +3397,7 @@ function updateHeroProfile(){
     btn.innerHTML='?';
     btn.style.background='transparent'; btn.style.color='var(--muted)';
     btn.style.borderColor='rgba(var(--surface-rgb),.15)';
-    ttl.innerHTML='PCH&nbsp;Road&nbsp;Trip&nbsp;&middot;&nbsp;<span class="cy">Sep&nbsp;2026</span>';
+    ttl.innerHTML=esc(TRIP.subtitle||TRIP.name)+'&nbsp;&middot;&nbsp;<span class="cy">'+esc(tripMonthYearLabel())+'</span>';
     nsm.textContent='';
   }
   // El botón flotante del traductor solo tiene sentido con sesión iniciada
@@ -3251,6 +3499,7 @@ async function openMyProfile(){
   document.getElementById('me-ec-phone').value=d.ecPhone||'';
 
   renderGroupContacts();
+  renderTripSettings();
   document.getElementById('me-admin-sec').style.display = isAdmin() ? '' : 'none';
   if(isAdmin()){
     if(phrasesStore===null) await loadCountdownPhrases();
@@ -3443,56 +3692,21 @@ function logoutMe(){
   renderBudget();
 }
 
-// ── CHECKPOINTS (km y tiempo acumulado desde TIJ) ─────────────────────────
-const CHECKPOINTS = [
-  {label:'Tijuana CBX',        emoji:'🛃', km:0,    carH:0,    day:1, c:[32.5430,-117.0320]},
-  {label:'San Diego',          emoji:'🏖️', km:32,   carH:0.5,  day:1, c:[32.7626,-117.1869]},
-  {label:'Coronado',           emoji:'⛴️', km:48,   carH:0.8,  day:1, c:[32.6860,-117.1831]},
-  {label:'La Jolla',           emoji:'🦭', km:80,   carH:1.3,  day:2, c:[32.8501,-117.2726]},
-  {label:'Sunset Cliffs',      emoji:'🌅', km:95,   carH:1.6,  day:2, c:[32.7207,-117.2556]},
-  {label:'Palos Verdes / LA',  emoji:'🌄', km:240,  carH:3.8,  day:3, c:[33.7436,-118.4102]},
-  {label:'Santa Monica',       emoji:'🎡', km:295,  carH:4.7,  day:3, c:[34.0092,-118.4975]},
-  {label:'Hollywood',          emoji:'⭐', km:310,  carH:4.9,  day:4, c:[34.1016,-118.3267]},
-  {label:'Malibu',             emoji:'🏖️', km:340,  carH:5.5,  day:5, c:[34.0286,-118.8734]},
-  {label:'Santa Barbara',      emoji:'⚓', km:460,  carH:7.0,  day:5, c:[34.4208,-119.6982]},
-  {label:'Morro Bay',          emoji:'🌊', km:600,  carH:8.8,  day:5, c:[35.3658,-120.8496]},
-  {label:'Ragged Point',       emoji:'🏨', km:685,  carH:10.2, day:5, c:[35.7937,-121.3330]},
-  {label:'McWay Falls / Big Sur',emoji:'🏞️',km:730, carH:11.0, day:6, c:[36.1578,-121.6720]},
-  {label:'Bixby Bridge',       emoji:'🌉', km:775,  carH:11.8, day:6, c:[36.3726,-121.9018]},
-  {label:'Monterey',           emoji:'🦭', km:850,  carH:13.0, day:6, c:[36.5849,-121.9020]},
-  {label:'San Francisco',      emoji:'🌁', km:1040, carH:15.0, day:7, c:[37.7749,-122.4194]},
-  {label:'San Diego ↩',        emoji:'🏁', km:1920, carH:23.0, day:9, c:[32.7157,-117.1611]},
-];
+// ── CHECKPOINTS (km y tiempo acumulado desde el punto de salida) ──────────
+// Vienen de la configuración del viaje — un viaje nuevo empieza sin ruta.
+const CHECKPOINTS = Array.isArray(TRIP.checkpoints) ? TRIP.checkpoints : [];
 
 // ── BUDGET DATA ────────────────────────────────────────────────────────────
-const BUDGET = [
-  {e:'✈️', n:'Vuelos QRO → TIJ + CBX',           t:5700,     p:1900},
-  {e:'🚗', n:'Renta Toyota Camry (10 días)',       t:8000,     p:2666.67},
-  {e:'🏨', n:'San Diego — Days Inn (2 noches)',    t:2234.56,  p:744.85},
-  {e:'🏨', n:'Los Ángeles — Torrance (3 noches)', t:10043.79, p:3347.93},
-  {e:'🏖️', n:'Pismo Beach (1 noche)',             t:3429.75,  p:1143.25},
-  {e:'🏨', n:'Monterey Bay Lodge (1 noche)',       t:4569,     p:1523},
-  {e:'🌉', n:'San Francisco — Suite (2 noches)',   t:10870,    p:3623.33},
-  {e:'🏨', n:'San Diego regreso (1 noche)',        t:2200,     p:733.33},
-  {e:'🍽️', n:'Comida (estimado)',                 t:19950,    p:6650},
-  {e:'⛽', n:'Gasolina',                           t:3342.50,  p:1114.17},
-  {e:'⛴️', n:'Ferry Coronado (i/v)',              t:945,      p:315},
-  {e:'⛴️', n:'Ferry atardecer SF',               t:3000,     p:1000},
-  {e:'🐋', n:'Avistamiento de ballenas',           t:3300,     p:1100},
-];
+const BUDGET = Array.isArray(TRIP.budget) ? TRIP.budget : [];
 
 // ── ITINERARY DATA ─────────────────────────────────────────────────────────
-const DAYS = [
-  {date:'2 Sep',wd:'Miércoles',city:'Por definir',e:'📍',acts:[]},
-  {date:'3 Sep',wd:'Jueves',city:'Por definir',e:'📍',acts:[]},
-  {date:'4 Sep',wd:'Viernes',city:'Por definir',e:'📍',acts:[]},
-  {date:'5 Sep',wd:'Sábado',city:'Por definir',e:'📍',acts:[]},
-  {date:'6 Sep',wd:'Domingo',city:'Por definir',e:'📍',acts:[]},
-  {date:'7 Sep',wd:'Lunes',city:'Por definir',e:'📍',acts:[]},
-  {date:'8 Sep',wd:'Martes',city:'Por definir',e:'📍',acts:[]},
-  {date:'9 Sep',wd:'Miércoles',city:'Por definir',e:'📍',acts:[]},
-  {date:'10 Sep',wd:'Jueves',city:'Por definir',e:'📍',acts:[]},
-];
+// Un día por cada día del viaje; el contenido llega del servidor
+// (loadItinerary).
+const DAYS = [];
+for(var _di=0; _di<TRIP_NDAYS; _di++){
+  var _dd = tripDate(_di);
+  DAYS.push({date:_dd.getDate()+' '+MONTHS_ES[_dd.getMonth()], wd:WEEKDAYS_ES[_dd.getDay()], city:'Por definir', e:'📍', acts:[]});
+}
 
 // ── MAP PLACES ─────────────────────────────────────────────────────────────
 // Vacío a propósito mientras se reestructura el itinerario — el mapa sigue
@@ -3501,11 +3715,9 @@ const DAYS = [
 const PLACES = [];
 
 // ── STATE ──────────────────────────────────────────────────────────────────
-let persons = JSON.parse(localStorage.getItem('ca26_p') || '["Erick","Rafa","Eduardo"]');
-if(persons.indexOf('Graham')!==-1){
-  persons = persons.filter(function(p){ return p!=='Graham'; });
-  localStorage.setItem('ca26_p', JSON.stringify(persons));
-}
+// Los viajeros son parte de la configuración del viaje (servidor) — antes
+// vivían en el localStorage de cada teléfono.
+let persons = (Array.isArray(TRIP.persons) ? TRIP.persons : []).slice();
 document.documentElement.style.setProperty('--person-cols', persons.length);
 let expenses = []; // compartido entre todos via /api/expenses
 let editingExpId = null; // null = el form de gastos está agregando uno nuevo; si no, id del que se está editando
@@ -3524,7 +3736,7 @@ let cpIndex = parseInt(localStorage.getItem('ca26_cp') || '0');
 // ── IDB ────────────────────────────────────────────────────────────────────
 function openDB() {
   return new Promise(function(res,rej){
-    var r = indexedDB.open('ca26ph',1);
+    var r = indexedDB.open(IS_LEGACY_TRIP ? 'ca26ph' : 'ca26ph_'+TRIP.id, 1);
     r.onupgradeneeded = function(e){ e.target.result.createObjectStore('ph',{keyPath:'k'}); };
     r.onsuccess = function(e){ db = e.target.result; res(); };
     r.onerror = function(){ rej(r.error); };
@@ -3610,7 +3822,17 @@ function addTileLayer(styleKey){
 }
 
 function initMap(){
-  mapObj = L.map('map').setView([36.0,-120.2],6);
+  mapObj = L.map('map');
+  if(IS_LEGACY_TRIP){
+    mapObj.setView([36.0,-120.2],6);
+  } else {
+    // Se encuadra lo que ya tenga ubicación (ruta y actividades); un viaje
+    // recién creado sin nada todavía arranca con una vista amplia.
+    var pts = CHECKPOINTS.map(function(c){ return c.c; });
+    DAYS.forEach(function(d){ (d.acts||[]).forEach(function(a){ if(a.c) pts.push(a.c); }); });
+    if(pts.length) mapObj.fitBounds(L.latLngBounds(pts), {padding:[30,30], maxZoom:12});
+    else mapObj.setView([23.6,-102.5],4);
+  }
   addTileLayer(curMapStyle);
 
   renderPlaceMarkers();
@@ -4255,11 +4477,16 @@ function parseMins(t){
 // El admin controla una lista distinta por persona desde Mi Perfil
 // (phrasesStore = { "Erick": [...], "Rafa": [...], "Eduardo": [...] }); "{d}"
 // marca dónde va el número de días dentro del texto.
-var DEFAULT_PRE_TRIP_PHRASES = [
+var DEFAULT_PRE_TRIP_PHRASES = IS_LEGACY_TRIP ? [
   '¿Cómo te caería una hamburguesa de In-N-Out en {d} días?',
   'La playa de Manhattan Beach te espera en {d} días',
   'Ya sabes qué vas a comprar en el outlet en {d} días',
   'DEM2 te desea buen viaje en {d} días',
+] : [
+  'Tu viaje empieza en {d} días',
+  'Ve haciendo maleta: faltan {d} días',
+  'La aventura arranca en {d} días',
+  '¿Ya tienes todo listo? Faltan {d} días',
 ];
 var phrasesStore = null; // null = todavía no se cargó del servidor
 
@@ -4375,9 +4602,9 @@ function renderDash(){
   // de "AHORA: [actividad]" (antes ese cambio pasaba a medianoche, mostrando
   // ya la actividad del día 1 desde las 12am aunque el viaje saliera hasta
   // las 9am).
-  var tripStart = new Date(2026,8,2);
-  var tripStartAt9 = new Date('2026-09-02T09:00:00');
-  var tripEnd   = new Date(2026,8,12);
+  var tripStart = tripDate(0);
+  var tripStartAt9 = tripDepartureDate();
+  var tripEnd   = tripEndDate();
   var actHTML = '';
   var dLeftStr = null, hLeftStr = null, mLeftStr = null;
 
@@ -4425,7 +4652,7 @@ function renderDash(){
     actHTML =
       '<div class="dash-now-band">'+
         '<div class="dash-now-pill"><span class="dot"></span>FIN</div>'+
-        '<div class="dash-now-body"><div class="dash-now-name">California 2026 completado</div></div>'+
+        '<div class="dash-now-body"><div class="dash-now-name">'+esc(TRIP.name)+' completado</div></div>'+
       '</div>';
   } else {
     var dayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);
@@ -4454,12 +4681,12 @@ function renderDash(){
   var today = now;
   var todayDayIdx = -1;
   var segs = DAYS.map(function(_,i){
-    // new Date(2026,8,dn) — constructor numérico, NO string ISO tipo
-    // '2026-09-0X' (esa forma se interpreta en UTC, y comparada contra
-    // "today" en hora local puede caer en el día de calendario equivocado
-    // según el huso horario — es justo el bug que causaba que el número de
-    // día mostrado no coincidiera con la cuenta regresiva de arriba).
-    var dn=i+2; var dd=new Date(2026,8,dn);
+    // tripDate(i) — constructor numérico, NO string ISO (esa forma se
+    // interpreta en UTC, y comparada contra "today" en hora local puede caer
+    // en el día de calendario equivocado según el huso horario — es justo el
+    // bug que causaba que el número de día mostrado no coincidiera con la
+    // cuenta regresiva de arriba).
+    var dd=tripDate(i);
     var isDone=today>dd&&today.toDateString()!==dd.toDateString();
     var isToday=today.toDateString()===dd.toDateString();
     if(isToday) todayDayIdx=i;
@@ -4572,7 +4799,7 @@ var actDone = JSON.parse(localStorage.getItem('ca26_done') || '{}');
 var _addActDay = null;
 
 function isAdmin(){
-  return meIndex !== null && persons[parseInt(meIndex)] === 'Eduardo';
+  return meIndex !== null && persons[parseInt(meIndex)] === TRIP.admin;
 }
 
 function openActModal(dayIdx){
@@ -4661,19 +4888,19 @@ function dayCoordFor(dayIdx){
   return null;
 }
 
-function dayDateStr(dayIdx, year){
-  var parts=DAYS[dayIdx].date.split(' '); // ['2','Sep']
-  var mon=parts[1].slice(0,3).toLowerCase();
-  var months={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,dic:12};
-  var mm=String(months[mon]||9).padStart(2,'0');
-  var dd=String(parseInt(parts[0])).padStart(2,'0');
-  return year+'-'+mm+'-'+dd;
+// 'YYYY-MM-DD' del día dayIdx del viaje; yearOffset=-1 da la misma fecha del
+// año anterior (referencia de clima típico).
+function dayDateStr(dayIdx, yearOffset){
+  var d=tripDate(dayIdx);
+  var mm=String(d.getMonth()+1).padStart(2,'0');
+  var dd=String(d.getDate()).padStart(2,'0');
+  return (d.getFullYear()+(yearOffset||0))+'-'+mm+'-'+dd;
 }
 
 async function fetchWeatherForDay(dayIdx){
   var coord=dayCoordFor(dayIdx);
   if(!coord) return;
-  var targetStr=dayDateStr(dayIdx,2026);
+  var targetStr=dayDateStr(dayIdx);
   var target=new Date(targetStr+'T12:00:00');
   var now=new Date();
   var daysDiff=Math.round((target-now)/(1000*60*60*24));
@@ -4683,7 +4910,7 @@ async function fetchWeatherForDay(dayIdx){
     url='https://api.open-meteo.com/v1/forecast?latitude='+coord[0]+'&longitude='+coord[1]+
       '&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&start_date='+targetStr+'&end_date='+targetStr;
   } else {
-    var refStr=dayDateStr(dayIdx,2025); // año anterior, referencia de clima típico
+    var refStr=dayDateStr(dayIdx,-1); // año anterior, referencia de clima típico
     url='https://archive-api.open-meteo.com/v1/archive?latitude='+coord[0]+'&longitude='+coord[1]+
       '&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&start_date='+refStr+'&end_date='+refStr;
   }
@@ -4739,7 +4966,7 @@ function maybeUpdateCurrentWeather(lat, lon){
 function loadCurrentWeatherFallback(){
   if(CUR_WX && (Date.now()-CUR_WX.ts)<30*60*1000) return;
   var now=new Date();
-  var tripStart=new Date(2026,8,2);
+  var tripStart=tripDate(0);
   var dayIdx=Math.max(0, Math.min(DAYS.length-1, Math.floor((now-tripStart)/(1000*60*60*24))));
   var coord=dayCoordFor(dayIdx);
   if(coord) fetchCurrentWeatherAt(coord[0], coord[1]);
@@ -4761,7 +4988,7 @@ function findReservableActs(){
         out.push({
           id: 'itin-'+di+'-'+ai,
           title: a.n.replace(/^[^\p{L}\p{N}]+/u,'').trim(),
-          date: dayDateStr(di,2026),
+          date: dayDateStr(di),
           time: /^\d{1,2}:\d{2}$/.test(a.t) ? a.t : '',
           location: d.city.split('→')[0].split('—')[0].trim(),
           cost: cost,
@@ -4797,8 +5024,8 @@ async function loadReservations(){
 
 function computeItinStatus(){
   var now = new Date();
-  var tripStart = new Date(2026,8,2);
-  var tripEnd = new Date(2026,8,12);
+  var tripStart = tripDate(0);
+  var tripEnd = tripEndDate();
   if(now<tripStart) return {todayIdx:-1, curActIdx:-1};
   if(now>=tripEnd) return {todayIdx:DAYS.length, curActIdx:-1};
   var todayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);
@@ -4967,7 +5194,7 @@ function downloadItinBackup(){
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url;
-  a.download = 'itinerario-california2026-'+new Date().toISOString().slice(0,10)+'.json';
+  a.download = 'itinerario-'+tripSlug()+'-'+new Date().toISOString().slice(0,10)+'.json';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
   toast('Respaldo descargado.','success');
@@ -5443,18 +5670,17 @@ function renderBudget(){
   if(addBtn) addBtn.style.display=isAdmin()?'':'none';
 }
 
-function addPerson(){
+async function addPerson(){
   if(!isAdmin()) return;
   var name=prompt('Nombre de la nueva persona:');
   if(name===null) return;
   name=name.trim();
   if(!name) return;
   if(persons.indexOf(name)!==-1){ toast('Ya existe esa persona.','error'); return; }
-  persons.push(name);
-  localStorage.setItem('ca26_p', JSON.stringify(persons));
-  document.documentElement.style.setProperty('--person-cols', persons.length);
-  renderBudget();
-  toast(name+' se agregó al viaje.','success');
+  try{
+    await patchTrip({ persons: persons.concat([name]) });
+    toast(name+' se agregó al viaje.','success');
+  }catch(e){ toast(e.message,'error'); }
 }
 
 function renderPersonsBar(){
@@ -5490,11 +5716,15 @@ function getSplit(){
   }).filter(function(x){return x!==null;});
 }
 
-function updateP(i,v){
-  persons[i]=v;
-  localStorage.setItem('ca26_p',JSON.stringify(persons));
-  renderPersonsBar();
-  renderExps();
+// Renombrar a alguien — se guarda en el servidor para que todos lo vean
+async function updateP(i,v){
+  v=(v||'').trim();
+  if(!v || v===persons[i]){ renderPersonsBar(); return; }
+  if(persons.indexOf(v)!==-1){ toast('Ya existe esa persona.','error'); renderPersonsBar(); return; }
+  var next=persons.slice(); next[i]=v;
+  try{
+    await patchTrip({ persons: next });
+  }catch(e){ toast(e.message,'error'); renderPersonsBar(); }
 }
 
 function toggleEF(){
@@ -5690,7 +5920,7 @@ function renderExps(){
   // (planeación, reservaciones, etc.) cuenta como gasto pre-viaje y no
   // estorba esta cuenta. El corte es la hora real de salida (9am del 2 de
   // sep), la misma que usa el countdown de Inicio.
-  var tripStartAt9 = new Date(2026,8,2,9,0,0).getTime();
+  var tripStartAt9 = tripDepartureDate().getTime();
   var tripLbl = document.getElementById('gastos-trip-lbl');
   if(tripLbl){
     var tripExpenses = expenses.filter(function(e){ return (e.ts||0) >= tripStartAt9; });
@@ -6038,7 +6268,7 @@ function openPhotoAlbum(){
       '<button class="ap-back" onclick="closeAlbum()">‹</button>'+
       '<div class="ap-title-wrap">'+
         '<div class="ap-title">Alta Vibra</div>'+
-        '<div class="ap-sub">California 2026 · '+data.totalPhotos+' foto'+(data.totalPhotos!==1?'s':'')+'</div>'+
+        '<div class="ap-sub">'+esc(TRIP.name)+' · '+data.totalPhotos+' foto'+(data.totalPhotos!==1?'s':'')+'</div>'+
       '</div>'+
       (data.totalPhotos?'<button class="ap-play" onclick="playAlbumSlideshow()">▶</button>':'')+
     '</div>';
@@ -6128,13 +6358,13 @@ async function openBoardingPass(){
       '<button class="bp-back" onclick="closeBoardingPass()">‹</button>'+
       '<div class="bp-brand">ALTA VIBRA</div>'+
       '<div class="bp-route">'+
-        '<span class="bp-route-code">QRO</span>'+
+        '<span class="bp-route-code">'+esc(bpRouteCode(0))+'</span>'+
         '<span class="bp-route-line"></span>'+
         '<span class="bp-route-plane">✈️</span>'+
         '<span class="bp-route-line"></span>'+
-        '<span class="bp-route-code">SAN</span>'+
+        '<span class="bp-route-code">'+esc(bpRouteCode(1))+'</span>'+
       '</div>'+
-      '<div class="bp-sub">CBX Crossing · California 2026</div>'+
+      '<div class="bp-sub">'+(IS_LEGACY_TRIP?'CBX Crossing · ':'')+esc(TRIP.name)+'</div>'+
     '</div>'+
     '<div class="bp-list">';
 
@@ -6313,8 +6543,8 @@ function sendItinNotif(title, body){
 function checkItinNotifs(){
   if(typeof Notification==='undefined'||Notification.permission!=='granted') return;
   var now = new Date();
-  var tripStart = new Date(2026,8,2);
-  var tripEnd   = new Date(2026,8,12);
+  var tripStart = tripDate(0);
+  var tripEnd   = tripEndDate();
   if(now<tripStart||now>=tripEnd) return;
 
   var dayIdx = Math.min(Math.floor((now-tripStart)/(1000*60*60*24)), DAYS.length-1);
@@ -6358,14 +6588,14 @@ function checkItinNotifs(){
 function checkCountdownNotif(){
   if(typeof Notification==='undefined'||Notification.permission!=='granted') return;
   var now = new Date();
-  var tripStart = new Date(2026,8,2);
+  var tripStart = tripDate(0);
   if(now>=tripStart) return;
   if(now.getHours()!==10||now.getMinutes()!==0) return;
   var todayKey = now.toISOString().slice(0,10);
   if(localStorage.getItem('ca26_cd_notif')===todayKey) return;
   localStorage.setItem('ca26_cd_notif', todayKey);
   var dLeft = Math.ceil((tripStart-now)/(1000*60*60*24));
-  sendItinNotif('Alta Vibra · California 2026', 'Faltan '+dLeft+' día'+(dLeft===1?'':'s')+' para tu viaje');
+  sendItinNotif('Alta Vibra · '+TRIP.name, 'Faltan '+dLeft+' día'+(dLeft===1?'':'s')+' para tu viaje');
 }
 
 // ── ITINERARY EDITOR ──────────────────────────────────────────────────────
@@ -6541,9 +6771,9 @@ function iedMouseStart(e,idx){
 // ── CENTRO DE OPERACIONES ──────────────────────────────────────────────────
 function renderOps(){
   if(window.innerWidth < 860) return;
-  var cp = CHECKPOINTS[cpIndex] || CHECKPOINTS[0];
+  var cp = CHECKPOINTS[cpIndex] || CHECKPOINTS[0] || {emoji:'📍', label:TRIP.name, km:0, day:1, c:null};
   var now = new Date();
-  var tripStart = new Date(2026,8,2);
+  var tripStart = tripDate(0);
   var dayIdx = Math.min(Math.max(Math.floor((now-tripStart)/(1000*60*60*24)),0),DAYS.length-1);
   var day = DAYS[dayIdx];
   var hh = now.getHours().toString().padStart(2,'0');
@@ -6638,10 +6868,7 @@ function renderOps(){
 var _demoHoldTimer = null;
 
 function openDemoPanel(){
-  var tripDates = [
-    '2026-09-02','2026-09-03','2026-09-04','2026-09-05','2026-09-06',
-    '2026-09-07','2026-09-08','2026-09-09','2026-09-10'
-  ];
+  var tripDates = DAYS.map(function(_,i){ return dayDateStr(i); });
   var current = localStorage.getItem('ca26_demo');
   var html = tripDates.map(function(d,i){
     var day = DAYS[i];
@@ -7511,8 +7738,8 @@ async function computeRecapStats(){
   var resDone = RES_LIST.filter(function(r){ return r.done; }).length;
 
   var now = new Date();
-  var tripStart = new Date(2026,8,2);
-  var tripEnd = new Date(2026,8,12);
+  var tripStart = tripDate(0);
+  var tripEnd = tripEndDate();
   var daysLbl;
   if(now<tripStart) daysLbl = '0/'+DAYS.length;
   else if(now>=tripEnd) daysLbl = DAYS.length+'/'+DAYS.length;
@@ -7631,7 +7858,7 @@ async function buildRecapCanvas(){
   ctx.textAlign='center';
   ctx.fillStyle='rgba(255,255,255,.6)';
   ctx.font='600 30px "Space Mono", monospace';
-  ctx.fillText('CALIFORNIA 2026', W/2, afterGridY);
+  ctx.fillText(TRIP.name.toUpperCase(), W/2, afterGridY);
 
   var stats = await computeRecapStats();
   var statsTop=afterGridY+90;
@@ -7680,7 +7907,7 @@ function shareRecapCardNative(){
     if(!blob) return;
     var file=new File([blob],'alta-vibra-resumen.png',{type:'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
-      try{ await navigator.share({files:[file], title:'Alta Vibra · California 2026'}); }
+      try{ await navigator.share({files:[file], title:'Alta Vibra · '+TRIP.name}); }
       catch(e){}
     } else {
       downloadRecapCard();
@@ -7778,11 +8005,13 @@ function copyShareLink(){
   } else { toast('No se pudo copiar.','error'); }
 }
 function nativeShare(){
-  navigator.share({title:'Alta Vibra · California 2026', url: location.origin+'/'}).catch(function(){});
+  navigator.share({title:'Alta Vibra · '+TRIP.name, url: location.origin+'/'}).catch(function(){});
 }
 
 // ── INIT ───────────────────────────────────────────────────────────────────
 async function init(){
+  if(TRIP_REDIRECTING) return; // se está yendo a /inicio.html
+  safeCall(applyTripLabels, 'applyTripLabels');
   // Lo que quedó guardado solo en este teléfono se muestra de inmediato, y
   // más abajo migrateLocalItinerary() lo sube para que lo vean los demás.
   Object.keys(ITIN_OVERRIDE).forEach(function(k){
@@ -7811,6 +8040,8 @@ async function init(){
   // Antes de pintar cualquier avatar (header, dashboard, picker de login)
   // hace falta saber quién tiene foto de perfil subida.
   await loadProfiles();
+  // Por si alguien se unió o el admin cambió algo desde otro teléfono
+  await refreshTripConfig();
   // El picker ya se mostró arriba con las iniciales de color (por si
   // loadProfiles tarda) — ahora que ya están las fotos, se repinta para que
   // aparezcan sin esperar a nada más.
@@ -7844,6 +8075,7 @@ async function init(){
     // si no hay conexión); los render* de aquí no, así que van envueltos
     // con safeCall — si alguno truena a media función, los pasos de después
     // (ubicación en vivo, itinerario) igual deben seguir corriendo cada 15s.
+    await refreshTripConfig();
     await loadExpenses();
     await loadSettlements();
     await loadProfiles();
@@ -8014,7 +8246,7 @@ if('serviceWorker' in navigator){
   <div class="bs-hd">
     <div>
       <div class="bs-title" id="me-title">Mi Perfil</div>
-      <div class="bs-sub">Alta Vibra · California 2026</div>
+      <div class="bs-sub trip-label"></div>
     </div>
     <button class="bs-close" onclick="closeMyProfile()">&#10005;</button>
   </div>
@@ -8029,6 +8261,9 @@ if('serviceWorker' in navigator){
         <button class="me-backup-btn" style="flex:none;background:transparent;border-color:var(--border)" onclick="removeMyPhoto()">Quitar foto</button>
       </div>
     </div>
+
+    <div class="settings-section-title">Mi viaje</div>
+    <div id="me-trip-sec"></div>
 
     <div class="settings-section-title">Apariencia</div>
     <div class="settings-group">
@@ -8092,13 +8327,13 @@ if('serviceWorker' in navigator){
     </div>
 
     <div class="settings-section-title">Contactos de emergencia del grupo</div>
-    <div class="me-wipe-note" style="margin:-8px 4px 8px">Visible para Erick, Rafa y Eduardo — por si algo pasa.</div>
+    <div class="me-wipe-note" style="margin:-8px 4px 8px" id="me-group-contacts-note">Visible para todo el grupo — por si algo pasa.</div>
     <div class="settings-group" id="me-group-contacts"></div>
 
     <div class="me-admin-sec" id="me-admin-sec" style="display:none">
       <div class="settings-section-title">Administración</div>
       <button class="me-wipe-btn" onclick="wipeItinerary()">Borrar todo el itinerario</button>
-      <div class="me-wipe-note">Deja los 9 días en blanco para empezar de cero. Los gastos, fotos y reservaciones no se tocan.</div>
+      <div class="me-wipe-note">Deja todos los días en blanco para empezar de cero. Los gastos, fotos y reservaciones no se tocan.</div>
 
       <div class="settings-section-title" style="margin-top:16px">Respaldo del itinerario</div>
       <div class="me-backup-row">
@@ -8241,7 +8476,7 @@ if('serviceWorker' in navigator){
   <div class="bs-hd">
     <div>
       <div class="bs-title">Resumen del viaje</div>
-      <div class="bs-sub">Alta Vibra · California 2026</div>
+      <div class="bs-sub trip-label"></div>
     </div>
     <button class="bs-close" onclick="closeRecap()">&#10005;</button>
   </div>

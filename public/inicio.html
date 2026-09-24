@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function(){
+      try{
+        var t = localStorage.getItem('av26_theme');
+        if(t === 'light') document.documentElement.setAttribute('data-theme','light');
+      }catch(e){}
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Alta Vibra">
+  <meta name="theme-color" content="#08090F">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+  <title>Alta Vibra — Viajes en grupo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #08090F;
+      --panel: #0D1018;
+      --card: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.09);
+      --border2: rgba(255,255,255,.18);
+      --text: #E6EEFF;
+      --muted: #8898B8;
+      --cyan: #00C8FF;
+      --gold: #F5A623;
+      --green: #00E598;
+      --red: #FF5050;
+      --on-accent: #001018;
+    }
+    :root[data-theme="light"] {
+      --bg: #F3F6FA;
+      --panel: #FFFFFF;
+      --card: rgba(0,20,40,.04);
+      --border: rgba(0,20,40,.10);
+      --border2: rgba(0,20,40,.20);
+      --text: #0B1A2A;
+      --muted: #5A6B80;
+      --cyan: #0086B3;
+      --gold: #B87400;
+      --green: #00875A;
+      --red: #D12F2F;
+      --on-accent: #FFFFFF;
+    }
+    html, body { background: var(--bg); color: var(--text); }
+    body {
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+    .wrap { max-width: 560px; margin: 0 auto; padding: 0 16px 48px; }
+
+    .hero {
+      position: relative; overflow: hidden;
+      padding: 40px 16px 28px; text-align: center;
+      background: linear-gradient(180deg, rgba(8,9,15,.35), var(--bg)), url('/trip-bg.jpg') center/cover;
+    }
+    :root[data-theme="light"] .hero { background: linear-gradient(180deg, rgba(243,246,250,.2), var(--bg)), url('/trip-bg.jpg') center/cover; }
+    .hero img { height: 64px; width: auto; margin-bottom: 14px; }
+    .hero h1 { font-size: 26px; font-weight: 700; letter-spacing: -.3px; line-height: 1.2; }
+    .hero p { color: var(--muted); font-size: 14.5px; margin-top: 8px; line-height: 1.45; max-width: 380px; margin-left: auto; margin-right: auto; }
+    :root:not([data-theme="light"]) .hero p { color: #C3CEE6; }
+
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 26px; }
+    .btn {
+      border: 1px solid var(--border2); background: var(--card);
+      border-radius: 14px; padding: 14px 12px; font-size: 15px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px;
+    }
+    .btn-primary { background: var(--cyan); color: var(--on-accent); border-color: transparent; }
+    .btn-block { width: 100%; }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .btn-link { background: none; border: none; color: var(--muted); font-size: 13px; text-decoration: underline; padding: 8px; }
+
+    .sec-title { font-size: 12px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); margin: 0 4px 10px; }
+    .list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 26px; }
+    .card {
+      border: 1px solid var(--border); background: var(--card); border-radius: 16px;
+      padding: 14px 16px; display: flex; align-items: center; gap: 12px; text-align: left; width: 100%;
+    }
+    .card-ic { font-size: 26px; flex-shrink: 0; width: 40px; text-align: center; }
+    .card-body { flex: 1; min-width: 0; }
+    .card-name { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+    .card-go { color: var(--cyan); font-size: 20px; flex-shrink: 0; }
+    .card-x { background: none; border: none; color: var(--muted); font-size: 16px; padding: 6px 8px; flex-shrink: 0; border-radius: 8px; }
+    .empty { color: var(--muted); font-size: 13px; padding: 4px 4px 0; }
+
+    .msg { border-radius: 12px; padding: 10px 14px; font-size: 13.5px; margin: 0 0 16px; line-height: 1.4; }
+    .msg-err { background: rgba(255,80,80,.1); border: 1px solid rgba(255,80,80,.3); color: var(--red); }
+    .msg-info { background: rgba(0,200,255,.08); border: 1px solid rgba(0,200,255,.25); color: var(--cyan); }
+
+    /* ── Hojas (formularios y detalle del ejemplo) ── */
+    .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.55); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; }
+    .sheet-bg.show { opacity: 1; pointer-events: auto; }
+    .sheet {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 11;
+      max-width: 560px; margin: 0 auto; max-height: 92vh; overflow-y: auto;
+      background: var(--panel); border: 1px solid var(--border); border-bottom: none;
+      border-radius: 20px 20px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+      transform: translateY(100%); transition: transform .25s ease; visibility: hidden;
+    }
+    .sheet.show { transform: none; visibility: visible; }
+    .sheet-hd { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .sheet-title { font-size: 20px; font-weight: 700; }
+    .sheet-sub { font-size: 13px; color: var(--muted); margin-top: 3px; }
+    .sheet-x { background: var(--card); border: 1px solid var(--border); border-radius: 50%; width: 36px; height: 36px; flex-shrink: 0; font-size: 15px; }
+
+    .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .field label { font-size: 13px; font-weight: 600; }
+    .field .hint { font-size: 12px; color: var(--muted); }
+    .inp {
+      width: 100%; background: var(--card); border: 1px solid var(--border2); border-radius: 12px;
+      padding: 12px 14px; font-size: 16px; min-height: 48px;
+    }
+    .inp::placeholder { color: var(--muted); }
+    .inp-code { font-family: 'Space Mono', monospace; font-size: 24px; letter-spacing: 6px; text-align: center; text-transform: uppercase; }
+    .row2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; }
+    .add-row { display: flex; gap: 8px; }
+    .add-row .inp { flex: 1; }
+    .add-row .btn { flex-shrink: 0; min-height: 48px; padding: 0 16px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; border-radius: 999px;
+      padding: 6px 8px 6px 12px; font-size: 14px; background: rgba(0,200,255,.1); border: 1px solid rgba(0,200,255,.3);
+    }
+    .chip button { background: none; border: none; width: 24px; height: 24px; border-radius: 50%; font-size: 13px; color: var(--muted); }
+    .chip-pick { cursor: pointer; padding: 8px 14px; }
+    .tpl-note { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+    /* ── Detalle del viaje de ejemplo ── */
+    .ex-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .ex-stat { border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; color: var(--muted); }
+    .ex-h { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+    .ex-route { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ex-stop { font-size: 13px; border: 1px solid var(--border); border-radius: 10px; padding: 5px 9px; background: var(--card); }
+    .ex-day { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; background: var(--card); }
+    .ex-day-hd { font-weight: 600; font-size: 14.5px; }
+    .ex-day-hd span { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+    .ex-act { display: flex; gap: 10px; font-size: 13.5px; margin-top: 7px; line-height: 1.35; }
+    .ex-act-t { font-family: 'Space Mono', monospace; font-size: 12px; color: var(--cyan); width: 44px; flex-shrink: 0; padding-top: 1px; }
+    .ex-act-note { color: var(--muted); font-size: 12.5px; }
+    .ex-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .ex-table td { padding: 7px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .ex-table td.num { text-align: right; white-space: nowrap; font-family: 'Space Mono', monospace; font-size: 12.5px; }
+    .ex-table tr.tot td { font-weight: 700; border-bottom: none; }
+    .ex-foot { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); background: var(--panel); padding: 12px 0 4px; margin-top: 16px; border-top: 1px solid var(--border); }
+
+    .loading { color: var(--muted); text-align: center; padding: 30px 0; font-size: 14px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  </style>
+</head>
+<body>
+
+<header class="hero">
+  <img src="/logo-altavibra.png" alt="Alta Vibra">
+  <h1>Organiza tu viaje en grupo</h1>
+  <p>Itinerario, gastos compartidos, mapa, fotos y ubicación en vivo — todo en un solo lugar para ti y tus amigos.</p>
+</header>
+
+<main class="wrap">
+  <div id="top-msg" role="status" aria-live="polite"></div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="openCreate()">✨ Crear viaje</button>
+    <button class="btn" onclick="openJoin()">🔑 Unirme con código</button>
+  </div>
+
+  <section id="my-trips-sec" style="display:none" aria-labelledby="my-trips-title">
+    <h2 class="sec-title" id="my-trips-title">Tus viajes</h2>
+    <div class="list" id="my-trips"></div>
+  </section>
+
+  <section aria-labelledby="examples-title">
+    <h2 class="sec-title" id="examples-title">Ideas para tu viaje</h2>
+    <div class="list" id="examples"><div class="loading">Cargando…</div></div>
+  </section>
+</main>
+
+<div class="sheet-bg" id="sheet-bg" onclick="closeSheets()"></div>
+
+<!-- CREAR VIAJE -->
+<section class="sheet" id="create-sheet" role="dialog" aria-modal="true" aria-labelledby="create-title">
+  <div class="sheet-hd">
+    <div>
+      <h2 class="sheet-title" id="create-title">Crear viaje</h2>
+      <div class="sheet-sub">Tú quedas como admin: eres quien arma el itinerario.</div>
+    </div>
+    <button class="sheet-x" onclick="closeSheets()" aria-label="Cerrar">✕</button>
+  </div>
+  <form onsubmit="submitCreate(event)" novalidate>
+    <div class="msg msg-info tpl-note" id="c-tpl-note" style="display:none">
+      <span id="c-tpl-txt"></span>
+      <button type="button" class="btn-link" onclick="clearTemplate()">Quitar</button>
+    </div>
+    <div class="field">
+      <label for="c-name">Nombre del viaje</label>
+      <input class="inp" id="c-name" maxlength="60" placeholder="Ej. Japón 2027" autocomplete="off" required>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="c-start">Primer día</label>
+        <input class="inp" id="c-start" type="date" required>
+      </div>
+      <div class="field">
+        <label for="c-days">Días</label>
+        <input class="inp" id="c-days" type="number" min="1" max="60" value="7" inputmode="numeric" required>
+      </div>
+    </div>
+    <div class="field">
+      <label for="c-me">Tu nombre</label>
+      <input class="inp" id="c-me" maxlength="30" placeholder="Como te dicen tus amigos" autocomplete="given-name" required>
+    </div>
+    <div class="field">
+      <label for="c-person">¿Quién más va? <span class="hint">(opcional — también pueden agregarse solos con el código)</span></label>
+      <div class="add-row">
+        <input class="inp" id="c-person" maxlength="30" placeholder="Nombre" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();addCompanion();}">
+        <button type="button" class="btn" onclick="addCompanion()">Agregar</button>
+      </div>
+      <div class="chips" id="c-chips" aria-live="polite"></div>
+    </div>
+    <div id="c-err" role="alert"></div>
+    <button class="btn btn-primary btn-block" id="c-submit" type="submit">Crear viaje</button>
+  </form>
+</section>
+
+<!-- UNIRSE CON CÓDIGO -->
+<section class="sheet" id="join-sheet" role="dialog" aria-modal="true" aria-labelledby="join-title">
+  <div class="sheet-hd">
+    <div>
+      <h2 class="sheet-title" id="join-title">Unirme a un viaje</h2>
+      <div class="sheet-sub">Pídele el código a quien creó el viaje.</div>
+    </div>
+    <button class="sheet-x" onclick="closeSheets()" aria-label="Cerrar">✕</button>
+  </div>
+  <form id="join-step1" onsubmit="submitJoinCode(event)" novalidate>
+    <div class="field">
+      <label for="j-code">Código de invitación</label>
+      <input class="inp inp-code" id="j-code" maxlength="6" placeholder="ABC234" autocomplete="off" autocapitalize="characters" spellcheck="false" required>
+    </div>
+    <div id="j-err" role="alert"></div>
+    <button class="btn btn-primary btn-block" id="j-submit" type="submit">Buscar viaje</button>
+  </form>
+  <form id="join-step2" onsubmit="submitJoinName(event)" style="display:none" novalidate>
+    <div class="msg msg-info" id="j-found"></div>
+    <div class="field">
+      <span style="font-size:13px;font-weight:600">¿Quién eres?</span>
+      <div class="chips" id="j-people"></div>
+    </div>
+    <div class="field">
+      <label for="j-name">¿No estás en la lista? Escribe tu nombre</label>
+      <input class="inp" id="j-name" maxlength="30" placeholder="Tu nombre" autocomplete="given-name">
+    </div>
+    <div id="j-err2" role="alert"></div>
+    <button class="btn btn-primary btn-block" id="j-submit2" type="submit">Entrar al viaje</button>
+  </form>
+</section>
+
+<!-- DETALLE DE UN VIAJE DE EJEMPLO -->
+<section class="sheet" id="ex-sheet" role="dialog" aria-modal="true" aria-labelledby="ex-title">
+  <div class="sheet-hd">
+    <div>
+      <h2 class="sheet-title" id="ex-title">—</h2>
+      <div class="sheet-sub" id="ex-sub"></div>
+    </div>
+    <button class="sheet-x" onclick="closeSheets()" aria-label="Cerrar">✕</button>
+  </div>
+  <div id="ex-body"><div class="loading">Cargando…</div></div>
+</section>
+
+<script>
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+  });
+}
+function lsGet(k, def){ try{ var v = localStorage.getItem(k); return v===null ? def : JSON.parse(v); }catch(e){ return def; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+var MONTHS_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function parseYMD(s){ return new Date(parseInt(s.slice(0,4),10), parseInt(s.slice(5,7),10)-1, parseInt(s.slice(8,10),10)); }
+function fmtDate(s){ var d = parseYMD(s); return d.getDate()+' '+MONTHS_ES[d.getMonth()]+' '+d.getFullYear(); }
+function addDays(s, n){ var d = parseYMD(s); d.setDate(d.getDate()+n); return d; }
+function fmtRange(start, days){
+  var a = parseYMD(start), b = addDays(start, days-1);
+  if(a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth()) return a.getDate()+'–'+b.getDate()+' '+MONTHS_ES[a.getMonth()]+' '+a.getFullYear();
+  return a.getDate()+' '+MONTHS_ES[a.getMonth()]+' – '+b.getDate()+' '+MONTHS_ES[b.getMonth()]+' '+b.getFullYear();
+}
+function money(n){ return '$'+Number(n||0).toLocaleString('es-MX',{maximumFractionDigits:0}); }
+
+async function api(url, opts){
+  opts = opts || {};
+  if(opts.body && typeof opts.body!=='string'){
+    opts.body = JSON.stringify(opts.body);
+    opts.headers = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
+  }
+  var r = await fetch(url, opts);
+  var j = await r.json().catch(function(){ return {}; });
+  if(!r.ok) throw new Error(j.error && j.error!=='trip' ? j.error : 'No se pudo completar — revisa tu conexión');
+  return j;
+}
+function showMsg(elId, txt, kind){
+  var el = document.getElementById(elId);
+  el.innerHTML = txt ? '<div class="msg '+(kind==='info'?'msg-info':'msg-err')+'">'+esc(txt)+'</div>' : '';
+}
+
+// ── Entrar a un viaje ──────────────────────────────────────────────────────
+// Guarda el viaje como el actual (lo que lee index.html al arrancar) y en la
+// lista de "Tus viajes" de este teléfono.
+function enterTrip(trip){
+  lsSet('tripapp_auth', {id: trip.id, code: trip.code});
+  lsSet('tripapp_cfg', trip);
+  var list = lsGet('tripapp_trips', []).filter(function(t){ return t.id!==trip.id; });
+  list.unshift({id: trip.id, code: trip.code, name: trip.name, start: trip.start, days: trip.days});
+  lsSet('tripapp_trips', list.slice(0, 20));
+  location.replace('/');
+}
+
+async function openKnownTrip(id){
+  var t = lsGet('tripapp_trips', []).find(function(x){ return x.id===id; });
+  if(!t) return;
+  try{
+    var trip = await api('/api/trip', {headers:{'X-Trip': t.id, 'X-Trip-Code': t.code}, cache:'no-store'});
+    enterTrip(trip);
+  }catch(e){
+    // Sin conexión: se entra con lo último guardado si es el mismo viaje
+    var cur = lsGet('tripapp_cfg', null);
+    if(cur && cur.id===t.id && !navigator.onLine){ location.replace('/'); return; }
+    showMsg('top-msg', 'No se pudo abrir "'+t.name+'". Si el admin cambió el código, pídele el nuevo y únete otra vez.');
+  }
+}
+function forgetTrip(id){
+  var list = lsGet('tripapp_trips', []);
+  var t = list.find(function(x){ return x.id===id; });
+  if(!t || !confirm('¿Quitar "'+t.name+'" de este teléfono? El viaje no se borra; puedes volver a entrar con el código.')) return;
+  lsSet('tripapp_trips', list.filter(function(x){ return x.id!==id; }));
+  var auth = lsGet('tripapp_auth', null);
+  if(auth && auth.id===id){ localStorage.removeItem('tripapp_auth'); localStorage.removeItem('tripapp_cfg'); }
+  renderMyTrips();
+}
+function renderMyTrips(){
+  var list = lsGet('tripapp_trips', []);
+  document.getElementById('my-trips-sec').style.display = list.length ? '' : 'none';
+  document.getElementById('my-trips').innerHTML = list.map(function(t){
+    return '<div class="card">'+
+      '<button class="card" style="border:none;background:none;padding:0;flex:1" onclick="openKnownTrip(\''+esc(t.id)+'\')">'+
+        '<span class="card-ic" aria-hidden="true">🧳</span>'+
+        '<span class="card-body"><span class="card-name" style="display:block">'+esc(t.name)+'</span>'+
+        '<span class="card-sub" style="display:block">'+(t.start ? esc(fmtRange(t.start, t.days||1)) : '')+'</span></span>'+
+        '<span class="card-go" aria-hidden="true">›</span>'+
+      '</button>'+
+      '<button class="card-x" onclick="forgetTrip(\''+esc(t.id)+'\')" aria-label="Quitar '+esc(t.name)+' de este teléfono">✕</button>'+
+    '</div>';
+  }).join('');
+}
+
+// ── Hojas ──────────────────────────────────────────────────────────────────
+var lastFocus = null;
+function openSheet(id, focusId){
+  closeSheets(true);
+  lastFocus = document.activeElement;
+  document.getElementById('sheet-bg').classList.add('show');
+  document.getElementById(id).classList.add('show');
+  setTimeout(function(){ var f = focusId && document.getElementById(focusId); if(f) f.focus(); }, 260);
+}
+function closeSheets(silent){
+  ['create-sheet','join-sheet','ex-sheet'].forEach(function(id){ document.getElementById(id).classList.remove('show'); });
+  document.getElementById('sheet-bg').classList.remove('show');
+  if(!silent && lastFocus && lastFocus.focus) lastFocus.focus();
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeSheets(); });
+
+// ── Crear ──────────────────────────────────────────────────────────────────
+var companions = [];
+var templateId = null, templateName = '';
+function openCreate(tplId, tplName, tplDays){
+  templateId = tplId || null; templateName = tplName || '';
+  document.getElementById('c-tpl-note').style.display = templateId ? '' : 'none';
+  document.getElementById('c-tpl-txt').textContent = templateId ? 'Basado en "'+templateName+'": se copian itinerario, ruta, presupuesto y reservaciones.' : '';
+  if(tplDays) document.getElementById('c-days').value = tplDays;
+  if(!document.getElementById('c-start').value){
+    var d = new Date(); d.setDate(d.getDate()+30);
+    document.getElementById('c-start').value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  showMsg('c-err', '');
+  openSheet('create-sheet', 'c-name');
+}
+function clearTemplate(){
+  templateId = null;
+  document.getElementById('c-tpl-note').style.display = 'none';
+}
+function renderCompanions(){
+  document.getElementById('c-chips').innerHTML = companions.map(function(n, i){
+    return '<span class="chip">'+esc(n)+'<button type="button" onclick="removeCompanion('+i+')" aria-label="Quitar a '+esc(n)+'">✕</button></span>';
+  }).join('');
+}
+function addCompanion(){
+  var inp = document.getElementById('c-person');
+  var n = inp.value.trim();
+  if(!n) return;
+  if(companions.indexOf(n)===-1 && companions.length<11) companions.push(n);
+  inp.value = '';
+  renderCompanions();
+  inp.focus();
+}
+function removeCompanion(i){ companions.splice(i, 1); renderCompanions(); }
+async function submitCreate(e){
+  e.preventDefault();
+  var pending = document.getElementById('c-person').value.trim();
+  if(pending) addCompanion();
+  var body = {
+    name: document.getElementById('c-name').value.trim(),
+    start: document.getElementById('c-start').value,
+    days: parseInt(document.getElementById('c-days').value, 10),
+    me: document.getElementById('c-me').value.trim(),
+    persons: companions,
+  };
+  if(templateId) body.template = templateId;
+  if(!body.name){ showMsg('c-err', 'Ponle nombre al viaje.'); document.getElementById('c-name').focus(); return; }
+  if(!body.start){ showMsg('c-err', 'Elige el primer día del viaje.'); document.getElementById('c-start').focus(); return; }
+  if(!(body.days>=1 && body.days<=60)){ showMsg('c-err', 'El viaje debe durar entre 1 y 60 días.'); document.getElementById('c-days').focus(); return; }
+  if(!body.me){ showMsg('c-err', 'Escribe tu nombre.'); document.getElementById('c-me').focus(); return; }
+  var btn = document.getElementById('c-submit');
+  btn.disabled = true; btn.textContent = 'Creando…';
+  try{
+    var j = await api('/api/trips', {method:'POST', body: body});
+    enterTrip(j.trip);
+  }catch(err){
+    showMsg('c-err', err.message);
+    btn.disabled = false; btn.textContent = 'Crear viaje';
+  }
+}
+
+// ── Unirse ─────────────────────────────────────────────────────────────────
+var joinCode = '', joinTrip = null;
+function openJoin(code){
+  document.getElementById('join-step1').style.display = '';
+  document.getElementById('join-step2').style.display = 'none';
+  showMsg('j-err', '');
+  if(code) document.getElementById('j-code').value = code;
+  openSheet('join-sheet', 'j-code');
+  if(code) submitJoinCode();
+}
+async function submitJoinCode(e){
+  if(e) e.preventDefault();
+  var code = document.getElementById('j-code').value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(code.length<4){ showMsg('j-err', 'Escribe el código completo.'); return; }
+  var btn = document.getElementById('j-submit');
+  btn.disabled = true; btn.textContent = 'Buscando…';
+  try{
+    var j = await api('/api/trips/join', {method:'POST', body:{code: code}});
+    joinCode = code; joinTrip = j.trip;
+    document.getElementById('j-found').textContent = '✅ '+j.trip.name+' · '+fmtRange(j.trip.start, j.trip.days);
+    document.getElementById('j-people').innerHTML = j.trip.persons.map(function(p){
+      return '<button type="button" class="chip chip-pick" onclick="enterTrip(joinTrip)">'+esc(p)+'</button>';
+    }).join('');
+    document.getElementById('join-step1').style.display = 'none';
+    document.getElementById('join-step2').style.display = '';
+    showMsg('j-err2', '');
+    setTimeout(function(){ var b = document.querySelector('#j-people button'); if(b) b.focus(); }, 50);
+  }catch(err){
+    showMsg('j-err', err.message);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Buscar viaje';
+  }
+}
+async function submitJoinName(e){
+  e.preventDefault();
+  var name = document.getElementById('j-name').value.trim();
+  if(!name){ showMsg('j-err2', 'Toca tu nombre en la lista, o escríbelo si no apareces.'); return; }
+  var btn = document.getElementById('j-submit2');
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  try{
+    var j = await api('/api/trips/join', {method:'POST', body:{code: joinCode, name: name}});
+    enterTrip(j.trip);
+  }catch(err){
+    showMsg('j-err2', err.message);
+    btn.disabled = false; btn.textContent = 'Entrar al viaje';
+  }
+}
+
+// ── Viajes de ejemplo ──────────────────────────────────────────────────────
+async function loadExamples(){
+  var el = document.getElementById('examples');
+  try{
+    var list = await api('/api/examples', {cache:'no-store'});
+    if(!list.length){ el.innerHTML = '<div class="empty">Todavía no hay viajes de ejemplo.</div>'; return; }
+    el.innerHTML = list.map(function(x){
+      return '<button class="card" onclick="openExample(\''+esc(x.id)+'\')">'+
+        '<span class="card-ic" aria-hidden="true">🗺️</span>'+
+        '<span class="card-body"><span class="card-name" style="display:block">'+esc(x.name)+(x.subtitle?' · '+esc(x.subtitle):'')+'</span>'+
+        '<span class="card-sub" style="display:block">'+x.days+' días'+(x.stops?' · '+x.stops+' paradas':'')+' · '+x.travelers+' viajeros</span></span>'+
+        '<span class="card-go" aria-hidden="true">›</span>'+
+      '</button>';
+    }).join('');
+  }catch(e){
+    el.innerHTML = '<div class="empty">No se pudieron cargar los ejemplos — revisa tu conexión.</div>';
+  }
+}
+async function openExample(id){
+  document.getElementById('ex-title').textContent = 'Cargando…';
+  document.getElementById('ex-sub').textContent = '';
+  document.getElementById('ex-body').innerHTML = '<div class="loading">Cargando…</div>';
+  openSheet('ex-sheet');
+  try{
+    var x = await api('/api/examples/'+encodeURIComponent(id), {cache:'no-store'});
+  }catch(e){
+    document.getElementById('ex-body').innerHTML = '<div class="msg msg-err">'+esc(e.message)+'</div>';
+    return;
+  }
+  document.getElementById('ex-title').textContent = x.name;
+  document.getElementById('ex-sub').textContent = (x.subtitle ? x.subtitle+' · ' : '')+'Sugerencias para inspirarte';
+  var html = '<div class="ex-stats">'+
+    '<span class="ex-stat">📅 '+x.days+' días</span>'+
+    (x.checkpoints.length ? '<span class="ex-stat">📍 '+x.checkpoints.length+' paradas</span>' : '')+
+    '<span class="ex-stat">👥 '+x.travelers+' viajeros</span>'+
+  '</div>';
+
+  if(x.checkpoints.length){
+    html += '<h3 class="ex-h">Ruta</h3><div class="ex-route">'+
+      x.checkpoints.map(function(c){ return '<span class="ex-stop">'+esc(c.emoji)+' '+esc(c.label)+'</span>'; }).join('')+
+    '</div>';
+  }
+
+  var dayHtml = '';
+  for(var i=0;i<x.days;i++){
+    var d = (x.itinerary||{})[i] || {};
+    var acts = d.acts || [];
+    if(!acts.length && !d.city) continue;
+    dayHtml += '<div class="ex-day"><div class="ex-day-hd">Día '+(i+1)+(d.city?' <span>· '+esc(d.city)+'</span>':'')+'</div>'+
+      acts.map(function(a){
+        return '<div class="ex-act"><span class="ex-act-t">'+esc(a.t||'')+'</span><span>'+esc(a.n)+
+          (a.note?'<br><span class="ex-act-note">'+esc(a.note)+'</span>':'')+'</span></div>';
+      }).join('')+
+    '</div>';
+  }
+  if(dayHtml) html += '<h3 class="ex-h">Itinerario</h3>'+dayHtml;
+
+  if(x.budget.length){
+    var tot = x.budget.reduce(function(s,b){ return s+(b.t||0); }, 0);
+    var pp = x.budget.reduce(function(s,b){ return s+(b.p||0); }, 0);
+    html += '<h3 class="ex-h">Presupuesto (MXN)</h3><table class="ex-table">'+
+      '<tr><td></td><td class="num">Total</td><td class="num">Por persona</td></tr>'+
+      x.budget.map(function(b){
+        return '<tr><td>'+esc(b.e)+' '+esc(b.n)+'</td><td class="num">'+money(b.t)+'</td><td class="num">'+money(b.p)+'</td></tr>';
+      }).join('')+
+      '<tr class="tot"><td>Total</td><td class="num">'+money(tot)+'</td><td class="num">'+money(pp)+'</td></tr>'+
+    '</table>';
+  }
+
+  if(x.reservations.length){
+    html += '<h3 class="ex-h">Reservaciones que hicieron</h3>'+
+      x.reservations.map(function(r){
+        return '<div class="ex-act"><span class="ex-act-t">'+esc(r.time||'')+'</span><span>'+esc(r.title)+
+          '<br><span class="ex-act-note">'+esc([r.location, r.cost, r.notes].filter(Boolean).join(' · '))+'</span></span></div>';
+      }).join('');
+  }
+
+  if(!dayHtml && !x.budget.length && !x.checkpoints.length) html += '<div class="empty">Este viaje todavía no tiene detalles.</div>';
+
+  html += '<div class="ex-foot"><button class="btn btn-primary btn-block" onclick="useTemplate(\''+esc(x.id)+'\')">Usar como plantilla para mi viaje</button></div>';
+  document.getElementById('ex-body').innerHTML = html;
+  window._exCache = x;
+}
+function useTemplate(id){
+  var x = window._exCache;
+  openCreate(id, x ? x.name : '', x ? x.days : null);
+}
+
+// ── Arranque ───────────────────────────────────────────────────────────────
+(async function(){
+  var q = new URLSearchParams(location.search);
+  var hasAuth = !!lsGet('tripapp_auth', null) && !!lsGet('tripapp_cfg', null);
+
+  // Teléfonos que ya usaban la app (California 2026) antes de que hubiera
+  // varios viajes: se meten solos al viaje de siempre, sin pedir código.
+  var legacyUser = false;
+  try{ legacyUser = localStorage.getItem('ca26_me')!==null; }catch(e){}
+  if(!hasAuth && legacyUser && !q.has('switch') && !q.has('code') && !q.has('invalid')){
+    try{
+      var j = await api('/api/trips/legacy-join', {method:'POST'});
+      enterTrip(j.trip);
+      return;
+    }catch(e){ /* sigue con la pantalla normal */ }
+  }
+
+  // Si ya hay un viaje elegido y no vinieron a cambiarlo, directo a la app
+  if(hasAuth && !q.has('switch') && !q.has('code')){ location.replace('/'); return; }
+
+  if(q.has('invalid')) showMsg('top-msg', 'El código de tu viaje cambió o el viaje ya no existe. Pídele el código nuevo a quien lo organiza.');
+  renderMyTrips();
+  loadExamples();
+  if(q.get('code')) openJoin(q.get('code').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6));
+})();
+</script>
+</body>
+</html>
