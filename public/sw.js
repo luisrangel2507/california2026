@@ -1,8 +1,9 @@
-const CACHE = 'av26-v203';
+const CACHE = 'av26-v205';
 
 const PRECACHE = [
   '/',
   '/index.html',
+  '/inicio.html',
   '/trip-bg.jpg',
   '/manifest.json',
   '/icons/icon-192.png',
@@ -31,7 +32,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('push', e => {
   var data = {};
   try { data = e.data ? e.data.json() : {}; } catch (err) {}
-  var title = data.title || 'Alta Vibra · California 2026';
+  var title = data.title || 'Alta Vibra Travel';
   var body = data.body || '';
   e.waitUntil(
     self.registration.showNotification(title, {

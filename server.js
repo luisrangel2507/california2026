@@ -69,16 +69,490 @@ if (!process.env.DATA_DIR) {
     '   4. Redeploy una última vez para que quede montado\n'
   );
 }
-const SUBS_FILE = path.join(DATA_DIR, 'subscriptions.json');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-function loadSubs() {
-  try { return JSON.parse(fs.readFileSync(SUBS_FILE, 'utf8')); }
-  catch (e) { return []; }
+// ── Viajes ─────────────────────────────────────────────────────────────────
+// Antes había un solo viaje (California 2026) con todo en DATA_DIR/*.json.
+// Ahora cualquier grupo puede crear el suyo: cada viaje vive en
+// DATA_DIR/trips/<id>/ con los mismos archivos de siempre, más trip.json con
+// su configuración (nombre, fechas, viajeros, ruta, presupuesto) y su código
+// de invitación. Todo lo que es "del viaje" (gastos, itinerario, fotos...)
+// exige el código en cada petición (headers X-Trip / X-Trip-Code).
+//
+// California 2026 queda como viaje de ejemplo: cualquiera puede ver su
+// itinerario, ruta y presupuesto (no gastos, perfiles ni ubicaciones) y
+// usarlo como plantilla para armar el suyo.
+const TRIPS_DIR = path.join(DATA_DIR, 'trips');
+if (!fs.existsSync(TRIPS_DIR)) fs.mkdirSync(TRIPS_DIR, { recursive: true });
+
+const SAMPLE_TRIP_ID = 'california2026';
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O ni 1/I, que se confunden
+function newCode(len = 6) {
+  const bytes = crypto.randomBytes(len);
+  let s = '';
+  for (let i = 0; i < len; i++) s += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
+  return s;
 }
-function saveSubs(subs) {
-  fs.writeFileSync(SUBS_FILE, JSON.stringify(subs, null, 2));
+function newId() {
+  return crypto.randomBytes(6).toString('hex');
 }
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+function genId() {
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+class Trip {
+  constructor(id, meta) {
+    this.id = id;
+    this.dir = path.join(TRIPS_DIR, id);
+    this.meta = meta;       // { code, viewerToken, sample, created, cfg }
+    this.stores = {};       // caché en memoria de cada archivo del viaje
+  }
+  file(name) { return path.join(this.dir, name + '.json'); }
+  get(name, def) {
+    if (!(name in this.stores)) {
+      try { this.stores[name] = JSON.parse(fs.readFileSync(this.file(name), 'utf8')); }
+      catch (e) { this.stores[name] = def; }
+      if (this.stores[name] === undefined) this.stores[name] = def;
+    }
+    return this.stores[name];
+  }
+  set(name, value) {
+    this.stores[name] = value;
+    this.save(name);
+  }
+  save(name) {
+    try { fs.writeFileSync(this.file(name), JSON.stringify(this.stores[name])); }
+    catch (e) { console.error('No se pudo guardar', this.id, name, e.message); }
+  }
+  saveMeta() {
+    fs.mkdirSync(this.dir, { recursive: true });
+    fs.writeFileSync(path.join(this.dir, 'trip.json'), JSON.stringify(this.meta, null, 2));
+  }
+  get cfg() { return this.meta.cfg; }
+  isAdmin(who) { return typeof who === 'string' && who === this.meta.cfg.admin; }
+  // Lo que ve alguien que ya es parte del viaje (incluye el código para
+  // poder invitar a más gente).
+  memberView() {
+    return Object.assign({ id: this.id, code: this.meta.code, sample: !!this.meta.sample }, this.meta.cfg);
+  }
+}
+
+const trips = new Map();        // id -> Trip
+const viewerIndex = new Map();  // viewerToken -> id
+const codeIndex = new Map();    // code -> id
+
+function indexTrip(t) {
+  trips.set(t.id, t);
+  if (t.meta.viewerToken) viewerIndex.set(t.meta.viewerToken, t.id);
+  if (t.meta.code) codeIndex.set(t.meta.code, t.id);
+}
+function unindexTrip(t) {
+  if (t.meta.viewerToken) viewerIndex.delete(t.meta.viewerToken);
+  if (t.meta.code) codeIndex.delete(t.meta.code);
+}
+function uniqueCode() {
+  let c;
+  do { c = newCode(); } while (codeIndex.has(c));
+  return c;
+}
+
+// ── Validación de la configuración de un viaje ─────────────────────────────
+const MAX_PERSONS = 12;
+const MAX_DAYS = 60;
+function cleanStr(v, max) {
+  return typeof v === 'string' ? v.trim().slice(0, max) : '';
+}
+function isValidDateStr(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(s + 'T12:00:00Z');
+  return !isNaN(d) && d.toISOString().slice(0, 10) === s;
+}
+function cleanNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function cleanPersons(list) {
+  if (!Array.isArray(list)) return null;
+  const out = [];
+  list.forEach((p) => {
+    const n = cleanStr(p, 30);
+    if (n && !out.includes(n)) out.push(n);
+  });
+  return out.slice(0, MAX_PERSONS);
+}
+function cleanCheckpoints(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, 80).map((c) => {
+    const out = {
+      label: cleanStr(c && c.label, 60) || 'Parada',
+      emoji: cleanStr(c && c.emoji, 8) || '📍',
+      km: cleanNum(c && c.km),
+      carH: cleanNum(c && c.carH),
+      day: Math.max(1, parseInt(c && c.day, 10) || 1),
+    };
+    if (c && Array.isArray(c.c) && c.c.length === 2 &&
+        Number.isFinite(c.c[0]) && Number.isFinite(c.c[1])) out.c = [c.c[0], c.c[1]];
+    return out;
+  }).filter((c) => c.c);
+}
+function cleanBudget(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, 80).map((b) => ({
+    e: cleanStr(b && b.e, 8) || '💵',
+    n: cleanStr(b && b.n, 80),
+    t: cleanNum(b && b.t),
+    p: cleanNum(b && b.p),
+  })).filter((b) => b.n);
+}
+
+// Aplica sobre `prev` solo los campos válidos que vengan en `input`.
+// Devuelve { cfg } o { error }.
+function mergeCfg(prev, input) {
+  const cfg = Object.assign({}, prev);
+  if (input.name !== undefined) {
+    const n = cleanStr(input.name, 60);
+    if (!n) return { error: 'El viaje necesita un nombre' };
+    cfg.name = n;
+  }
+  if (input.subtitle !== undefined) cfg.subtitle = cleanStr(input.subtitle, 80);
+  if (input.start !== undefined) {
+    if (!isValidDateStr(input.start)) return { error: 'Fecha de inicio inválida' };
+    cfg.start = input.start;
+  }
+  if (input.days !== undefined) {
+    const d = parseInt(input.days, 10);
+    if (!Number.isInteger(d) || d < 1 || d > MAX_DAYS) return { error: 'El viaje debe durar entre 1 y ' + MAX_DAYS + ' días' };
+    cfg.days = d;
+  }
+  if (input.persons !== undefined) {
+    const p = cleanPersons(input.persons);
+    if (!p || !p.length) return { error: 'Falta al menos un viajero' };
+    // Los perfiles, gastos y PINs van por posición: no se puede quitar ni
+    // reordenar a nadie, solo renombrar o agregar al final.
+    if (prev.persons && p.length < prev.persons.length) return { error: 'No se puede quitar a nadie del viaje' };
+    cfg.persons = p;
+  }
+  if (input.admin !== undefined) cfg.admin = cleanStr(input.admin, 30);
+  if (input.checkpoints !== undefined) cfg.checkpoints = cleanCheckpoints(input.checkpoints);
+  if (input.budget !== undefined) cfg.budget = cleanBudget(input.budget);
+  if (!cfg.persons || !cfg.persons.includes(cfg.admin)) cfg.admin = cfg.persons ? cfg.persons[0] : '';
+  return { cfg };
+}
+
+function createTrip(cfg, opts = {}) {
+  const id = opts.id || newId();
+  const t = new Trip(id, {
+    code: opts.code || uniqueCode(),
+    viewerToken: opts.viewerToken || crypto.randomBytes(24).toString('hex'),
+    sample: !!opts.sample,
+    created: Date.now(),
+    cfg,
+  });
+  t.saveMeta();
+  indexTrip(t);
+  return t;
+}
+
+// Carga todos los viajes existentes al arrancar
+fs.readdirSync(TRIPS_DIR, { withFileTypes: true }).forEach((ent) => {
+  if (!ent.isDirectory()) return;
+  try {
+    const meta = JSON.parse(fs.readFileSync(path.join(TRIPS_DIR, ent.name, 'trip.json'), 'utf8'));
+    indexTrip(new Trip(ent.name, meta));
+  } catch (e) {
+    console.error('Viaje ilegible, se ignora:', ent.name, e.message);
+  }
+});
+
+// ── Migración: el viaje original (California 2026) ─────────────────────────
+// Se copian los archivos que estaban sueltos en DATA_DIR a su carpeta de
+// viaje. Los originales se dejan donde estaban (no se borra nada), por si
+// hay que volver atrás.
+const SAMPLE_CFG = {
+  name: 'California 2026',
+  subtitle: 'PCH Road Trip',
+  start: '2026-09-02',
+  days: 9,
+  persons: ['Erick', 'Rafa', 'Eduardo'],
+  admin: ADMIN_NAME,
+  checkpoints: [
+    { label: 'Tijuana CBX', emoji: '🛃', km: 0, carH: 0, day: 1, c: [32.5430, -117.0320] },
+    { label: 'San Diego', emoji: '🏖️', km: 32, carH: 0.5, day: 1, c: [32.7626, -117.1869] },
+    { label: 'Coronado', emoji: '⛴️', km: 48, carH: 0.8, day: 1, c: [32.6860, -117.1831] },
+    { label: 'La Jolla', emoji: '🦭', km: 80, carH: 1.3, day: 2, c: [32.8501, -117.2726] },
+    { label: 'Sunset Cliffs', emoji: '🌅', km: 95, carH: 1.6, day: 2, c: [32.7207, -117.2556] },
+    { label: 'Palos Verdes / LA', emoji: '🌄', km: 240, carH: 3.8, day: 3, c: [33.7436, -118.4102] },
+    { label: 'Santa Monica', emoji: '🎡', km: 295, carH: 4.7, day: 3, c: [34.0092, -118.4975] },
+    { label: 'Hollywood', emoji: '⭐', km: 310, carH: 4.9, day: 4, c: [34.1016, -118.3267] },
+    { label: 'Malibu', emoji: '🏖️', km: 340, carH: 5.5, day: 5, c: [34.0286, -118.8734] },
+    { label: 'Santa Barbara', emoji: '⚓', km: 460, carH: 7.0, day: 5, c: [34.4208, -119.6982] },
+    { label: 'Morro Bay', emoji: '🌊', km: 600, carH: 8.8, day: 5, c: [35.3658, -120.8496] },
+    { label: 'Ragged Point', emoji: '🏨', km: 685, carH: 10.2, day: 5, c: [35.7937, -121.3330] },
+    { label: 'McWay Falls / Big Sur', emoji: '🏞️', km: 730, carH: 11.0, day: 6, c: [36.1578, -121.6720] },
+    { label: 'Bixby Bridge', emoji: '🌉', km: 775, carH: 11.8, day: 6, c: [36.3726, -121.9018] },
+    { label: 'Monterey', emoji: '🦭', km: 850, carH: 13.0, day: 6, c: [36.5849, -121.9020] },
+    { label: 'San Francisco', emoji: '🌁', km: 1040, carH: 15.0, day: 7, c: [37.7749, -122.4194] },
+    { label: 'San Diego ↩', emoji: '🏁', km: 1920, carH: 23.0, day: 9, c: [32.7157, -117.1611] },
+  ],
+  budget: [
+    { e: '✈️', n: 'Vuelos QRO → TIJ + CBX', t: 5700, p: 1900 },
+    { e: '🚗', n: 'Renta Toyota Camry (10 días)', t: 8000, p: 2666.67 },
+    { e: '🏨', n: 'San Diego — Days Inn (2 noches)', t: 2234.56, p: 744.85 },
+    { e: '🏨', n: 'Los Ángeles — Torrance (3 noches)', t: 10043.79, p: 3347.93 },
+    { e: '🏖️', n: 'Pismo Beach (1 noche)', t: 3429.75, p: 1143.25 },
+    { e: '🏨', n: 'Monterey Bay Lodge (1 noche)', t: 4569, p: 1523 },
+    { e: '🌉', n: 'San Francisco — Suite (2 noches)', t: 10870, p: 3623.33 },
+    { e: '🏨', n: 'San Diego regreso (1 noche)', t: 2200, p: 733.33 },
+    { e: '🍽️', n: 'Comida (estimado)', t: 19950, p: 6650 },
+    { e: '⛽', n: 'Gasolina', t: 3342.50, p: 1114.17 },
+    { e: '⛴️', n: 'Ferry Coronado (i/v)', t: 945, p: 315 },
+    { e: '⛴️', n: 'Ferry atardecer SF', t: 3000, p: 1000 },
+    { e: '🐋', n: 'Avistamiento de ballenas', t: 3300, p: 1100 },
+  ],
+};
+if (!SAMPLE_CFG.persons.includes(SAMPLE_CFG.admin)) SAMPLE_CFG.persons.push(SAMPLE_CFG.admin);
+
+if (!trips.has(SAMPLE_TRIP_ID)) {
+  let legacyViewer = null;
+  try { legacyViewer = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'viewer.json'), 'utf8')).token; } catch (e) {}
+  const t = createTrip(SAMPLE_CFG, {
+    id: SAMPLE_TRIP_ID,
+    sample: true,
+    code: process.env.SAMPLE_TRIP_CODE ? String(process.env.SAMPLE_TRIP_CODE).toUpperCase() : undefined,
+    viewerToken: legacyViewer || undefined,
+  });
+  ['memory', 'expenses', 'settlements', 'profiles', 'itinerary', 'live-locations', 'car',
+   'reservations', 'countdown-phrases', 'subscriptions'].forEach((name) => {
+    const src = path.join(DATA_DIR, name + '.json');
+    if (fs.existsSync(src)) fs.copyFileSync(src, t.file(name));
+  });
+  console.log('Viaje "' + SAMPLE_CFG.name + '" migrado a ' + t.dir);
+}
+{
+  // SAMPLE_TRIP_CODE permite fijar (o cambiar) el código del viaje original
+  // desde Railway sin tocar archivos.
+  const t = trips.get(SAMPLE_TRIP_ID);
+  const envCode = process.env.SAMPLE_TRIP_CODE && String(process.env.SAMPLE_TRIP_CODE).toUpperCase();
+  if (envCode && envCode !== t.meta.code) {
+    unindexTrip(t);
+    t.meta.code = envCode;
+    t.saveMeta();
+    indexTrip(t);
+  }
+  console.log('Código de invitación de "' + t.cfg.name + '": ' + t.meta.code);
+}
+
+// ── Límite de intentos por IP (crear viajes / adivinar códigos) ────────────
+const rateBuckets = new Map();
+function rateLimit(key, max, windowMs) {
+  const now = Date.now();
+  let b = rateBuckets.get(key);
+  if (!b || now - b.start > windowMs) { b = { start: now, n: 0 }; rateBuckets.set(key, b); }
+  b.n++;
+  return b.n <= max;
+}
+setInterval(() => {
+  const now = Date.now();
+  rateBuckets.forEach((b, k) => { if (now - b.start > 60 * 60 * 1000) rateBuckets.delete(k); });
+}, 10 * 60 * 1000).unref();
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+}
+
+// ── Autenticación por viaje ────────────────────────────────────────────────
+// Los miembros mandan X-Trip + X-Trip-Code en cada petición. La página de
+// "seguir en vivo" (familia/amigos) manda X-Viewer con su token y solo
+// puede LEER lo poquito que esa página muestra.
+const VIEWER_READABLE = new Set(['/api/itinerary', '/api/live-locations', '/api/public-contacts', '/api/memory']);
+function tripAuth(req, res, next) {
+  const id = String(req.get('X-Trip') || '');
+  const code = String(req.get('X-Trip-Code') || '').toUpperCase();
+  const t = trips.get(id);
+  if (t && code && safeEqual(code, t.meta.code)) {
+    req.trip = t;
+    return next();
+  }
+  const vt = String(req.get('X-Viewer') || '');
+  if (vt && req.method === 'GET') {
+    const vid = viewerIndex.get(vt);
+    const p = req.originalUrl.split('?')[0];
+    if (vid && VIEWER_READABLE.has(p)) {
+      req.trip = trips.get(vid);
+      req.viewer = true;
+      return next();
+    }
+  }
+  // Solo se marca "viaje inválido" si mandaron credenciales de viaje — así
+  // el cliente sabe que debe volver a la pantalla de inicio.
+  if (id) res.set('X-Trip-Invalid', '1');
+  res.status(401).json({ error: 'trip' });
+}
+app.use([
+  '/api/trip', '/api/subscribe', '/api/send-test', '/api/countdown-phrases',
+  '/api/memory', '/api/expenses', '/api/settlements', '/api/profiles',
+  '/api/public-contacts', '/api/itinerary', '/api/live-locations',
+  '/api/viewer-token', '/api/car', '/api/reservations',
+], tripAuth);
+
+// Crear un viaje nuevo. Quien lo crea queda como admin (primer viajero).
+// Si trae `template`, se copian itinerario, ruta, presupuesto y
+// reservaciones de un viaje de ejemplo, recorriendo las fechas.
+app.post('/api/trips', (req, res) => {
+  if (!rateLimit('create:' + clientIp(req), 20, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Demasiados viajes creados, intenta más tarde' });
+  }
+  const body = req.body || {};
+  const creator = cleanStr(body.me, 30);
+  if (!creator) return res.status(400).json({ error: 'Falta tu nombre' });
+  const others = Array.isArray(body.persons) ? body.persons : [];
+  const tpl = body.template ? trips.get(String(body.template)) : null;
+  if (body.template && (!tpl || !tpl.meta.sample)) return res.status(400).json({ error: 'Plantilla no encontrada' });
+
+  const base = {
+    name: '', subtitle: '', start: '', days: 1, persons: null, admin: creator,
+    checkpoints: tpl ? tpl.cfg.checkpoints : [],
+    budget: tpl ? tpl.cfg.budget : [],
+  };
+  const r = mergeCfg(base, {
+    name: body.name || '',
+    subtitle: body.subtitle || '',
+    start: body.start || '',
+    days: body.days !== undefined ? body.days : (tpl ? tpl.cfg.days : 1),
+    persons: [creator].concat(others),
+    admin: creator,
+  });
+  if (r.error) return res.status(400).json({ error: r.error });
+  const t = createTrip(r.cfg);
+
+  if (tpl) {
+    const itin = tpl.get('itinerary', {});
+    const copy = {};
+    Object.keys(itin).forEach((k) => { if (parseInt(k, 10) < t.cfg.days) copy[k] = itin[k]; });
+    t.set('itinerary', JSON.parse(JSON.stringify(copy)));
+    const shiftMs = new Date(t.cfg.start + 'T12:00:00Z') - new Date(tpl.cfg.start + 'T12:00:00Z');
+    const resv = tpl.get('reservations', []).map((x) => {
+      const d = new Date(x.date + 'T12:00:00Z');
+      const date = isNaN(d) ? x.date : new Date(d.getTime() + shiftMs).toISOString().slice(0, 10);
+      return Object.assign({}, x, { date, done: false, ts: Date.now() });
+    });
+    t.set('reservations', resv);
+  }
+  res.json({ ok: true, trip: t.memberView() });
+});
+
+// Unirse con el código de invitación. `name` opcional: si esa persona no
+// está en la lista del viaje, se agrega al final.
+app.post('/api/trips/join', (req, res) => {
+  if (!rateLimit('join:' + clientIp(req), 30, 10 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Demasiados intentos, espera unos minutos' });
+  }
+  const code = cleanStr((req.body || {}).code, 12).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const id = codeIndex.get(code);
+  const t = id && trips.get(id);
+  if (!t) return res.status(404).json({ error: 'No existe un viaje con ese código' });
+  const name = cleanStr((req.body || {}).name, 30);
+  if (name && !t.cfg.persons.includes(name)) {
+    if (t.cfg.persons.length >= MAX_PERSONS) return res.status(400).json({ error: 'El viaje ya está lleno' });
+    t.meta.cfg = Object.assign({}, t.cfg, { persons: t.cfg.persons.concat([name]) });
+    t.saveMeta();
+  }
+  res.json({ ok: true, trip: t.memberView() });
+});
+
+// Los teléfonos que ya usaban la app antes de que existieran los viajes no
+// tienen el código guardado: se les da acceso al viaje original de una vez
+// para que no se queden fuera. LEGACY_JOIN=off lo apaga.
+app.post('/api/trips/legacy-join', (req, res) => {
+  if (String(process.env.LEGACY_JOIN || '').toLowerCase() === 'off') {
+    return res.status(403).json({ error: 'off' });
+  }
+  if (!rateLimit('legacy:' + clientIp(req), 10, 10 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Demasiados intentos' });
+  }
+  res.json({ ok: true, trip: trips.get(SAMPLE_TRIP_ID).memberView() });
+});
+
+// Viajes de ejemplo — públicos, para inspirarse o usarlos de plantilla.
+// Solo lo que sirve como sugerencia: nada de gastos, perfiles, fotos ni
+// ubicaciones, y tampoco los nombres de quienes viajaron.
+function exampleView(t, full) {
+  const out = {
+    id: t.id,
+    name: t.cfg.name,
+    subtitle: t.cfg.subtitle || '',
+    start: t.cfg.start,
+    days: t.cfg.days,
+    travelers: t.cfg.persons.length,
+    stops: t.cfg.checkpoints.length,
+  };
+  if (full) {
+    out.checkpoints = t.cfg.checkpoints;
+    out.budget = t.cfg.budget;
+    out.itinerary = t.get('itinerary', {});
+    out.reservations = t.get('reservations', []).map((r) => ({
+      title: r.title, date: r.date, time: r.time || '', location: r.location || '', cost: r.cost || '', notes: r.notes || '',
+    }));
+  }
+  return out;
+}
+app.get('/api/examples', (req, res) => {
+  const list = [];
+  trips.forEach((t) => { if (t.meta.sample) list.push(exampleView(t, false)); });
+  res.json(list);
+});
+app.get('/api/examples/:id', (req, res) => {
+  const t = trips.get(req.params.id);
+  if (!t || !t.meta.sample) return res.status(404).json({ error: 'not found' });
+  res.json(exampleView(t, true));
+});
+
+// Configuración del viaje actual
+app.get('/api/trip', (req, res) => res.json(req.trip.memberView()));
+
+// Editar el viaje. Solo el admin cambia nombre, fechas, ruta y presupuesto;
+// cualquiera del grupo puede agregar gente o corregir un nombre (igual que
+// antes, que la lista de nombres se podía editar desde Presupuesto).
+app.patch('/api/trip', (req, res) => {
+  const t = req.trip;
+  const body = req.body || {};
+  const admin = t.isAdmin(body.who);
+  const input = {};
+  ['name', 'subtitle', 'start', 'days', 'checkpoints', 'budget', 'admin'].forEach((k) => {
+    if (body[k] !== undefined) input[k] = body[k];
+  });
+  if (Object.keys(input).length && !admin) {
+    return res.status(403).json({ error: 'Solo el admin puede cambiar los datos del viaje' });
+  }
+  if (body.persons !== undefined) input.persons = body.persons;
+  // Si el admin se cambia el nombre, sigue siendo admin
+  if (input.persons && input.admin === undefined) {
+    const ai = t.cfg.persons.indexOf(t.cfg.admin);
+    const np = cleanPersons(input.persons);
+    if (ai !== -1 && np && np[ai]) input.admin = np[ai];
+  }
+  const r = mergeCfg(t.cfg, input);
+  if (r.error) return res.status(400).json({ error: r.error });
+  t.meta.cfg = r.cfg;
+  t.saveMeta();
+  res.json({ ok: true, trip: t.memberView() });
+});
+
+// El admin puede cambiar el código de invitación (el anterior deja de
+// servir; quien ya estaba adentro tendrá que volver a entrar con el nuevo).
+app.post('/api/trip/code', (req, res) => {
+  const t = req.trip;
+  if (!t.isAdmin((req.body || {}).who)) return res.status(403).json({ error: 'not authorized' });
+  unindexTrip(t);
+  t.meta.code = uniqueCode();
+  t.saveMeta();
+  indexTrip(t);
+  res.json({ ok: true, trip: t.memberView() });
+});
 
 app.get('/api/vapid-public-key', (req, res) => {
   res.json({ publicKey: VAPID_PUBLIC_KEY });
@@ -87,10 +561,10 @@ app.get('/api/vapid-public-key', (req, res) => {
 app.post('/api/subscribe', (req, res) => {
   const sub = req.body;
   if (!sub || !sub.endpoint) return res.status(400).json({ error: 'invalid subscription' });
-  const subs = loadSubs();
+  const subs = req.trip.get('subscriptions', []);
   if (!subs.find((s) => s.endpoint === sub.endpoint)) {
     subs.push(sub);
-    saveSubs(subs);
+    req.trip.save('subscriptions');
   }
   res.json({ ok: true });
 });
@@ -103,8 +577,8 @@ app.post('/api/subscribe', (req, res) => {
 // existe y el push service las rechaza — no con 404/410 (eso sí se limpia
 // solo) sino con otro código, que antes solo se veía en el log del server,
 // invisible para quien le da a "Probar".
-async function sendPushToAll(payload) {
-  const subs = loadSubs();
+async function sendPushToAll(trip, payload) {
+  const subs = trip.get('subscriptions', []);
   const remaining = [];
   const errors = [];
   let ok = 0;
@@ -127,13 +601,13 @@ async function sendPushToAll(payload) {
       console.error('Push error:', (err && err.statusCode), msg);
     }
   }
-  saveSubs(remaining);
+  trip.set('subscriptions', remaining);
   return { total: subs.length, ok, errors };
 }
 
 app.post('/api/send-test', async (req, res) => {
-  const result = await sendPushToAll({
-    title: 'Alta Vibra · California 2026',
+  const result = await sendPushToAll(req.trip, {
+    title: 'Alta Vibra Travel · ' + req.trip.cfg.name,
     body: 'Esta es una notificación de prueba 🎉'
   });
   res.json({ ok: true, sent: result.ok, total: result.total, errors: result.errors });
@@ -141,68 +615,67 @@ app.post('/api/send-test', async (req, res) => {
 
 // ── Frases de la cuenta regresiva pre-viaje (editables por el admin,
 // una lista distinta por persona — { "Erick": [...], "Rafa": [...], ... }) ──
-const PHRASES_FILE = path.join(DATA_DIR, 'countdown-phrases.json');
-function loadCountdownPhrases() {
-  try {
-    const data = JSON.parse(fs.readFileSync(PHRASES_FILE, 'utf8'));
-    // Versión vieja guardaba un arreglo plano compartido entre todos — se
-    // descarta en vez de migrarlo mal, son solo frases de relleno.
-    return (data && !Array.isArray(data) && typeof data === 'object') ? data : {};
-  } catch (e) { return {}; }
-}
-function saveCountdownPhrasesStore(store) {
-  fs.writeFileSync(PHRASES_FILE, JSON.stringify(store, null, 2));
+function loadCountdownPhrases(trip) {
+  const data = trip.get('countdown-phrases', {});
+  // Versión vieja guardaba un arreglo plano compartido entre todos — se
+  // descarta en vez de migrarlo mal, son solo frases de relleno.
+  return (data && !Array.isArray(data) && typeof data === 'object') ? data : {};
 }
 
 app.get('/api/countdown-phrases', (req, res) => {
-  res.json({ phrases: loadCountdownPhrases() });
+  res.json({ phrases: loadCountdownPhrases(req.trip) });
 });
 
 app.post('/api/countdown-phrases', (req, res) => {
   const { person, phrases, who } = req.body || {};
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  if (!req.trip.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
   if (typeof person !== 'string' || !person) return res.status(400).json({ error: 'missing fields' });
   if (!Array.isArray(phrases)) return res.status(400).json({ error: 'missing fields' });
   const clean = phrases
     .map((p) => (typeof p === 'string' ? p.trim().slice(0, 200) : ''))
     .filter(Boolean)
     .slice(0, 40);
-  const store = loadCountdownPhrases();
+  const store = loadCountdownPhrases(req.trip);
   store[person] = clean;
-  saveCountdownPhrasesStore(store);
+  req.trip.set('countdown-phrases', store);
   res.json({ ok: true, phrases: store });
 });
 
 // ── Fotos compartidas por actividad ────────────────────────────────────────
-const MEM_FILE = path.join(DATA_DIR, 'memory.json');
-let memStore = {};
-try { memStore = JSON.parse(fs.readFileSync(MEM_FILE, 'utf8')); } catch(e) {}
-function persistMem() {
-  try { fs.writeFileSync(MEM_FILE, JSON.stringify(memStore)); } catch(e) {}
-}
-
-app.get('/api/memory', (req, res) => res.json(memStore));
+app.get('/api/memory', (req, res) => {
+  const memStore = req.trip.get('memory', {});
+  if (!req.viewer) return res.json(memStore);
+  // Familia/amigos solo ven las fotos que nadie ocultó
+  const out = {};
+  Object.keys(memStore).forEach((k) => {
+    const list = (memStore[k] || []).filter((p) => p.fam !== false);
+    if (list.length) out[k] = list;
+  });
+  res.json(out);
+});
 
 app.post('/api/memory', (req, res) => {
   const { actKey, photo, who } = req.body;
   if (!actKey || !photo) return res.status(400).json({ error: 'missing fields' });
+  const memStore = req.trip.get('memory', {});
   if (!memStore[actKey]) memStore[actKey] = [];
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const id = genId();
   memStore[actKey].push({ id, photo, who: who || '?', ts: Date.now() });
-  persistMem();
+  req.trip.save('memory');
   res.json({ ok: true, id });
 });
 
 app.delete('/api/memory/:id', (req, res) => {
   const who = req.body && req.body.who;
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  if (!req.trip.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
+  const memStore = req.trip.get('memory', {});
   const { id } = req.params;
   let found = false;
   Object.keys(memStore).forEach(key => {
     const idx = memStore[key].findIndex(p => p.id === id);
     if (idx !== -1) { memStore[key].splice(idx, 1); found = true; }
   });
-  if (found) { persistMem(); res.json({ ok: true }); }
+  if (found) { req.trip.save('memory'); res.json({ ok: true }); }
   else res.status(404).json({ error: 'not found' });
 });
 
@@ -213,6 +686,7 @@ app.delete('/api/memory/:id', (req, res) => {
 app.post('/api/memory/:id/visibility', (req, res) => {
   const { fam } = req.body;
   if (typeof fam !== 'boolean') return res.status(400).json({ error: 'missing fields' });
+  const memStore = req.trip.get('memory', {});
   const { id } = req.params;
   let found = null;
   Object.keys(memStore).forEach(key => {
@@ -221,39 +695,34 @@ app.post('/api/memory/:id/visibility', (req, res) => {
   });
   if (!found) return res.status(404).json({ error: 'not found' });
   if (fam) delete found.fam; else found.fam = false;
-  persistMem();
+  req.trip.save('memory');
   res.json({ ok: true });
 });
 
 // ── Gastos compartidos entre todos los del viaje ───────────────────────────
-const EXP_FILE = path.join(DATA_DIR, 'expenses.json');
-let expStore = [];
-try { expStore = JSON.parse(fs.readFileSync(EXP_FILE, 'utf8')); } catch (e) {}
-function persistExp() {
-  try { fs.writeFileSync(EXP_FILE, JSON.stringify(expStore)); } catch (e) {}
-}
-
-app.get('/api/expenses', (req, res) => res.json(expStore));
+app.get('/api/expenses', (req, res) => res.json(req.trip.get('expenses', [])));
 
 app.post('/api/expenses', (req, res) => {
   const { desc, amt, who, split, cat } = req.body;
   if (!desc || typeof amt !== 'number' || amt <= 0 || who === undefined) {
     return res.status(400).json({ error: 'missing fields' });
   }
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const expStore = req.trip.get('expenses', []);
+  const id = genId();
   const expense = { id, desc, amt, who, split: Array.isArray(split) ? split : [], cat: cat || 'other', ts: Date.now() };
   expStore.push(expense);
-  persistExp();
+  req.trip.save('expenses');
   res.json({ ok: true, expense });
 });
 
 app.delete('/api/expenses/:id', (req, res) => {
   const who = req.body && req.body.who;
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  if (!req.trip.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
+  const expStore = req.trip.get('expenses', []);
   const idx = expStore.findIndex((e) => e.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   expStore.splice(idx, 1);
-  persistExp();
+  req.trip.save('expenses');
   res.json({ ok: true });
 });
 
@@ -263,6 +732,7 @@ app.delete('/api/expenses/:id', (req, res) => {
 // quede rastro de que hubo un cambio de precio (quién lo pagó/con quién se
 // divide se puede corregir sin dejar rastro, eso no es un "cambio de precio").
 app.patch('/api/expenses/:id', (req, res) => {
+  const expStore = req.trip.get('expenses', []);
   const idx = expStore.findIndex((e) => e.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   const prev = expStore[idx];
@@ -277,7 +747,7 @@ app.patch('/api/expenses/:id', (req, res) => {
     next.amt = amt;
   }
   expStore[idx] = next;
-  persistExp();
+  req.trip.save('expenses');
   res.json({ ok: true, expense: next });
 });
 
@@ -285,79 +755,68 @@ app.patch('/api/expenses/:id', (req, res) => {
 app.post('/api/expenses/:id/receipts', (req, res) => {
   const { photo, name, type } = req.body;
   if (!photo) return res.status(400).json({ error: 'missing fields' });
-  const exp = expStore.find((e) => e.id === req.params.id);
+  const exp = req.trip.get('expenses', []).find((e) => e.id === req.params.id);
   if (!exp) return res.status(404).json({ error: 'not found' });
   if (!exp.receipts) exp.receipts = [];
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const id = genId();
   const receipt = { id, photo, name: name || '', type: type || '', ts: Date.now() };
   exp.receipts.push(receipt);
-  persistExp();
+  req.trip.save('expenses');
   res.json({ ok: true, receipt });
 });
 
 app.delete('/api/expenses/:id/receipts/:rid', (req, res) => {
   const who = req.body && req.body.who;
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
-  const exp = expStore.find((e) => e.id === req.params.id);
+  if (!req.trip.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
+  const exp = req.trip.get('expenses', []).find((e) => e.id === req.params.id);
   if (!exp || !exp.receipts) return res.status(404).json({ error: 'not found' });
   const idx = exp.receipts.findIndex((r) => r.id === req.params.rid);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   exp.receipts.splice(idx, 1);
-  persistExp();
+  req.trip.save('expenses');
   res.json({ ok: true });
 });
 
 // ── Pagos entre personas para liquidar deudas del viaje ────────────────────
 // No son gastos del viaje (no cuentan para el total gastado) — solo ajustan
 // los saldos cuando alguien ya le pagó a quien adelantó el dinero.
-const SETTLE_FILE = path.join(DATA_DIR, 'settlements.json');
-let settleStore = [];
-try { settleStore = JSON.parse(fs.readFileSync(SETTLE_FILE, 'utf8')); } catch (e) {}
-function persistSettle() {
-  try { fs.writeFileSync(SETTLE_FILE, JSON.stringify(settleStore)); } catch (e) {}
-}
-
-app.get('/api/settlements', (req, res) => res.json(settleStore));
+app.get('/api/settlements', (req, res) => res.json(req.trip.get('settlements', [])));
 
 app.post('/api/settlements', (req, res) => {
   const { from, to, amt } = req.body;
   if (typeof from !== 'number' || typeof to !== 'number' || typeof amt !== 'number' || amt <= 0) {
     return res.status(400).json({ error: 'missing fields' });
   }
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const settleStore = req.trip.get('settlements', []);
+  const id = genId();
   const settlement = { id, from, to, amt, ts: Date.now() };
   settleStore.push(settlement);
-  persistSettle();
+  req.trip.save('settlements');
   res.json({ ok: true, settlement });
 });
 
 app.delete('/api/settlements/:id', (req, res) => {
   const who = req.body && req.body.who;
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  if (!req.trip.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
+  const settleStore = req.trip.get('settlements', []);
   const idx = settleStore.findIndex((s) => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   settleStore.splice(idx, 1);
-  persistSettle();
+  req.trip.save('settlements');
   res.json({ ok: true });
 });
 
 // ── Perfiles (fecha de nacimiento, dirección, contacto de emergencia) ─────
 // Compartido entre todos para que el admin pueda ver los contactos de
 // emergencia de cada quien en caso de necesitarlos durante el viaje.
-const PROF_FILE = path.join(DATA_DIR, 'profiles.json');
-let profStore = {};
-try { profStore = JSON.parse(fs.readFileSync(PROF_FILE, 'utf8')); } catch (e) {}
-function persistProf() {
-  try { fs.writeFileSync(PROF_FILE, JSON.stringify(profStore)); } catch (e) {}
-}
-
-app.get('/api/profiles', (req, res) => res.json(profStore));
+app.get('/api/profiles', (req, res) => res.json(req.trip.get('profiles', {})));
 
 app.post('/api/profiles', (req, res) => {
   const { idx, data } = req.body;
   if (idx === undefined || !data || typeof data !== 'object') {
     return res.status(400).json({ error: 'missing fields' });
   }
+  const profStore = req.trip.get('profiles', {});
   // Se hace merge campo por campo (no un reemplazo completo) — así una
   // subida de foto por sí sola no borra el resto del perfil, y viceversa.
   const prev = profStore[idx] || {};
@@ -371,7 +830,7 @@ app.post('/api/profiles', (req, res) => {
     ecPhone: pick('ecPhone'),
     photo: pick('photo'),
   };
-  persistProf();
+  req.trip.save('profiles');
   res.json({ ok: true });
 });
 
@@ -379,6 +838,7 @@ app.post('/api/profiles', (req, res) => {
 // cumpleaños ni dirección de nadie, solo lo que hace falta para que
 // familia/amigos puedan llamar al contacto de emergencia de cada quien.
 app.get('/api/public-contacts', (req, res) => {
+  const profStore = req.trip.get('profiles', {});
   const out = {};
   Object.keys(profStore).forEach((idx) => {
     const p = profStore[idx] || {};
@@ -895,24 +1355,19 @@ app.get('/api/geocode-check', async (req, res) => {
 // Antes esto vivía solo en el localStorage de cada teléfono, así que lo que
 // el admin armaba no lo veía nadie más. Ahora es del servidor, como los
 // gastos y las reservaciones.
-const ITIN_FILE = path.join(DATA_DIR, 'itinerary.json');
-let itinStore = {};   // { "0": { city, acts:[...] }, ... }
-try { itinStore = JSON.parse(fs.readFileSync(ITIN_FILE, 'utf8')); } catch (e) {}
-function persistItin() {
-  try { fs.writeFileSync(ITIN_FILE, JSON.stringify(itinStore)); } catch (e) {}
-}
-
-app.get('/api/itinerary', (req, res) => res.json(itinStore));
+// Forma: { "0": { city, acts:[...] }, ... }
+app.get('/api/itinerary', (req, res) => res.json(req.trip.get('itinerary', {})));
 
 app.post('/api/itinerary', (req, res) => {
   const { idx, city, acts, who } = req.body || {};
   const i = parseInt(idx, 10);
-  if (!Number.isInteger(i) || i < 0 || i > 60) {
+  if (!Number.isInteger(i) || i < 0 || i > MAX_DAYS) {
     return res.status(400).json({ error: 'bad day index' });
   }
-  if (who !== ADMIN_NAME) {
+  if (!req.trip.isAdmin(who)) {
     return res.status(403).json({ error: 'solo el admin puede editar el itinerario' });
   }
+  const itinStore = req.trip.get('itinerary', {});
   const entry = itinStore[i] || {};
   if (typeof city === 'string') entry.city = city.slice(0, 120);
   if (Array.isArray(acts)) {
@@ -935,79 +1390,70 @@ app.post('/api/itinerary', (req, res) => {
     });
   }
   itinStore[i] = entry;
-  persistItin();
+  req.trip.save('itinerary');
   res.json({ ok: true, entry });
 });
 
 // Borra el itinerario completo para empezar de cero. Solo el admin.
+// (El caché de ubicaciones ya no se limpia aquí: es compartido entre todos
+// los viajes y las coordenadas de un lugar no cambian.)
 app.delete('/api/itinerary', (req, res) => {
   const who = req.body && req.body.who;
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
-  const dias = Object.keys(itinStore).length;
-  itinStore = {};
-  persistItin();
-  // También se limpia el caché de ubicaciones: si el viaje cambia por
-  // completo, las coordenadas viejas ya no sirven de nada.
-  geoCache = {};
-  persistGeo();
+  if (!req.trip.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
+  const dias = Object.keys(req.trip.get('itinerary', {})).length;
+  req.trip.set('itinerary', {});
   res.json({ ok: true, borrados: dias });
 });
 
 // ── Ubicación en vivo del grupo (opt-in por persona) ───────────────────────
-const LIVELOC_FILE = path.join(DATA_DIR, 'live-locations.json');
-let liveLocStore = {};
-try { liveLocStore = JSON.parse(fs.readFileSync(LIVELOC_FILE, 'utf8')); } catch (e) {}
-function persistLiveLoc() {
-  try { fs.writeFileSync(LIVELOC_FILE, JSON.stringify(liveLocStore)); } catch (e) {}
-}
-
-app.get('/api/live-locations', (req, res) => res.json(liveLocStore));
+app.get('/api/live-locations', (req, res) => res.json(req.trip.get('live-locations', {})));
 
 app.post('/api/live-locations', (req, res) => {
   const { who, lat, lon } = req.body;
   if (!who || typeof lat !== 'number' || typeof lon !== 'number') {
     return res.status(400).json({ error: 'missing fields' });
   }
+  const liveLocStore = req.trip.get('live-locations', {});
   liveLocStore[who] = { lat, lon, ts: Date.now() };
-  persistLiveLoc();
+  req.trip.save('live-locations');
   res.json({ ok: true });
 });
 
 app.delete('/api/live-locations/:who', (req, res) => {
+  const liveLocStore = req.trip.get('live-locations', {});
   delete liveLocStore[req.params.who];
-  persistLiveLoc();
+  req.trip.save('live-locations');
   res.json({ ok: true });
 });
 
 // ── Enlace para que familiares y amigos sigan el viaje en vivo ─────────────
 // No tienen perfil ni PIN — el "acceso" es un token largo al azar en la URL
-// (/seguir/<token>), igual de expuesto que el resto de la API (que ya es
-// pública sin autenticación) pero no adivinable ni linkeado desde ningún
-// lado salvo el botón "Compartir" en Mi Perfil. El admin puede invalidarlo
-// generando uno nuevo si se comparte de más.
-const VIEWER_FILE = path.join(DATA_DIR, 'viewer.json');
-let viewerToken = null;
-try { viewerToken = JSON.parse(fs.readFileSync(VIEWER_FILE, 'utf8')).token; } catch (e) {}
-function persistViewerToken() {
-  try { fs.writeFileSync(VIEWER_FILE, JSON.stringify({ token: viewerToken })); } catch (e) {}
-}
-if (!viewerToken) {
-  viewerToken = crypto.randomBytes(24).toString('hex');
-  persistViewerToken();
-}
-
-app.get('/api/viewer-token', (req, res) => res.json({ token: viewerToken }));
+// (/seguir/<token>), que solo deja leer lo que esa página muestra. Cada viaje
+// tiene el suyo. El admin puede invalidarlo generando uno nuevo si se
+// comparte de más.
+app.get('/api/viewer-token', (req, res) => res.json({ token: req.trip.meta.viewerToken }));
 
 app.post('/api/viewer-token/regenerate', (req, res) => {
+  const t = req.trip;
   const who = req.body && req.body.who;
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
-  viewerToken = crypto.randomBytes(24).toString('hex');
-  persistViewerToken();
-  res.json({ ok: true, token: viewerToken });
+  if (!t.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
+  unindexTrip(t);
+  t.meta.viewerToken = crypto.randomBytes(24).toString('hex');
+  t.saveMeta();
+  indexTrip(t);
+  res.json({ ok: true, token: t.meta.viewerToken });
 });
 
+// Además de validar el token, le da a la página de "seguir" lo que necesita
+// para pintarse: nombre del viaje, fechas y viajeros.
 app.get('/api/viewer-check/:token', (req, res) => {
-  res.json({ ok: req.params.token === viewerToken });
+  const id = viewerIndex.get(req.params.token);
+  const t = id && trips.get(id);
+  if (!t) return res.json({ ok: false });
+  res.json({
+    ok: true,
+    trip: { id: t.id, name: t.cfg.name, subtitle: t.cfg.subtitle || '', start: t.cfg.start, days: t.cfg.days, persons: t.cfg.persons },
+  });
 });
 
 app.get('/seguir/:token', (req, res) => {
@@ -1015,28 +1461,20 @@ app.get('/seguir/:token', (req, res) => {
 });
 
 // ── ¿Dónde dejamos el carro? (una sola ubicación compartida) ───────────────
-const CAR_FILE = path.join(DATA_DIR, 'car.json');
-let carLoc = null;
-try { carLoc = JSON.parse(fs.readFileSync(CAR_FILE, 'utf8')); } catch (e) {}
-function persistCar() {
-  try { fs.writeFileSync(CAR_FILE, JSON.stringify(carLoc)); } catch (e) {}
-}
-
-app.get('/api/car', (req, res) => res.json(carLoc));
+app.get('/api/car', (req, res) => res.json(req.trip.get('car', null)));
 
 app.post('/api/car', (req, res) => {
   const { lat, lon, who } = req.body;
   if (typeof lat !== 'number' || typeof lon !== 'number') {
     return res.status(400).json({ error: 'missing coords' });
   }
-  carLoc = { lat, lon, who: who || '?', ts: Date.now() };
-  persistCar();
+  const carLoc = { lat, lon, who: who || '?', ts: Date.now() };
+  req.trip.set('car', carLoc);
   res.json({ ok: true, carLoc });
 });
 
 app.delete('/api/car', (req, res) => {
-  carLoc = null;
-  persistCar();
+  req.trip.set('car', null);
   res.json({ ok: true });
 });
 
@@ -1045,25 +1483,19 @@ app.delete('/api/car', (req, res) => {
 // Combina las que salen del itinerario (auto-sembradas por el cliente, ya
 // que el server no interpreta el arreglo DAYS del front) con las que agregue
 // cualquiera manualmente. Compartidas entre todos.
-const RES_FILE = path.join(DATA_DIR, 'reservations.json');
-let resStore = [];
-try { resStore = JSON.parse(fs.readFileSync(RES_FILE, 'utf8')); } catch (e) {}
-function persistRes() {
-  try { fs.writeFileSync(RES_FILE, JSON.stringify(resStore)); } catch (e) {}
-}
-
-app.get('/api/reservations', (req, res) => res.json(resStore));
+app.get('/api/reservations', (req, res) => res.json(req.trip.get('reservations', [])));
 
 app.post('/api/reservations', (req, res) => {
   const { id, title, date, time, location, cost, notes, done, source, who } = req.body;
   if (!title || !date) return res.status(400).json({ error: 'missing fields' });
+  const resStore = req.trip.get('reservations', []);
   const idx = resStore.findIndex((r) => r.id === id);
   const isNewCustom = idx === -1 && (source || 'custom') === 'custom';
-  if (isNewCustom && who !== ADMIN_NAME) {
+  if (isNewCustom && !req.trip.isAdmin(who)) {
     return res.status(403).json({ error: 'solo el admin puede agregar reservaciones' });
   }
   const item = {
-    id: id || `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    id: id || genId(),
     title, date,
     time: time || '',
     location: location || '',
@@ -1075,46 +1507,57 @@ app.post('/api/reservations', (req, res) => {
   };
   if (idx === -1) resStore.push(item);
   else resStore[idx] = Object.assign({}, resStore[idx], item, { ts: resStore[idx].ts });
-  persistRes();
+  req.trip.save('reservations');
   res.json({ ok: true, item });
 });
 
 app.delete('/api/reservations/:id', (req, res) => {
   const who = req.body && req.body.who;
-  if (who !== ADMIN_NAME) return res.status(403).json({ error: 'not authorized' });
+  if (!req.trip.isAdmin(who)) return res.status(403).json({ error: 'not authorized' });
+  const resStore = req.trip.get('reservations', []);
   const idx = resStore.findIndex((r) => r.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'not found' });
   resStore.splice(idx, 1);
-  persistRes();
+  req.trip.save('reservations');
   res.json({ ok: true });
 });
 
 // ── Push diario 10am — cuenta regresiva al viaje + recordatorio de reservas ─
+// Se recorre cada viaje con su propia fecha de salida y sus suscripciones.
 cron.schedule('0 10 * * *', async () => {
-  const tripStart = new Date('2026-09-02T00:00:00-06:00');
   const now = new Date();
-  if (now < tripStart) {
-    const dLeft = Math.ceil((tripStart - now) / (1000 * 60 * 60 * 24));
-    await sendPushToAll({
-      title: 'Alta Vibra · California 2026',
-      body: `Faltan ${dLeft} día${dLeft === 1 ? '' : 's'} para tu viaje`
-    });
-  }
+  for (const t of trips.values()) {
+    try {
+      const subs = t.get('subscriptions', []);
+      if (!subs.length) continue;
+      const title = 'Alta Vibra Travel · ' + t.cfg.name;
+      const tripStart = new Date(t.cfg.start + 'T00:00:00-06:00');
+      if (now < tripStart) {
+        const dLeft = Math.ceil((tripStart - now) / (1000 * 60 * 60 * 24));
+        await sendPushToAll(t, {
+          title,
+          body: `Faltan ${dLeft} día${dLeft === 1 ? '' : 's'} para tu viaje`
+        });
+      }
 
-  const soonMs = 5 * 24 * 60 * 60 * 1000;
-  const pending = resStore.filter((r) => {
-    if (r.done) return false;
-    const d = new Date(r.date + 'T12:00:00-06:00');
-    const diff = d - now;
-    return diff > -12 * 60 * 60 * 1000 && diff <= soonMs;
-  });
-  if (pending.length) {
-    const names = pending.map((r) => r.title).join(', ');
-    await sendPushToAll({
-      title: 'Alta Vibra · Reservaciones pendientes',
-      body: `Faltan pocos días para: ${names}. ¡Resérvalo antes de que se ocupe!`
-    });
+      const soonMs = 5 * 24 * 60 * 60 * 1000;
+      const pending = t.get('reservations', []).filter((r) => {
+        if (r.done) return false;
+        const d = new Date(r.date + 'T12:00:00-06:00');
+        const diff = d - now;
+        return diff > -12 * 60 * 60 * 1000 && diff <= soonMs;
+      });
+      if (pending.length) {
+        const names = pending.map((r) => r.title).join(', ');
+        await sendPushToAll(t, {
+          title: 'Alta Vibra Travel · Reservaciones pendientes',
+          body: `Faltan pocos días para: ${names}. ¡Resérvalo antes de que se ocupe!`
+        });
+      }
+    } catch (e) {
+      console.error('Push diario falló para', t.id, e.message);
+    }
   }
 }, { timezone: 'America/Mexico_City' });
 
-app.listen(PORT, () => console.log(`Alta Vibra · puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Alta Vibra Travel · puerto ${PORT}`));

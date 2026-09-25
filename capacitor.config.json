@@ -1,6 +1,6 @@
 {
   "appId": "com.altavibra.california2026",
-  "appName": "Alta Vibra",
+  "appName": "Alta Vibra Travel",
   "webDir": "public",
   "server": {
     "url": "https://california2026-production.up.railway.app",

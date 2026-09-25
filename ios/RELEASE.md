@@ -1,4 +1,4 @@
-# Subir Alta Vibra al App Store (sin Xcode)
+# Subir Alta Vibra Travel al App Store (sin Xcode)
 
 Esto compila y sube la app a App Store Connect usando una Mac en la nube
 (GitHub Actions), así que no hace falta instalar Xcode en tu laptop. Todo lo
@@ -21,7 +21,7 @@ Una vez adentro, entra a https://developer.apple.com/account y anota tu
 
 En https://developer.apple.com/account/resources/identifiers/list :
 1. "+" → "App IDs" → "App".
-2. Description: `Alta Vibra`.
+2. Description: `Alta Vibra Travel`.
 3. Bundle ID: **explicit**, escribe `com.altavibra.california2026` (tiene
    que ser exacto, así ya está configurado en el proyecto).
 4. Capabilities: no hace falta marcar nada especial por ahora.
@@ -31,7 +31,7 @@ En https://developer.apple.com/account/resources/identifiers/list :
 
 En https://appstoreconnect.apple.com → Apps → "+" → "New App":
 - Plataforma: iOS
-- Nombre: `Alta Vibra`
+- Nombre: `Alta Vibra Travel`
 - Idioma principal: Español
 - Bundle ID: elige `com.altavibra.california2026` (el que acabas de crear)
 - SKU: cualquier texto único, por ejemplo `altavibra2026`
