@@ -617,6 +617,48 @@ function esc(s){
 }
 function lsGet(k, def){ try{ var v = localStorage.getItem(k); return v===null ? def : JSON.parse(v); }catch(e){ return def; } }
 function lsSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+// Mismo freno anti-bucle que index.html (comparten el contador): si la app
+// ya brincó sola demasiadas veces seguidas, aquí se para y se avisa.
+function tripHop(){
+  try{
+    var now = Date.now();
+    var hops = JSON.parse(sessionStorage.getItem('tripapp_hops')||'[]').filter(function(t){ return now-t < 20000; });
+    hops.push(now);
+    sessionStorage.setItem('tripapp_hops', JSON.stringify(hops));
+    return hops.length <= 4;
+  }catch(e){ return true; }
+}
+function goApp(){
+  if(tripHop()) { location.replace('/'); return true; }
+  showLoopMsg();
+  return false;
+}
+function showLoopMsg(){
+  var el = document.getElementById('top-msg');
+  el.innerHTML = '<div class="msg msg-err">La app se estaba recargando sola una y otra vez, así que la detuvimos aquí. '+
+    'Revisa tu conexión y vuelve a intentar.<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+    '<button class="btn btn-sun" style="min-height:42px;padding:8px 16px" onclick="retryApp()">Reintentar</button>'+
+    '<button class="btn" style="min-height:42px;padding:8px 16px" onclick="resetTrip()">Empezar de cero</button></div></div>';
+}
+function retryApp(){
+  try{ sessionStorage.removeItem('tripapp_hops'); }catch(e){}
+  location.replace('/');
+}
+// Olvida el viaje actual en este teléfono (no borra nada del servidor)
+function resetTrip(){
+  try{
+    sessionStorage.removeItem('tripapp_hops');
+    localStorage.removeItem('tripapp_auth');
+    localStorage.removeItem('tripapp_cfg');
+  }catch(e){}
+  location.replace('/inicio.html?switch=1');
+}
+// El viaje guardado sirve solo si está completo (mismo criterio que index.html)
+function hasValidTrip(){
+  var a = lsGet('tripapp_auth', null), c = lsGet('tripapp_cfg', null);
+  return !!(a && c && c.start && c.id && a.id===c.id && a.code);
+}
+
 var REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 var MONTHS_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -660,10 +702,17 @@ function enterTrip(trip, quiet){
   var list = lsGet('tripapp_trips', []).filter(function(t){ return t.id!==trip.id; });
   list.unshift({id: trip.id, code: trip.code, name: trip.name, start: trip.start, days: trip.days});
   lsSet('tripapp_trips', list.slice(0, 20));
-  if(quiet || REDUCED){ location.replace('/'); return; }
+  // Si este teléfono no dejó guardar el viaje (almacenamiento lleno o
+  // bloqueado), ir a la app solo haría que regresara aquí sin fin.
+  if(!hasValidTrip()){
+    showMsg('top-msg', 'Este teléfono no dejó guardar el viaje. Revisa que no estés en modo privado y que haya espacio libre, y vuelve a intentar.');
+    closeSheets(true);
+    return;
+  }
+  if(quiet || REDUCED){ goApp(); return; }
   document.getElementById('takeoff-txt').textContent = trip.name;
   document.getElementById('takeoff').classList.add('go');
-  setTimeout(function(){ location.replace('/'); }, 1300);
+  setTimeout(function(){ if(!goApp()) document.getElementById('takeoff').classList.remove('go'); }, 1300);
 }
 
 async function openKnownTrip(id){
@@ -964,13 +1013,17 @@ function observeReveals(){
 // ── Arranque ───────────────────────────────────────────────────────────────
 (async function(){
   var q = new URLSearchParams(location.search);
-  var hasAuth = !!lsGet('tripapp_auth', null) && !!lsGet('tripapp_cfg', null);
+  var hasAuth = hasValidTrip();
+  if(q.has('loop')){
+    renderMyTrips(); observeReveals(); loadExamples(); showLoopMsg();
+    return;
+  }
 
   // Teléfonos que ya usaban la app (California 2026) antes de que hubiera
   // varios viajes: se meten solos al viaje de siempre, sin pedir código.
   var legacyUser = false;
   try{ legacyUser = localStorage.getItem('ca26_me')!==null; }catch(e){}
-  if(!hasAuth && legacyUser && !q.has('switch') && !q.has('code') && !q.has('invalid')){
+  if(!hasAuth && legacyUser && !q.has('switch') && !q.has('code')){
     try{
       var j = await api('/api/trips/legacy-join', {method:'POST'});
       enterTrip(j.trip, true);
@@ -979,7 +1032,7 @@ function observeReveals(){
   }
 
   // Si ya hay un viaje elegido y no vinieron a cambiarlo, directo a la app
-  if(hasAuth && !q.has('switch') && !q.has('code')){ location.replace('/'); return; }
+  if(hasAuth && !q.has('switch') && !q.has('code')){ if(goApp()) return; }
 
   if(q.has('invalid')) showMsg('top-msg', 'El código de tu viaje cambió o el viaje ya no existe. Pídele el código nuevo a quien lo organiza.');
   renderMyTrips();

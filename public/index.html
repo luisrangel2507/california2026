@@ -23,10 +23,26 @@
       TRIP = JSON.parse(localStorage.getItem('tripapp_cfg')||'null');
       TRIP_AUTH = JSON.parse(localStorage.getItem('tripapp_auth')||'null');
     }catch(e){}
+    // Freno anti-bucle: si en 20 segundos la app ya brincó sola más de 4
+    // veces (entre esta página y /inicio.html, o recargando), algo anda mal
+    // — en vez de seguir brincando para siempre, se para en /inicio.html
+    // con un aviso y un botón para reintentar.
+    function tripHop(){
+      try{
+        var now = Date.now();
+        var hops = JSON.parse(sessionStorage.getItem('tripapp_hops')||'[]').filter(function(t){ return now-t < 20000; });
+        hops.push(now);
+        sessionStorage.setItem('tripapp_hops', JSON.stringify(hops));
+        return hops.length <= 4;
+      }catch(e){ return true; }
+    }
+    function tripGo(url){
+      location.replace(tripHop() ? url : '/inicio.html?loop=1');
+    }
     var TRIP_REDIRECTING = !TRIP || !TRIP_AUTH || !TRIP.start || TRIP.id!==TRIP_AUTH.id;
     if(TRIP_REDIRECTING){
       document.documentElement.style.visibility='hidden';
-      location.replace('/inicio.html');
+      tripGo('/inicio.html');
       // Config de relleno para que el script principal no truene mientras
       // el navegador cambia de página.
       TRIP = {id:'', name:'', subtitle:'', start:'2000-01-01', days:1, persons:[''], admin:'', checkpoints:[], budget:[]};
@@ -52,6 +68,31 @@
       // dice que ya no es válido (el admin cambió el código, p. ej.), se
       // regresa a la pantalla de inicio.
       var _fetch = window.fetch;
+      var invalidHandled = false;
+      // El código del viaje ya no sirve. En el viaje original casi siempre es
+      // porque el servidor se reinició y el código cambió: se vuelve a entrar
+      // solo, sin que nadie tenga que escribir nada. Si no, a la pantalla de
+      // inicio a pedir el código nuevo.
+      function tripInvalid(){
+        if(invalidHandled) return;
+        invalidHandled = true;
+        var auth = TRIP_AUTH;
+        var drop = function(){
+          try{ localStorage.removeItem('tripapp_auth'); localStorage.removeItem('tripapp_cfg'); }catch(e){}
+          tripGo('/inicio.html?invalid=1');
+        };
+        if(!auth || auth.id!=='california2026'){ drop(); return; }
+        _fetch.call(window, '/api/trips/legacy-join', {method:'POST'}).then(function(r){
+          return r.ok ? r.json() : null;
+        }).then(function(j){
+          if(!j || !j.trip || j.trip.code===auth.code){ drop(); return; }
+          try{
+            localStorage.setItem('tripapp_auth', JSON.stringify({id:j.trip.id, code:j.trip.code}));
+            localStorage.setItem('tripapp_cfg', JSON.stringify(j.trip));
+          }catch(e){ drop(); return; }
+          tripGo(location.pathname);
+        }).catch(drop);
+      }
       window.fetch = function(input, init){
         var url = typeof input==='string' ? input : '';
         if(!TRIP_AUTH || url.indexOf('/api/')!==0) return _fetch.call(this, input, init);
@@ -61,13 +102,7 @@
         h.set('X-Trip-Code', TRIP_AUTH.code);
         init.headers = h;
         return _fetch.call(this, input, init).then(function(res){
-          if(res.status===401 && res.headers.get('X-Trip-Invalid')){
-            try{
-              localStorage.removeItem('tripapp_auth');
-              localStorage.removeItem('tripapp_cfg');
-            }catch(e){}
-            location.replace('/inicio.html?invalid=1');
-          }
+          if(res.status===401 && res.headers.get('X-Trip-Invalid')) tripInvalid();
           return res;
         });
       };
@@ -3075,12 +3110,15 @@ function tripStructKey(t){
 function applyTripConfig(fresh){
   if(!fresh || fresh.id!==TRIP.id) return;
   var needsReload = tripStructKey(fresh)!==tripStructKey(TRIP);
-  try{ localStorage.setItem('tripapp_cfg', JSON.stringify(fresh)); }catch(e){}
+  var saved = true;
+  try{ localStorage.setItem('tripapp_cfg', JSON.stringify(fresh)); }catch(e){ saved = false; }
   if(fresh.code && TRIP_AUTH && fresh.code!==TRIP_AUTH.code){
     TRIP_AUTH.code = fresh.code;
     try{ localStorage.setItem('tripapp_auth', JSON.stringify(TRIP_AUTH)); }catch(e){}
   }
-  if(needsReload){ location.reload(); return; }
+  // Solo se recarga si la versión nueva quedó guardada (si no, volvería a
+  // cargar la vieja y a recargar sin fin) y si el freno anti-bucle lo permite.
+  if(needsReload && saved && tripHop()){ location.reload(); return; }
   var namesChanged = JSON.stringify(fresh.persons)!==JSON.stringify(persons) || fresh.name!==TRIP.name ||
     fresh.subtitle!==TRIP.subtitle || fresh.admin!==TRIP.admin;
   TRIP = fresh;
@@ -8232,10 +8270,18 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange', function(){
     if(!habiaSW || recargando) return;   // primera instalación: no hay nada viejo que tirar
     recargando = true;
-    window.location.reload();
+    if(tripHop()) window.location.reload();
   });
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('/sw.js').then(function(reg){
+      // Una versión nueva que se quedó "esperando" (pasa en iOS) toma el
+      // control ya, en vez de hasta que se cierre la app por completo.
+      var nudge = function(){ if(reg.waiting) reg.waiting.postMessage('skipWaiting'); };
+      nudge();
+      reg.addEventListener('updatefound', function(){
+        var w = reg.installing;
+        if(w) w.addEventListener('statechange', function(){ if(w.state==='installed') nudge(); });
+      });
       // Se pregunta al servidor al abrir y cada media hora, por si la app se
       // quedó abierta en segundo plano durante el viaje. Con datos móviles
       // esto puede fallar por señal débil — no es un error real de la app,
