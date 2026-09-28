@@ -1,4 +1,4 @@
-const CACHE = 'av26-v205';
+const CACHE = 'av26-v208';
 
 const PRECACHE = [
   '/',
@@ -18,6 +18,11 @@ self.addEventListener('install', e => {
     caches.open(CACHE).then(c => c.addAll(PRECACHE).catch(() => {}))
   );
   self.skipWaiting();
+});
+
+// La página le pide a una versión que se quedó esperando que tome el control
+self.addEventListener('message', e => {
+  if (e.data === 'skipWaiting') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
@@ -82,6 +87,22 @@ self.addEventListener('fetch', e => {
           return res;
         })
         .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Páginas (index.html, inicio.html...): red primero, caché solo sin
+  // conexión. Con caché primero, un teléfono podía quedarse corriendo la
+  // página vieja contra un servidor nuevo — y con los viajes eso ya no
+  // funciona (la página vieja no manda el código del viaje).
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res && res.ok) { const clone = res.clone(); caches.open(CACHE).then(c => c.put(e.request, clone)); }
+          return res;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match('/')))
     );
     return;
   }

@@ -138,7 +138,7 @@ class Trip {
   // Lo que ve alguien que ya es parte del viaje (incluye el código para
   // poder invitar a más gente).
   memberView() {
-    return Object.assign({ id: this.id, code: this.meta.code, sample: !!this.meta.sample }, this.meta.cfg);
+    return Object.assign({ id: this.id, code: this.meta.code, sample: !!this.meta.sample, demo: !!this.meta.demo }, this.meta.cfg);
   }
 }
 
@@ -250,6 +250,7 @@ function createTrip(cfg, opts = {}) {
     code: opts.code || uniqueCode(),
     viewerToken: opts.viewerToken || crypto.randomBytes(24).toString('hex'),
     sample: !!opts.sample,
+    demo: !!opts.demo,
     created: Date.now(),
     cfg,
   });
@@ -467,6 +468,139 @@ app.post('/api/trips/join', (req, res) => {
 // Los teléfonos que ya usaban la app antes de que existieran los viajes no
 // tienen el código guardado: se les da acceso al viaje original de una vez
 // para que no se queden fuera. LEGACY_JOIN=off lo apaga.
+// ── Demo ───────────────────────────────────────────────────────────────────
+// "Probar la demo": cada visitante recibe su propio viaje de juguete, ya a
+// media aventura (día 3 de 7), con itinerario, gastos, reservaciones y
+// amigos en el mapa. Puede tocar todo sin afectar a nadie; se borra solo a
+// las 24 horas.
+const DEMO_TTL_MS = 24 * 60 * 60 * 1000;
+function ymdInMexico(offsetDays) {
+  // Fecha de calendario en hora de México (la app es para viajeros de allá)
+  const d = new Date(Date.now() + offsetDays * 86400000);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(d);
+}
+const P = (c) => SAMPLE_CFG.checkpoints.find((x) => x.label === c).c;
+const DEMO_DAYS = [
+  { city: 'San Diego', acts: [
+    { t: '09:00', n: '🚗 Salida rumbo a la costa', note: 'Café para el camino', c: P('San Diego') },
+    { t: '11:00', n: '⛴️ Ferry a Coronado', note: 'Boletos en el muelle', c: P('Coronado') },
+    { t: '14:00', n: '🌮 Tacos en Old Town', note: '', c: [32.7549, -117.1970] },
+    { t: '19:00', n: '🌅 Atardecer en Sunset Cliffs', note: 'Llevar chamarra', c: P('Sunset Cliffs') },
+  ] },
+  { city: 'La Jolla → Los Ángeles', acts: [
+    { t: '08:30', n: '🛶 Kayak en La Jolla Cove', note: '$900 · ¡reservar!', c: P('La Jolla') },
+    { t: '12:30', n: '🥞 Brunch frente al mar', note: '', c: [32.8474, -117.2733] },
+    { t: '16:00', n: '🛣️ Manejo a Los Ángeles', note: '2 h por la 5', c: P('Palos Verdes / LA') },
+  ] },
+  { city: 'Los Ángeles', acts: [
+    { t: '09:00', n: '🔭 Griffith Observatory', note: 'La mejor vista del letrero', c: [34.1184, -118.3004] },
+    { t: '12:00', n: '⭐ Paseo de la Fama', note: '', c: P('Hollywood') },
+    { t: '15:30', n: '🎡 Santa Monica Pier', note: 'Rueda de la fortuna', c: P('Santa Monica') },
+    { t: '19:30', n: '🍝 Cena en Venice', note: 'Mesa para 4 a las 7:30', c: [33.9850, -118.4695] },
+  ] },
+  { city: 'Malibu → Santa Barbara', acts: [
+    { t: '10:00', n: '🏖️ El Matador Beach', note: '', c: P('Malibu') },
+    { t: '15:00', n: '⚓ Muelle de Santa Barbara', note: '', c: P('Santa Barbara') },
+  ] },
+  { city: 'Big Sur', acts: [
+    { t: '10:00', n: '🏞️ McWay Falls', note: 'Mirador de 10 min caminando', c: P('McWay Falls / Big Sur') },
+    { t: '13:00', n: '🌉 Bixby Bridge', note: 'Foto obligada', c: P('Bixby Bridge') },
+  ] },
+  { city: 'Monterey', acts: [
+    { t: '09:30', n: '🐋 Avistamiento de ballenas', note: '$1,100 · ¡reservar!', c: P('Monterey') },
+    { t: '14:00', n: '🐠 Monterey Bay Aquarium', note: '', c: [36.6182, -121.9019] },
+  ] },
+  { city: 'San Francisco', acts: [
+    { t: '10:00', n: '🚲 Golden Gate en bici', note: '', c: [37.8199, -122.4783] },
+    { t: '15:00', n: '🏝️ Alcatraz', note: '$850 · ¡reservar!', c: [37.8267, -122.4230] },
+    { t: '19:00', n: '⛴️ Ferry al atardecer', note: '', c: P('San Francisco') },
+  ] },
+];
+
+// `today` es la fecha del teléfono (así siempre cae en el día 3 sin importar
+// el huso horario); si no viene o está muy lejos de la real, se usa México.
+function createDemoTrip(today) {
+  let start = ymdInMexico(-2);
+  if (isValidDateStr(today) && Math.abs(new Date(today + 'T12:00:00Z') - Date.now()) < 2 * 86400000) {
+    const d = new Date(today + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 2);
+    start = d.toISOString().slice(0, 10);
+  }
+  const t = createTrip({
+    name: 'Road trip California',
+    subtitle: 'Demo',
+    start,
+    days: DEMO_DAYS.length,
+    persons: ['Tú', 'Ana', 'Diego', 'Sofi'],
+    admin: 'Tú',
+    checkpoints: SAMPLE_CFG.checkpoints.filter((c) => !/Tijuana|↩/.test(c.label)),
+    budget: [
+      { e: '🏨', n: 'Hoteles (6 noches)', t: 33600, p: 8400 },
+      { e: '🚗', n: 'Renta de camioneta', t: 9800, p: 2450 },
+      { e: '⛽', n: 'Gasolina', t: 4200, p: 1050 },
+      { e: '🍽️', n: 'Comida', t: 16000, p: 4000 },
+      { e: '🎟️', n: 'Actividades', t: 11400, p: 2850 },
+    ],
+  }, { demo: true });
+
+  const itin = {};
+  DEMO_DAYS.forEach((d, i) => { itin[i] = { city: d.city, acts: d.acts.map((a) => Object.assign({ cs: 'link' }, a)) }; });
+  t.set('itinerary', itin);
+
+  // Gastos ya hechos en el viaje (a partir de la salida del día 1)
+  const day0 = new Date(start + 'T09:00:00-06:00').getTime();
+  const h = 3600000;
+  let n = 0;
+  const exp = (desc, amt, who, cat, at) => ({ id: 'demo' + (++n), desc, amt, who, split: [0, 1, 2, 3], cat, ts: day0 + at });
+  t.set('expenses', [
+    exp('Hotel San Diego (2 noches)', 8400, 0, 'hotel', -30 * 24 * h),
+    exp('Gasolina', 1200, 1, 'trans', 1 * h),
+    exp('Ferry a Coronado', 380, 3, 'trans', 2 * h),
+    exp('Tacos en Old Town', 640, 2, 'food', 5 * h),
+    exp('Kayak en La Jolla', 3600, 0, 'fun', 24 * h),
+    exp('Brunch', 920, 1, 'food', 27 * h),
+    exp('Estacionamiento Griffith', 250, 2, 'trans', 48 * h),
+  ]);
+  t.set('settlements', [{ id: 'demos1', from: 3, to: 0, amt: 1500, ts: day0 + 30 * h }]);
+
+  const dayDate = (i) => { const d = new Date(start + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + i); return d.toISOString().slice(0, 10); };
+  t.set('reservations', [
+    { id: 'itin-1-0', title: 'Kayak en La Jolla Cove', date: dayDate(1), time: '08:30', location: 'La Jolla', cost: '$900', notes: '', done: true, source: 'itin', ts: Date.now() },
+    { id: 'itin-5-0', title: 'Avistamiento de ballenas', date: dayDate(5), time: '09:30', location: 'Monterey', cost: '$1,100', notes: '', done: false, source: 'itin', ts: Date.now() },
+    { id: 'itin-6-1', title: 'Alcatraz', date: dayDate(6), time: '15:00', location: 'San Francisco', cost: '$850', notes: 'Se agotan rápido', done: false, source: 'itin', ts: Date.now() },
+  ]);
+
+  // Los amigos aparecen en el mapa por Los Ángeles
+  const now = Date.now();
+  t.set('live-locations', {
+    Ana: { lat: 34.1190, lon: -118.3010, ts: now },
+    Diego: { lat: 34.1176, lon: -118.2998, ts: now },
+    Sofi: { lat: 34.1015, lon: -118.3265, ts: now },
+  });
+  t.set('car', { lat: 34.1170, lon: -118.3020, who: 'Diego', ts: now - 2 * h });
+  return t;
+}
+
+app.post('/api/trips/demo', (req, res) => {
+  if (!rateLimit('demo:' + clientIp(req), 20, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Demasiadas demos, intenta más tarde' });
+  }
+  res.json({ ok: true, trip: createDemoTrip((req.body || {}).today).memberView() });
+});
+
+// Limpieza: las demos viejas se borran solas
+function purgeDemos() {
+  const now = Date.now();
+  trips.forEach((t) => {
+    if (!t.meta.demo || now - (t.meta.created || 0) < DEMO_TTL_MS) return;
+    unindexTrip(t);
+    trips.delete(t.id);
+    try { fs.rmSync(t.dir, { recursive: true, force: true }); } catch (e) {}
+  });
+}
+purgeDemos();
+setInterval(purgeDemos, 60 * 60 * 1000).unref();
+
 app.post('/api/trips/legacy-join', (req, res) => {
   if (String(process.env.LEGACY_JOIN || '').toLowerCase() === 'off') {
     return res.status(403).json({ error: 'off' });

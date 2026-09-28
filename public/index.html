@@ -23,10 +23,26 @@
       TRIP = JSON.parse(localStorage.getItem('tripapp_cfg')||'null');
       TRIP_AUTH = JSON.parse(localStorage.getItem('tripapp_auth')||'null');
     }catch(e){}
+    // Freno anti-bucle: si en 20 segundos la app ya brincó sola más de 4
+    // veces (entre esta página y /inicio.html, o recargando), algo anda mal
+    // — en vez de seguir brincando para siempre, se para en /inicio.html
+    // con un aviso y un botón para reintentar.
+    function tripHop(){
+      try{
+        var now = Date.now();
+        var hops = JSON.parse(sessionStorage.getItem('tripapp_hops')||'[]').filter(function(t){ return now-t < 20000; });
+        hops.push(now);
+        sessionStorage.setItem('tripapp_hops', JSON.stringify(hops));
+        return hops.length <= 4;
+      }catch(e){ return true; }
+    }
+    function tripGo(url){
+      location.replace(tripHop() ? url : '/inicio.html?loop=1');
+    }
     var TRIP_REDIRECTING = !TRIP || !TRIP_AUTH || !TRIP.start || TRIP.id!==TRIP_AUTH.id;
     if(TRIP_REDIRECTING){
       document.documentElement.style.visibility='hidden';
-      location.replace('/inicio.html');
+      tripGo('/inicio.html');
       // Config de relleno para que el script principal no truene mientras
       // el navegador cambia de página.
       TRIP = {id:'', name:'', subtitle:'', start:'2000-01-01', days:1, persons:[''], admin:'', checkpoints:[], budget:[]};
@@ -52,6 +68,31 @@
       // dice que ya no es válido (el admin cambió el código, p. ej.), se
       // regresa a la pantalla de inicio.
       var _fetch = window.fetch;
+      var invalidHandled = false;
+      // El código del viaje ya no sirve. En el viaje original casi siempre es
+      // porque el servidor se reinició y el código cambió: se vuelve a entrar
+      // solo, sin que nadie tenga que escribir nada. Si no, a la pantalla de
+      // inicio a pedir el código nuevo.
+      function tripInvalid(){
+        if(invalidHandled) return;
+        invalidHandled = true;
+        var auth = TRIP_AUTH;
+        var drop = function(){
+          try{ localStorage.removeItem('tripapp_auth'); localStorage.removeItem('tripapp_cfg'); }catch(e){}
+          tripGo('/inicio.html?invalid=1');
+        };
+        if(!auth || auth.id!=='california2026'){ drop(); return; }
+        _fetch.call(window, '/api/trips/legacy-join', {method:'POST'}).then(function(r){
+          return r.ok ? r.json() : null;
+        }).then(function(j){
+          if(!j || !j.trip || j.trip.code===auth.code){ drop(); return; }
+          try{
+            localStorage.setItem('tripapp_auth', JSON.stringify({id:j.trip.id, code:j.trip.code}));
+            localStorage.setItem('tripapp_cfg', JSON.stringify(j.trip));
+          }catch(e){ drop(); return; }
+          tripGo(location.pathname);
+        }).catch(drop);
+      }
       window.fetch = function(input, init){
         var url = typeof input==='string' ? input : '';
         if(!TRIP_AUTH || url.indexOf('/api/')!==0) return _fetch.call(this, input, init);
@@ -61,13 +102,7 @@
         h.set('X-Trip-Code', TRIP_AUTH.code);
         init.headers = h;
         return _fetch.call(this, input, init).then(function(res){
-          if(res.status===401 && res.headers.get('X-Trip-Invalid')){
-            try{
-              localStorage.removeItem('tripapp_auth');
-              localStorage.removeItem('tripapp_cfg');
-            }catch(e){}
-            location.replace('/inicio.html?invalid=1');
-          }
+          if(res.status===401 && res.headers.get('X-Trip-Invalid')) tripInvalid();
           return res;
         });
       };
@@ -98,7 +133,7 @@
 
   <title>Alta Vibra Travel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Fraunces:ital,wght@0,500;0,600;1,500&family=Archivo+Black&family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Fraunces:ital,wght@0,500;0,600;1,400;1,500;1,600&family=Archivo+Black&family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2461,6 +2496,101 @@
         color: var(--text); letter-spacing: .4px;
       }
     }
+    /* ── LIFESTYLE TRAVEL — capa de estilo (va al final para ganar) ──────
+       Tipografía editorial (Fraunces), fotos que respiran (zoom lento tipo
+       Ken Burns), entradas escalonadas y acentos "golden hour". Todo se
+       apaga con prefers-reduced-motion. */
+    :root { --grad-sun: linear-gradient(120deg, #FFB547 0%, #FF7A45 55%, #FF4F6D 100%); }
+
+    /* Saludo: el nombre en serif itálica con degradado de atardecer */
+    .app-greeting .cy {
+      font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: -.3px;
+      background: var(--grad-sun); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      padding-right: .08em;
+    }
+    .app-greeting { animation: lsFadeUp .7s cubic-bezier(.22,1,.36,1) both; }
+
+    /* Fotos que respiran */
+    .pick-bg-img { animation: lsKenBurns 30s ease-in-out infinite alternate; will-change: transform; }
+    .dash-photo-hero { background: none; isolation: isolate; }
+    .dash-photo-hero::before {
+      content: ''; position: absolute; inset: -3%; z-index: -1;
+      background: url('trip-bg.jpg') center 30%/cover no-repeat;
+      animation: lsKenBurns 56s ease-in-out infinite alternate;
+      animation-delay: var(--kb-delay, 0s);
+    }
+    @keyframes lsKenBurns {
+      from { transform: scale(1.04) translate3d(0,0,0); }
+      to   { transform: scale(1.16) translate3d(-2%,-2%,0); }
+    }
+    /* Grano de película sobre la foto de Inicio */
+    .dash-photo-overlay::after {
+      content: ''; position: absolute; inset: 0; opacity: .08; pointer-events: none; mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    }
+    .dash-photo-city { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 400; font-size: 22px; letter-spacing: 0; }
+
+    /* Pantalla de "¿Quién eres?": nombre del viaje editorial y entrada escalonada */
+    .pick-trip {
+      font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 600; letter-spacing: -1.5px;
+      white-space: normal; text-wrap: balance; line-height: .95;
+      background: var(--grad-sun); -webkit-background-clip: text; background-clip: text;
+      text-shadow: none; filter: none;
+    }
+    .pick-screen.show .pick-logo-img { animation: lsFadeUp .9s cubic-bezier(.22,1,.36,1) both .05s; }
+    .pick-screen.show .pick-trip     { animation: lsFadeUp .9s cubic-bezier(.22,1,.36,1) both .15s; }
+    .pick-screen.show .pick-trip-sub { animation: lsFadeUp .9s cubic-bezier(.22,1,.36,1) both .25s; }
+    .pick-screen.show .pick-badge    { animation: lsFadeUp .8s cubic-bezier(.22,1,.36,1) both .35s; }
+    .pick-screen.show .pick-q        { animation: lsFadeUp .8s cubic-bezier(.22,1,.36,1) both .4s; }
+    .pick-screen.show .pick-card { animation: lsPop .6s cubic-bezier(.34,1.56,.64,1) both; }
+    .pick-screen.show .pick-card:nth-child(1) { animation-delay: .45s; }
+    .pick-screen.show .pick-card:nth-child(2) { animation-delay: .52s; }
+    .pick-screen.show .pick-card:nth-child(3) { animation-delay: .59s; }
+    .pick-screen.show .pick-card:nth-child(4) { animation-delay: .66s; }
+    .pick-screen.show .pick-card:nth-child(n+5) { animation-delay: .72s; }
+    .pick-card { transition: transform .2s cubic-bezier(.34,1.56,.64,1), border-color .2s, background .2s; }
+    .pick-card:hover { border-color: rgba(255,181,71,.55); background: rgba(40,24,10,.5); transform: translateY(-3px); }
+    .pick-cards { flex-wrap: wrap; }
+    .pick-card { min-width: 84px; }
+    .pick-badge { color: #FFB547; background: rgba(255,181,71,.12); border-color: rgba(255,181,71,.35); }
+    .pick-badge .dot { background: #FFB547; }
+
+    /* Entrada escalonada de Inicio al cambiar de pestaña o al entrar */
+    #dash-body.ls-intro > * { animation: lsFadeUp .7s cubic-bezier(.22,1,.36,1) both; }
+    #dash-body.ls-intro > *:nth-child(2) { animation-delay: .08s; }
+    #dash-body.ls-intro > *:nth-child(3) { animation-delay: .16s; }
+    #dash-body.ls-intro > *:nth-child(4) { animation-delay: .24s; }
+    #dash-body.ls-intro > *:nth-child(5) { animation-delay: .32s; }
+    #dash-body.ls-intro > *:nth-child(n+6) { animation-delay: .4s; }
+    .dash-section { transition: transform .3s cubic-bezier(.22,1,.36,1), border-color .3s; }
+    .dash-section:hover { transform: translateY(-2px); border-color: rgba(255,181,71,.25); }
+    .dash-section-title { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 17px; }
+
+    /* Pestaña activa con subrayado de atardecer */
+    .nav-tab.active { border-bottom-color: transparent; background-image: var(--grad-sun); background-size: 100% 2px; background-position: bottom; background-repeat: no-repeat; }
+
+    /* Píldora de la demo */
+    .demo-pill {
+      /* A la derecha del botón del traductor (abajo a la izquierda), sin taparlo */
+      position: fixed; left: 84px; bottom: calc(max(20px, env(safe-area-inset-bottom, 20px)) + 6px);
+      z-index: 9000; display: flex; align-items: center; gap: 10px; white-space: nowrap;
+      padding: 7px 7px 7px 10px; border-radius: 999px; color: #fff; font-size: 13px;
+      background: rgba(20,16,24,.82); border: 1px solid rgba(255,255,255,.16);
+      backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%);
+      box-shadow: 0 12px 34px rgba(0,0,0,.45);
+      animation: lsPillIn .7s cubic-bezier(.34,1.56,.64,1) both 1s;
+    }
+    .demo-pill-tag { font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; padding: 3px 7px; border-radius: 999px; background: var(--grad-sun); color: #1A0E05; }
+    .demo-pill button { border: none; border-radius: 999px; padding: 8px 13px; font: 600 13px 'Space Grotesk', sans-serif; background: var(--grad-sun); color: #1A0E05; cursor: pointer; }
+    .demo-pill .demo-pill-x { background: rgba(255,255,255,.12); color: #fff; padding: 8px 10px; }
+    @media (max-width: 460px) { .demo-pill > span:nth-child(2) { display: none; } }
+    @keyframes lsPillIn { from { opacity: 0; transform: translateY(30px) scale(.9); } to { opacity: 1; transform: none; } }
+    @keyframes lsFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+    @keyframes lsPop { from { opacity: 0; transform: translateY(14px) scale(.9); } to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .pick-bg-img, .dash-photo-hero::before { animation: none !important; }
+      #dash-body.ls-intro > *, .pick-screen.show *, .app-greeting { animation: none !important; }
+    }
   </style>
 </head>
 <body>
@@ -2996,12 +3126,15 @@ function tripStructKey(t){
 function applyTripConfig(fresh){
   if(!fresh || fresh.id!==TRIP.id) return;
   var needsReload = tripStructKey(fresh)!==tripStructKey(TRIP);
-  try{ localStorage.setItem('tripapp_cfg', JSON.stringify(fresh)); }catch(e){}
+  var saved = true;
+  try{ localStorage.setItem('tripapp_cfg', JSON.stringify(fresh)); }catch(e){ saved = false; }
   if(fresh.code && TRIP_AUTH && fresh.code!==TRIP_AUTH.code){
     TRIP_AUTH.code = fresh.code;
     try{ localStorage.setItem('tripapp_auth', JSON.stringify(TRIP_AUTH)); }catch(e){}
   }
-  if(needsReload){ location.reload(); return; }
+  // Solo se recarga si la versión nueva quedó guardada (si no, volvería a
+  // cargar la vieja y a recargar sin fin) y si el freno anti-bucle lo permite.
+  if(needsReload && saved && tripHop()){ location.reload(); return; }
   var namesChanged = JSON.stringify(fresh.persons)!==JSON.stringify(persons) || fresh.name!==TRIP.name ||
     fresh.subtitle!==TRIP.subtitle || fresh.admin!==TRIP.admin;
   TRIP = fresh;
@@ -3030,6 +3163,21 @@ async function patchTrip(changes){
   if(!r.ok) throw new Error(j.error||'No se pudo guardar');
   applyTripConfig(j.trip);
   return j.trip;
+}
+
+// ── DEMO ───────────────────────────────────────────────────────────────────
+// Píldora flotante para salir de la demo y crear el viaje de verdad.
+function showDemoPill(){
+  var b = document.createElement('div');
+  b.className = 'demo-pill';
+  b.innerHTML = '<span class="demo-pill-tag">DEMO</span><span>Así se ve tu viaje</span>'+
+    '<button onclick="leaveDemo(true)">Crear el mío ✈︎</button>'+
+    '<button class="demo-pill-x" onclick="leaveDemo(false)" aria-label="Salir de la demo">✕</button>';
+  document.body.appendChild(b);
+}
+function leaveDemo(create){
+  try{ localStorage.removeItem('tripapp_auth'); localStorage.removeItem('tripapp_cfg'); }catch(e){}
+  location.replace('/inicio.html?switch=1'+(create ? '&create=1' : ''));
 }
 
 // ── MI VIAJE (en Mi Perfil) ────────────────────────────────────────────────
@@ -3298,6 +3446,7 @@ var isInactivityUnlock = false; // en la pantalla "¿Quién eres?" por bloqueo, 
 
 function lockForInactivity(){
   if(meIndex===null) return; // nadie ha iniciado sesión, nada que bloquear
+  if(TRIP.demo) return;      // la demo no tiene PIN
   var pickEl = document.getElementById('pick-screen');
   if(pickEl.classList.contains('show')) return; // ya hay algo mostrándose ahí
   // El formulario obligatorio de información de emergencia (cuenta nueva)
@@ -3347,6 +3496,16 @@ function showProfileScreen(){
   document.getElementById('pick-screen').classList.add('show');
 }
 
+// Entrada escalonada de las tarjetas de Inicio (solo al llegar, no en cada
+// repintado de cada minuto)
+function playDashIntro(){
+  var b=document.getElementById('dash-body');
+  if(!b) return;
+  b.classList.remove('ls-intro'); void b.offsetWidth; b.classList.add('ls-intro');
+  clearTimeout(playDashIntro._t);
+  playDashIntro._t=setTimeout(function(){ b.classList.remove('ls-intro'); }, 1400);
+}
+
 function doLogin(i, isNew){
   meIndex=String(i);
   localStorage.setItem('ca26_me', meIndex);
@@ -3359,6 +3518,7 @@ function doLogin(i, isNew){
   // de mostrar el dashboard (que ya está pintado detrás, listo para
   // revelarse en cuanto se desvanezca).
   showLoginLoading(function(){
+    playDashIntro();
     // Cuenta nueva (PIN recién creado): a huevo llenan su info de emergencia
     // antes de dejarlos usar la app — nadie la llena si es "opcional".
     if(isNew) showFirstInfoScreen();
@@ -4769,6 +4929,9 @@ function renderDash(){
 
   var dashBodyEl = document.getElementById('dash-body');
   dashBodyEl.innerHTML = ambientHTML+actHTML+daysHTML+spendHTML+progressHTML+catHTML;
+  // El zoom lento de la foto sigue donde iba aunque Inicio se repinte cada minuto
+  var kbHero = dashBodyEl.querySelector('.dash-photo-hero');
+  if(kbHero) kbHero.style.setProperty('--kb-delay', '-'+((Date.now()/1000)%112).toFixed(1)+'s');
   if(dLeftStr!==null){
     animateFlipCounterTo('dash-flip-days', dLeftStr, dashFlipPrevDays===null);
     animateFlipCounterTo('dash-flip-hours', hLeftStr, dashFlipPrevHours===null);
@@ -7063,6 +7226,7 @@ function go(name,el){
   if(name==='map'&&mapObj){ setTimeout(function(){mapObj.invalidateSize();},80); }
   if(name==='dash'){
     renderDash(); renderOps();
+    playDashIntro();
     dashTimer=setInterval(renderDash,60000);
   }
   if(name==='photos') renderPhotos();
@@ -8012,6 +8176,7 @@ function nativeShare(){
 async function init(){
   if(TRIP_REDIRECTING) return; // se está yendo a /inicio.html
   safeCall(applyTripLabels, 'applyTripLabels');
+  if(TRIP.demo) safeCall(showDemoPill, 'showDemoPill');
   // Lo que quedó guardado solo en este teléfono se muestra de inmediato, y
   // más abajo migrateLocalItinerary() lo sube para que lo vean los demás.
   Object.keys(ITIN_OVERRIDE).forEach(function(k){
@@ -8138,10 +8303,18 @@ if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('controllerchange', function(){
     if(!habiaSW || recargando) return;   // primera instalación: no hay nada viejo que tirar
     recargando = true;
-    window.location.reload();
+    if(tripHop()) window.location.reload();
   });
   window.addEventListener('load', function(){
     navigator.serviceWorker.register('/sw.js').then(function(reg){
+      // Una versión nueva que se quedó "esperando" (pasa en iOS) toma el
+      // control ya, en vez de hasta que se cierre la app por completo.
+      var nudge = function(){ if(reg.waiting) reg.waiting.postMessage('skipWaiting'); };
+      nudge();
+      reg.addEventListener('updatefound', function(){
+        var w = reg.installing;
+        if(w) w.addEventListener('statechange', function(){ if(w.state==='installed') nudge(); });
+      });
       // Se pregunta al servidor al abrir y cada media hora, por si la app se
       // quedó abierta en segundo plano durante el viaje. Con datos móviles
       // esto puede fallar por señal débil — no es un error real de la app,
