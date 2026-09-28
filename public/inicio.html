@@ -176,6 +176,20 @@
     .btn-block { width: 100%; }
     .btn:disabled { opacity: .6; cursor: default; }
     .btn .ic { font-size: 18px; line-height: 1; }
+    .demo-link {
+      margin-top: 12px; width: 100%; background: none; border: none; color: #fff;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      font-size: 14.5px; font-weight: 500; padding: 10px; border-radius: 999px;
+      animation: fadeUp 1s var(--ease) both .75s;
+    }
+    .demo-link .play {
+      width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 11px;
+      background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.4);
+      box-shadow: 0 0 0 0 rgba(255,181,71,.6); animation: ring 2.4s ease-out infinite 1.5s;
+    }
+    .demo-link u { text-decoration-color: rgba(255,255,255,.4); text-underline-offset: 4px; }
+    .demo-link:active { transform: scale(.97); }
+    @keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(255,181,71,.6); } 70%,100% { box-shadow: 0 0 0 14px rgba(255,181,71,0); } }
     .scroll-hint {
       margin: 26px auto 0; display: flex; flex-direction: column; align-items: center; gap: 6px;
       font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; opacity: .7;
@@ -460,6 +474,7 @@
     <button class="btn btn-sun" onclick="openCreate()"><span class="ic" aria-hidden="true">✈︎</span> Crear mi viaje</button>
     <button class="btn btn-glass" onclick="openJoin()"><span class="ic" aria-hidden="true">🎟</span> Tengo un código</button>
   </div>
+  <button class="demo-link" id="demo-btn" onclick="startDemo()"><span class="play" aria-hidden="true">▶</span> <u>Probar la demo</u> — sin registrarte</button>
   <button class="scroll-hint" onclick="document.getElementById('main').scrollIntoView({behavior:'smooth'})" aria-label="Ver más">Explora<span></span></button>
 </header>
 
@@ -892,6 +907,35 @@ async function submitJoinName(e){
   }
 }
 
+// ── Demo ───────────────────────────────────────────────────────────────────
+// Un viaje de juguete propio, ya a medio camino, con sesión iniciada como
+// "Tú". No se agrega a "Tus viajes" y el servidor lo borra a las 24 h.
+async function startDemo(){
+  var btn = document.getElementById('demo-btn');
+  btn.disabled = true; btn.lastChild.textContent = ' — preparando tu viaje…';
+  try{
+    var now = new Date();
+    var today = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    var j = await api('/api/trips/demo', {method:'POST', body:{today: today}});
+    var t = j.trip;
+    lsSet('tripapp_auth', {id: t.id, code: t.code});
+    lsSet('tripapp_cfg', t);
+    // Sesión iniciada como el primer viajero ("Tú"), con el prefijo que usa
+    // index.html para las llaves de cada viaje
+    try{ localStorage.setItem('trip_'+t.id+':ca26_me', '0'); }catch(e){}
+    if(!hasValidTrip()){ showMsg('top-msg', 'Este teléfono no dejó guardar la demo. Revisa que no estés en modo privado.'); return; }
+    if(REDUCED){ goApp(); return; }
+    document.getElementById('takeoff-txt').textContent = t.name;
+    document.getElementById('takeoff').classList.add('go');
+    setTimeout(function(){ if(!goApp()) document.getElementById('takeoff').classList.remove('go'); }, 1300);
+  }catch(e){
+    showMsg('top-msg', e.message);
+    document.getElementById('top-msg').scrollIntoView({behavior:'smooth', block:'center'});
+  }finally{
+    setTimeout(function(){ btn.disabled = false; btn.lastChild.textContent = ' — sin registrarte'; }, 1500);
+  }
+}
+
 // ── Viajes de ejemplo ──────────────────────────────────────────────────────
 // Foto de portada de cada ejemplo (California usa las del propio viaje)
 var EX_PHOTOS = { california2026: '/trip-bg.jpg' };
@@ -1038,6 +1082,8 @@ function observeReveals(){
   renderMyTrips();
   observeReveals();
   loadExamples();
+  if(q.has('create')) openCreate();
+  if(q.has('demo')) startDemo();
   if(q.get('code')) openJoin(q.get('code').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6));
 })();
 </script>

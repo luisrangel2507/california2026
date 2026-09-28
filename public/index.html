@@ -2569,6 +2569,22 @@
     /* Pestaña activa con subrayado de atardecer */
     .nav-tab.active { border-bottom-color: transparent; background-image: var(--grad-sun); background-size: 100% 2px; background-position: bottom; background-repeat: no-repeat; }
 
+    /* Píldora de la demo */
+    .demo-pill {
+      /* A la derecha del botón del traductor (abajo a la izquierda), sin taparlo */
+      position: fixed; left: 84px; bottom: calc(max(20px, env(safe-area-inset-bottom, 20px)) + 6px);
+      z-index: 9000; display: flex; align-items: center; gap: 10px; white-space: nowrap;
+      padding: 7px 7px 7px 10px; border-radius: 999px; color: #fff; font-size: 13px;
+      background: rgba(20,16,24,.82); border: 1px solid rgba(255,255,255,.16);
+      backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%);
+      box-shadow: 0 12px 34px rgba(0,0,0,.45);
+      animation: lsPillIn .7s cubic-bezier(.34,1.56,.64,1) both 1s;
+    }
+    .demo-pill-tag { font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; padding: 3px 7px; border-radius: 999px; background: var(--grad-sun); color: #1A0E05; }
+    .demo-pill button { border: none; border-radius: 999px; padding: 8px 13px; font: 600 13px 'Space Grotesk', sans-serif; background: var(--grad-sun); color: #1A0E05; cursor: pointer; }
+    .demo-pill .demo-pill-x { background: rgba(255,255,255,.12); color: #fff; padding: 8px 10px; }
+    @media (max-width: 460px) { .demo-pill > span:nth-child(2) { display: none; } }
+    @keyframes lsPillIn { from { opacity: 0; transform: translateY(30px) scale(.9); } to { opacity: 1; transform: none; } }
     @keyframes lsFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
     @keyframes lsPop { from { opacity: 0; transform: translateY(14px) scale(.9); } to { opacity: 1; transform: none; } }
     @media (prefers-reduced-motion: reduce) {
@@ -3149,6 +3165,21 @@ async function patchTrip(changes){
   return j.trip;
 }
 
+// ── DEMO ───────────────────────────────────────────────────────────────────
+// Píldora flotante para salir de la demo y crear el viaje de verdad.
+function showDemoPill(){
+  var b = document.createElement('div');
+  b.className = 'demo-pill';
+  b.innerHTML = '<span class="demo-pill-tag">DEMO</span><span>Así se ve tu viaje</span>'+
+    '<button onclick="leaveDemo(true)">Crear el mío ✈︎</button>'+
+    '<button class="demo-pill-x" onclick="leaveDemo(false)" aria-label="Salir de la demo">✕</button>';
+  document.body.appendChild(b);
+}
+function leaveDemo(create){
+  try{ localStorage.removeItem('tripapp_auth'); localStorage.removeItem('tripapp_cfg'); }catch(e){}
+  location.replace('/inicio.html?switch=1'+(create ? '&create=1' : ''));
+}
+
 // ── MI VIAJE (en Mi Perfil) ────────────────────────────────────────────────
 function tripInviteUrl(){
   return location.origin+'/inicio.html?code='+encodeURIComponent(TRIP.code||TRIP_AUTH.code);
@@ -3415,6 +3446,7 @@ var isInactivityUnlock = false; // en la pantalla "¿Quién eres?" por bloqueo, 
 
 function lockForInactivity(){
   if(meIndex===null) return; // nadie ha iniciado sesión, nada que bloquear
+  if(TRIP.demo) return;      // la demo no tiene PIN
   var pickEl = document.getElementById('pick-screen');
   if(pickEl.classList.contains('show')) return; // ya hay algo mostrándose ahí
   // El formulario obligatorio de información de emergencia (cuenta nueva)
@@ -8144,6 +8176,7 @@ function nativeShare(){
 async function init(){
   if(TRIP_REDIRECTING) return; // se está yendo a /inicio.html
   safeCall(applyTripLabels, 'applyTripLabels');
+  if(TRIP.demo) safeCall(showDemoPill, 'showDemoPill');
   // Lo que quedó guardado solo en este teléfono se muestra de inmediato, y
   // más abajo migrateLocalItinerary() lo sube para que lo vean los demás.
   Object.keys(ITIN_OVERRIDE).forEach(function(k){
