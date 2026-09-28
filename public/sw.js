@@ -1,4 +1,4 @@
-const CACHE = 'av26-v208';
+const CACHE = 'av26-v209';
 
 const PRECACHE = [
   '/',
@@ -11,6 +11,8 @@ const PRECACHE = [
   '/icons/apple-touch-icon.png',
   '/logo-altavibra.png',
   '/qrcode.js',
+  '/avatar3d.js',
+  '/vendor/three.min.js',
 ];
 
 self.addEventListener('install', e => {

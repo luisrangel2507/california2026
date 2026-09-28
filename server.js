@@ -562,6 +562,12 @@ function createDemoTrip(today) {
     exp('Estacionamiento Griffith', 250, 2, 'trans', 48 * h),
   ]);
   t.set('settlements', [{ id: 'demos1', from: 3, to: 0, amt: 1500, ts: day0 + 30 * h }]);
+  // Los amigos de la demo ya traen su personaje armado
+  t.set('profiles', {
+    1: { avatar: { skin: '#E8B48A', hair: 'coleta', hairColor: '#3B2618', shirt: '#FF6A50', pants: '#2B3A55', shoes: '#FFFFFF', acc: 'lentes', accColor: '#1F1F24' } },
+    2: { avatar: { skin: '#A86B45', hair: 'picos', hairColor: '#1E1612', shirt: '#00E598', pants: '#1F1F24', shoes: '#F5A623', acc: 'gorra', accColor: '#E63946' } },
+    3: { avatar: { skin: '#F5C9A6', hair: 'chongo', hairColor: '#E0B46C', shirt: '#B983FF', pants: '#D9CBB0', shoes: '#FF6A50', acc: 'audifonos', accColor: '#FFFFFF' } },
+  });
 
   const dayDate = (i) => { const d = new Date(start + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + i); return d.toISOString().slice(0, 10); };
   t.set('reservations', [
@@ -945,6 +951,23 @@ app.delete('/api/settlements/:id', (req, res) => {
 // emergencia de cada quien en caso de necesitarlos durante el viaje.
 app.get('/api/profiles', (req, res) => res.json(req.trip.get('profiles', {})));
 
+// Personaje 3D (avatar3d.js): solo colores #RRGGBB y estilos conocidos.
+// '' = sin personaje propio (se usa la foto o el generado por nombre).
+const AVATAR_HAIR = ['corto', 'picos', 'largo', 'coleta', 'chongo', 'afro', 'pelon'];
+const AVATAR_ACC = ['ninguno', 'gorra', 'lentes', 'sombrero', 'audifonos', 'gorro'];
+function cleanAvatar(a) {
+  if (!a || typeof a !== 'object') return '';
+  const hex = (v) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : undefined);
+  const out = {
+    skin: hex(a.skin), hairColor: hex(a.hairColor), shirt: hex(a.shirt),
+    pants: hex(a.pants), shoes: hex(a.shoes), accColor: hex(a.accColor),
+    hair: AVATAR_HAIR.includes(a.hair) ? a.hair : undefined,
+    acc: AVATAR_ACC.includes(a.acc) ? a.acc : undefined,
+  };
+  Object.keys(out).forEach((k) => out[k] === undefined && delete out[k]);
+  return Object.keys(out).length ? out : '';
+}
+
 app.post('/api/profiles', (req, res) => {
   const { idx, data } = req.body;
   if (idx === undefined || !data || typeof data !== 'object') {
@@ -963,6 +986,7 @@ app.post('/api/profiles', (req, res) => {
     ecPhoneCode: pick('ecPhoneCode'),
     ecPhone: pick('ecPhone'),
     photo: pick('photo'),
+    avatar: data.avatar !== undefined ? cleanAvatar(data.avatar) : (prev.avatar || ''),
   };
   req.trip.save('profiles');
   res.json({ ok: true });

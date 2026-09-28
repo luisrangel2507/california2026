@@ -2550,8 +2550,6 @@
     .pick-screen.show .pick-card:nth-child(n+5) { animation-delay: .72s; }
     .pick-card { transition: transform .2s cubic-bezier(.34,1.56,.64,1), border-color .2s, background .2s; }
     .pick-card:hover { border-color: rgba(255,181,71,.55); background: rgba(40,24,10,.5); transform: translateY(-3px); }
-    .pick-cards { flex-wrap: wrap; }
-    .pick-card { min-width: 84px; }
     .pick-badge { color: #FFB547; background: rgba(255,181,71,.12); border-color: rgba(255,181,71,.35); }
     .pick-badge .dot { background: #FFB547; }
 
@@ -2569,11 +2567,54 @@
     /* Pestaña activa con subrayado de atardecer */
     .nav-tab.active { border-bottom-color: transparent; background-image: var(--grad-sun); background-size: 100% 2px; background-position: bottom; background-repeat: no-repeat; }
 
+    /* ── Personaje 3D ── */
+    .pick-body { height: 104px; width: auto; display: block; margin: -6px 0 -4px; filter: drop-shadow(0 8px 12px rgba(0,0,0,.35)); }
+    /* Con personajes de cuerpo completo las tarjetas son más altas: van en
+       una sola fila (se desliza si son muchos) y el título sube un poco */
+    .pick-cards { flex-wrap: nowrap !important; overflow-x: auto; justify-content: safe center; padding: 6px 2px 10px; scrollbar-width: none; }
+    .pick-cards::-webkit-scrollbar { display: none; }
+    .pick-card { padding: 10px 6px 12px; min-width: 76px; max-width: 96px; flex: 1 0 76px; }
+    .pick-title-block { top: 36%; }
+    .av-open-btn {
+      width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; margin: -4px 0 18px;
+      padding: 12px 14px; border-radius: 16px; cursor: pointer; color: var(--text);
+      background: linear-gradient(120deg, rgba(255,181,71,.16), rgba(255,79,109,.12)); border: 1px solid rgba(255,181,71,.35);
+      font: inherit;
+    }
+    .av-open-btn b { font-size: 14.5px; }
+    .av-open-btn small { color: var(--muted); font-size: 12px; }
+    .av-open-btn > span:nth-child(2) { flex: 1; }
+    .av-open-ic { font-size: 26px; }
+    .av-sheet { max-height: 94vh; }
+    .av-stage {
+      height: min(42vh, 360px); margin: 0 16px 10px; border-radius: 22px; overflow: hidden; position: relative;
+      background: radial-gradient(120% 90% at 50% 100%, rgba(255,122,69,.45), rgba(255,181,71,.12) 45%, rgba(92,200,255,.10) 75%), linear-gradient(180deg, #1B2233, #2A1E2A);
+    }
+    :root[data-theme="light"] .av-stage { background: radial-gradient(120% 90% at 50% 100%, rgba(255,160,90,.6), rgba(255,220,160,.35) 45%, rgba(160,210,240,.5) 80%), #DDEBF3; }
+    .av-opts { padding: 0 16px; overflow-y: auto; max-height: calc(94vh - min(42vh, 360px) - 190px); }
+    .av-row { margin-bottom: 12px; }
+    .av-lbl { font-family: 'Space Mono', monospace; font-size: 10.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+    .av-items { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; }
+    .av-items::-webkit-scrollbar { display: none; }
+    .av-sw {
+      width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0; cursor: pointer;
+      border: 2px solid rgba(var(--surface-rgb),.18); transition: transform .18s cubic-bezier(.34,1.56,.64,1);
+    }
+    .av-sw.on { transform: scale(1.12); border-color: var(--text); box-shadow: 0 0 0 3px rgba(255,181,71,.55); }
+    .av-chip {
+      flex-shrink: 0; padding: 8px 14px; border-radius: 999px; cursor: pointer; font: 600 13px 'Space Grotesk', sans-serif;
+      color: var(--text); background: var(--glass); border: 1px solid rgba(var(--surface-rgb),.15);
+      transition: transform .18s cubic-bezier(.34,1.56,.64,1), background .2s;
+    }
+    .av-chip.on { background: var(--grad-sun); color: #1A0E05; border-color: transparent; transform: scale(1.04); }
+    .av-use-photo { display: block; margin: 0 auto 14px; background: none; border: none; color: var(--muted); font-size: 12.5px; text-decoration: underline; cursor: pointer; }
+
     /* Píldora de la demo */
     .demo-pill {
       /* A la derecha del botón del traductor (abajo a la izquierda), sin taparlo */
       position: fixed; left: 84px; bottom: calc(max(20px, env(safe-area-inset-bottom, 20px)) + 6px);
-      z-index: 9000; display: flex; align-items: center; gap: 10px; white-space: nowrap;
+      /* Debajo de las hojas (8000+) para no tapar sus botones de Guardar */
+      z-index: 7500; display: flex; align-items: center; gap: 10px; white-space: nowrap;
       padding: 7px 7px 7px 10px; border-radius: 999px; color: #fff; font-size: 13px;
       background: rgba(20,16,24,.82); border: 1px solid rgba(255,255,255,.16);
       backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%);
@@ -2584,6 +2625,7 @@
     .demo-pill button { border: none; border-radius: 999px; padding: 8px 13px; font: 600 13px 'Space Grotesk', sans-serif; background: var(--grad-sun); color: #1A0E05; cursor: pointer; }
     .demo-pill .demo-pill-x { background: rgba(255,255,255,.12); color: #fff; padding: 8px 10px; }
     @media (max-width: 460px) { .demo-pill > span:nth-child(2) { display: none; } }
+    body:has(.bottom-sheet.show) .demo-pill, body:has(.pick-screen.show) .demo-pill { opacity: 0; pointer-events: none; }
     @keyframes lsPillIn { from { opacity: 0; transform: translateY(30px) scale(.9); } to { opacity: 1; transform: none; } }
     @keyframes lsFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
     @keyframes lsPop { from { opacity: 0; transform: translateY(14px) scale(.9); } to { opacity: 1; transform: none; } }
@@ -2922,6 +2964,7 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="qrcode.js"></script>
+<script src="avatar3d.js"></script>
 <script>
 // ── Manejo de errores visible ───────────────────────────────────────────────
 // Hasta ahora, si algo tronaba durante init() (o en cualquier otro momento),
@@ -3278,9 +3321,19 @@ function avatarHtml(idx, size, fontPx){
   var p = persons[idx] || '?';
   var pd = (typeof PROFILE_DATA !== 'undefined' && PROFILE_DATA[idx]) || null;
   var photo = pd && pd.photo;
-  if(photo){
-    return '<img src="'+photo+'" style="width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover;display:block;flex-shrink:0" alt="'+esc(p)+'">';
+  var custom = !!(pd && pd.avatar && typeof pd.avatar === 'object');
+  var circle = 'width:'+size+'px;height:'+size+'px;border-radius:50%;object-fit:cover;display:block;flex-shrink:0';
+  // Prioridad: personaje que armó la persona > su foto > personaje generado
+  // a partir de su nombre > iniciales (si el 3D todavía no está listo o el
+  // teléfono no puede con él).
+  if(photo && !custom){
+    return '<img src="'+photo+'" style="'+circle+'" alt="'+esc(p)+'">';
   }
+  if(PROFILES_LOADED && window.Avatar3D){
+    var u = Avatar3D.faceUrl(avatarCfg(idx));
+    if(u) return '<img src="'+u+'" style="'+circle+';background:radial-gradient(circle at 50% 35%, '+(PC[idx]||'#999')+', '+(PC[idx]||'#999')+'99)" alt="'+esc(p)+'">';
+  }
+  if(photo) return '<img src="'+photo+'" style="'+circle+'" alt="'+esc(p)+'">';
   var fs = fontPx || Math.round(size*0.42);
   return '<div style="width:'+size+'px;height:'+size+'px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:'+fs+'px;font-weight:700;background:'+(PC[idx]||'#999')+';color:#000;flex-shrink:0">'+esc(p.charAt(0).toUpperCase())+'</div>';
 }
@@ -3339,7 +3392,7 @@ var pinFirst  = '';
 function renderPickCards(){
   document.getElementById('pick-cards').innerHTML = persons.map(function(p,i){
     return '<div class="pick-card" onclick="startPin('+i+')" style="border-color:'+PC[i]+'50">'+
-      avatarHtml(i, 52, 22)+
+      pickAvatarHtml(i)+
       '<div class="pick-nm">'+esc(p)+'</div>'+
       '</div>';
   }).join('');
@@ -3572,11 +3625,121 @@ function showWelcome(i){
   setTimeout(function(){ bnr.classList.remove('show'); }, 3200);
 }
 
+// ── PERSONAJES 3D ──────────────────────────────────────────────────────────
+// Cada viajero tiene un monito 3D (avatar3d.js). Si no ha armado el suyo,
+// se genera uno a partir de su nombre.
+function avatarCfg(idx){
+  var pd = PROFILE_DATA[idx];
+  return Avatar3D.normalize(pd && pd.avatar, persons[idx]);
+}
+// Cuerpo completo para las tarjetas de "¿Quién eres?"
+function pickAvatarHtml(i){
+  var pd = PROFILE_DATA[i];
+  var custom = !!(pd && pd.avatar && typeof pd.avatar === 'object');
+  if(PROFILES_LOADED && window.Avatar3D && (custom || !(pd && pd.photo))){
+    var u = Avatar3D.bodyUrl(avatarCfg(i));
+    if(u) return '<img class="pick-body" src="'+u+'" alt="'+esc(persons[i])+'">';
+  }
+  return avatarHtml(i, 52, 22);
+}
+// Cuando hay imágenes 3D nuevas listas, se repinta donde aparecen avatares
+function refreshAvatarUI(){
+  safeCall(updateHeroProfile, 'updateHeroProfile');
+  var pick = document.getElementById('pick-screen');
+  if(pick && pick.classList.contains('show')) safeCall(renderPickCards, 'renderPickCards');
+  safeCall(renderDash, 'renderDash');
+  safeCall(renderBudget, 'renderBudget');
+  safeCall(renderOps, 'renderOps');
+  var sheet = document.getElementById('me-sheet');
+  if(sheet && sheet.classList.contains('show') && meIndex!==null){
+    document.getElementById('me-photo-preview').innerHTML = avatarHtml(parseInt(meIndex), 64, 26);
+    safeCall(renderGroupContacts, 'renderGroupContacts');
+  }
+}
+if(window.Avatar3D) Avatar3D.onReady(refreshAvatarUI);
+
+// ── Editor de "Mi personaje" ───────────────────────────────────────────────
+var avEdit = null, avViewer = null;
+var AV_ROWS = [
+  {k:'skin',      label:'Piel',        type:'color'},
+  {k:'hair',      label:'Peinado',     type:'style', list:'hair'},
+  {k:'hairColor', label:'Color de pelo', type:'color'},
+  {k:'shirt',     label:'Playera',     type:'color'},
+  {k:'pants',     label:'Pantalón',    type:'color'},
+  {k:'shoes',     label:'Tenis',       type:'color'},
+  {k:'acc',       label:'Accesorio',   type:'style', list:'acc'},
+  {k:'accColor',  label:'Color del accesorio', type:'color', show:function(c){ return ['gorra','gorro','audifonos','sombrero'].indexOf(c.acc)!==-1; }},
+];
+function openAvatarEditor(){
+  if(meIndex===null || !window.Avatar3D) return;
+  var i = parseInt(meIndex);
+  avEdit = avatarCfg(i);
+  document.getElementById('av-name').textContent = persons[i];
+  var pd = PROFILE_DATA[i];
+  document.getElementById('av-use-photo').style.display = (pd && pd.photo && pd.avatar) ? '' : 'none';
+  renderAvatarOptions();
+  document.getElementById('av-overlay').classList.add('show');
+  document.getElementById('av-sheet').classList.add('show');
+  if(avViewer) avViewer.dispose();
+  avViewer = Avatar3D.mountViewer(document.getElementById('av-stage'), avEdit);
+  setTimeout(function(){ if(avViewer) avViewer.wave(); }, 900);
+}
+function closeAvatarEditor(){
+  document.getElementById('av-overlay').classList.remove('show');
+  document.getElementById('av-sheet').classList.remove('show');
+  var v = avViewer; avViewer = null;
+  setTimeout(function(){ if(v) v.dispose(); }, 400);
+}
+function renderAvatarOptions(){
+  var O = Avatar3D.OPTIONS;
+  document.getElementById('av-opts').innerHTML = AV_ROWS.map(function(r){
+    if(r.show && !r.show(avEdit)) return '';
+    var items;
+    if(r.type==='color'){
+      items = O[r.k].map(function(c){
+        return '<button class="av-sw'+(avEdit[r.k]===c?' on':'')+'" style="background:'+c+'" aria-label="'+esc(r.label)+' '+c+'" onclick="setAvatarOpt(\''+r.k+'\',\''+c+'\')"></button>';
+      }).join('');
+    } else {
+      items = O[r.list].map(function(o){
+        return '<button class="av-chip'+(avEdit[r.k]===o.id?' on':'')+'" onclick="setAvatarOpt(\''+r.k+'\',\''+o.id+'\')">'+esc(o.label)+'</button>';
+      }).join('');
+    }
+    return '<div class="av-row"><div class="av-lbl">'+esc(r.label)+'</div><div class="av-items">'+items+'</div></div>';
+  }).join('');
+}
+function setAvatarOpt(k, v){
+  avEdit[k] = v;
+  renderAvatarOptions();
+  if(avViewer) avViewer.update(avEdit);
+}
+function randomAvatar(){
+  var O = Avatar3D.OPTIONS, r = function(a){ return a[Math.floor(Math.random()*a.length)]; };
+  avEdit = { skin:r(O.skin), hair:r(O.hair).id, hairColor:r(O.hairColor), shirt:r(O.shirt), pants:r(O.pants), shoes:r(O.shoes), acc:r(O.acc).id, accColor:r(O.accColor) };
+  renderAvatarOptions();
+  if(avViewer){ avViewer.update(avEdit); avViewer.wave(); }
+}
+async function saveAvatar(clear){
+  var i = parseInt(meIndex);
+  var btn = document.getElementById('av-save');
+  btn.disabled = true;
+  try{
+    var r = await fetch('/api/profiles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idx:i,data:{avatar: clear ? '' : avEdit}})});
+    if(!r.ok) throw new Error();
+    PROFILE_DATA[i] = Object.assign({}, PROFILE_DATA[i]||{}, {avatar: clear ? '' : avEdit});
+    closeAvatarEditor();
+    refreshAvatarUI();
+    toast(clear ? 'Listo, se ve tu foto otra vez.' : '¡Tu personaje quedó listo!', 'success');
+  }catch(e){
+    toast('No se pudo guardar — revisa tu conexión.','error');
+  }finally{ btn.disabled = false; }
+}
+
 // ── MI PERFIL ──────────────────────────────────────────────────────────────
 var PROFILE_DATA = {}; // compartido entre todos via /api/profiles
+var PROFILES_LOADED = false; // hasta saber quién tiene foto/personaje, no se genera el 3D por default
 
 async function loadProfiles(){
-  try{ var r=await fetch('/api/profiles',{cache:'no-store'}); PROFILE_DATA=await r.json(); }
+  try{ var r=await fetch('/api/profiles',{cache:'no-store'}); PROFILE_DATA=await r.json(); PROFILES_LOADED=true; }
   catch(e){ PROFILE_DATA=PROFILE_DATA||{}; }
 }
 
@@ -8434,6 +8597,11 @@ if('serviceWorker' in navigator){
         <button class="me-backup-btn" style="flex:none;background:transparent;border-color:var(--border)" onclick="removeMyPhoto()">Quitar foto</button>
       </div>
     </div>
+    <button class="av-open-btn" onclick="openAvatarEditor()">
+      <span class="av-open-ic" aria-hidden="true">🧍</span>
+      <span><b>Mi personaje 3D</b><br><small>Arma tu monito: pelo, ropa, accesorios</small></span>
+      <span aria-hidden="true">›</span>
+    </button>
 
     <div class="settings-section-title">Mi viaje</div>
     <div id="me-trip-sec"></div>
@@ -8540,6 +8708,26 @@ if('serviceWorker' in navigator){
     <button class="bs-logout-btn" onclick="logoutMe()">Cerrar sesión</button>
     <button class="bs-save-btn" onclick="saveMyProfile()">Guardar</button>
   </div>
+</div>
+
+<!-- EDITOR DE PERSONAJE 3D -->
+<div class="bs-overlay" id="av-overlay" onclick="closeAvatarEditor()"></div>
+<div class="bottom-sheet av-sheet" id="av-sheet" role="dialog" aria-modal="true" aria-labelledby="av-title">
+  <div class="bs-grab-bar"></div>
+  <div class="bs-hd">
+    <div>
+      <div class="bs-title" id="av-title">Mi personaje</div>
+      <div class="bs-sub"><span id="av-name"></span> · gíralo con el dedo, tócalo para que salude</div>
+    </div>
+    <button class="bs-close" onclick="closeAvatarEditor()" aria-label="Cerrar">&#10005;</button>
+  </div>
+  <div class="av-stage" id="av-stage"></div>
+  <div class="av-opts" id="av-opts"></div>
+  <div class="bs-footer">
+    <button class="bs-logout-btn" onclick="randomAvatar()">🎲 Sorpréndeme</button>
+    <button class="bs-save-btn" id="av-save" onclick="saveAvatar(false)">Guardar</button>
+  </div>
+  <button class="av-use-photo" id="av-use-photo" onclick="saveAvatar(true)">Mejor usar mi foto</button>
 </div>
 
 <!-- TRADUCTOR — BOTÓN FLOTANTE (estilo widget de chat) -->
